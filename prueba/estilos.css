@@ -203,8 +203,10 @@ svg.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;st
 .cantidades-inventario .ico{width:16px;height:16px}
 .cantidades-inventario[open] .ico{transform:rotate(90deg)}
 .cantidades-inventario ul{margin:8px 0 0;padding:8px 0 0;border-top:1px solid var(--linea);list-style:none;font-size:13px}
-.controles-inventario{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 6px;margin-block:-8px}
+.controles-inventario{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 8px;margin-block:-8px}
 .controles-inventario .link{display:inline-flex;align-items:center;gap:4px;padding-inline:0;font-size:13px;border-radius:8px}
+.controles-inventario .link:nth-child(2){justify-self:end}
+.controles-inventario .link .ico{flex:none}
 .controles-inventario .ico{width:16px;height:16px}
 .orden-inventario select{width:auto;max-width:100%;padding:6px;color:var(--tenue)}
 #listaProd .fila-lista{content-visibility:auto;contain-intrinsic-block-size:auto 54px}
@@ -582,6 +584,60 @@ textarea{min-height:76px;resize:vertical}
 .pedido-recibir header{display:flex;align-items:center;gap:12px;overflow-wrap:anywhere}
 .pedido-recibir header h3{font:600 15px/1.25 var(--sans);margin-bottom:3px}
 .pedido-recibir input[aria-invalid="true"]{border-color:var(--mal)}
+
+/* Etiquetas QR */
+.form-etiquetas{display:flex;flex:1;min-height:0;flex-direction:column}
+.form-etiquetas .hoja-in>p,.cab-lista-etiquetas p,.resumen-etiquetas p{margin:0}
+.form-etiquetas .ayuda,.resumen-etiquetas .ayuda{font-size:14px;color:var(--tenue)}
+.cab-lista-etiquetas{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-block:-7px}
+.cab-lista-etiquetas .link{text-align:right}
+[data-lista-etiquetas].card{gap:0;padding-block:2px}
+.fila-etiqueta{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;min-height:56px;padding-block:9px;cursor:pointer}
+.fila-etiqueta+.fila-etiqueta{border-top:1px solid var(--linea)}
+.fila-etiqueta input{width:22px;height:22px;margin:0;accent-color:var(--marca-llena)}
+.fila-etiqueta strong,.fila-etiqueta small{display:block;overflow-wrap:anywhere}
+.fila-etiqueta strong{font-size:14px;line-height:1.3}
+.fila-etiqueta small,.estado-etiqueta{font-size:12px;color:var(--tenue)}
+.estado-etiqueta{text-align:right}
+.resumen-etiquetas{display:grid;gap:4px}
+.pagina-etiquetas{padding:9px;background:#fff;color:#2A1F27;border:1px solid var(--linea);border-radius:var(--radio-control);box-shadow:var(--sombra)}
+.pagina-etiquetas ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:0;padding:0;list-style:none}
+.etiqueta-qr{display:flex;align-items:center;gap:5px;min-width:0;padding:5px;outline:1px solid #DDD2D8;outline-offset:-.5px}
+.dibujo-etiqueta{display:block;width:36%;flex:none}
+.dibujo-etiqueta svg{display:block;width:100%;height:auto;aspect-ratio:1;shape-rendering:crispEdges}
+.texto-etiqueta{min-width:0;display:grid;gap:2px;justify-items:start;font-size:10px;line-height:1.2}
+.texto-etiqueta img{display:block;width:18px;height:auto}
+.texto-etiqueta strong{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.texto-etiqueta small{font-size:.85em;color:#534A51}
+@media screen and (max-width:520px){
+  .etiqueta-qr{flex-direction:column;justify-content:flex-start;gap:2px;padding:5px 4px 7px;text-align:center}
+  .dibujo-etiqueta{width:min(58px,75%)}
+  .texto-etiqueta{justify-items:center;width:100%}
+  .texto-etiqueta img{width:16px}
+}
+
+@page etiquetas{size:A4 portrait;margin:0}
+@media print{
+  body.bloqueo:has(.hoja-vista-etiquetas){overflow:visible;background:#fff}
+  body:has(.hoja-vista-etiquetas)>:not(#capas),
+  body #capas:has(.hoja-vista-etiquetas)>.hoja:not(.hoja-vista-etiquetas),
+  .hoja-vista-etiquetas>.hoja-cab,.hoja-vista-etiquetas>.hoja-pie,
+  .hoja-vista-etiquetas .resumen-etiquetas{display:none!important}
+  .hoja-vista-etiquetas,.hoja-vista-etiquetas .hoja-cuerpo,.hoja-vista-etiquetas .hoja-in{
+    position:static;display:block;width:auto;height:auto;max-width:none;margin:0;padding:0;overflow:visible;animation:none;
+    color:#2A1F27;background:#fff
+  }
+  .pagina-etiquetas{
+    page:etiquetas;width:210mm;margin:0;padding:12mm 9mm 0;
+    border:0;border-radius:0;box-shadow:none;break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact
+  }
+  .pagina-etiquetas+.pagina-etiquetas{break-before:page}
+  .pagina-etiquetas ol{grid-template-rows:repeat(8,34mm)}
+  .etiqueta-qr{gap:2mm;padding:2mm;outline:.22mm solid #CFC3CC;outline-offset:-.11mm}
+  .dibujo-etiqueta{width:22mm}
+  .texto-etiqueta{gap:.9mm;font-size:8.5pt}
+  .texto-etiqueta img{width:7mm}
+}
 
 .foto-campo{display:flex;align-items:center;gap:14px}
 .acciones-foto{display:flex;flex-wrap:wrap;gap:8px}

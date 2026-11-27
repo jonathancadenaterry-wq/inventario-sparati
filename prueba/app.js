@@ -860,6 +860,7 @@ function vLista(tipo){
     <div class="controles-inventario">
       <button class="link" data-act="compras">${IC.bolsa} Lista de compras</button>
       <button class="link" data-act="conteo" ${E.conteo ? 'aria-label="Retomar conteo"' : ''}>${IC.conteo} ${E.conteo ? 'Retomar' : 'Contar'}</button>
+      <button class="link" data-act="etiquetasQR">${IC.etiqueta} Etiquetas QR</button>
       <label class="orden-inventario"><span class="solo-lectura">Ordenar dentro de cada marca</span>
         <select id="ordenProd">
           ${Object.entries(ORDEN_INVENTARIO).map(([v, nombre]) =>
@@ -2817,6 +2818,170 @@ function guardarCodigoProducto(id, codigo){
   const actualizado = marcar({...actual, codigo});
   return guardar({...E, productos:E.productos.map(p => p === actual ? actualizado : p)});
 }
+
+// ---------- Etiquetas QR ----------
+const ETIQUETAS_POR_HOJA = 24;
+const ALFABETO_ETIQUETAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const codigoDeEtiqueta = p => /^SP-[A-Z0-9]{5}$/.test(claveCodigo(p.codigo));
+
+function generarCodigoEtiqueta(ocupados){
+  let codigo;
+  do{
+    const valores = crypto.getRandomValues(new Uint8Array(5));
+    codigo = 'SP-' + Array.from(valores, n => ALFABETO_ETIQUETAS[n % ALFABETO_ETIQUETAS.length]).join('');
+  }while(ocupados.has(codigo));
+  ocupados.add(codigo);
+  return codigo;
+}
+
+function productosEtiquetables(){
+  const ocupados = new Set(), repetidos = new Set();
+  for(const p of vivos(E.productos)){
+    const codigo = claveCodigo(p.codigo);
+    if(ocupados.has(codigo)) repetidos.add(codigo);
+    ocupados.add(codigo);
+  }
+  return productos().filter(p => {
+    const codigo = claveCodigo(p.codigo);
+    return !codigo || (codigoDeEtiqueta(p) && !repetidos.has(codigo));
+  });
+}
+
+function abrirEtiquetasQR(){
+  recargarEstadoSiCambio();
+  const d = abrirCapa(cabecera('Etiquetas QR', '', true) + `<form class="form-etiquetas">
+    <div class="hoja-cuerpo"><div class="hoja-in">
+      <p class="ayuda">Elige los productos que quieres etiquetar o cuyos QR quieres volver a imprimir.</p>
+      ${buscador('Buscar productos para etiquetar', {id:'buscarEtiquetas'})}
+      <div class="cab-lista-etiquetas">
+        <p class="ayuda" data-total-etiquetas role="status"></p>
+        <button class="link" type="button" data-seleccionar-etiquetas></button>
+      </div>
+      <div data-lista-etiquetas></div>
+    </div></div>
+    <footer class="hoja-pie"><div class="in"><button class="btn" type="submit" disabled>Preparar etiquetas</button></div></footer>
+  </form>`, {cls:'hoja hoja-etiquetas'});
+  const seleccion = new Set();
+  const buscar = $('#buscarEtiquetas', d), lista = $('[data-lista-etiquetas]', d);
+  const seleccionar = $('[data-seleccionar-etiquetas]', d), preparar = $('button[type="submit"]', d);
+  let disponibles = productosEtiquetables(), visibles = [], preparando = false;
+
+  function actualizarControles(){
+    const todos = visibles.every(p => seleccion.has(p.id));
+    seleccionar.textContent = todos ? 'Quitar los visibles' : 'Elegir los visibles';
+    seleccionar.hidden = visibles.length === 0;
+    $('[data-total-etiquetas]', d).textContent = seleccion.size === 1 ? '1 producto elegido' : `${seleccion.size} productos elegidos`;
+    preparar.disabled = preparando || !seleccion.size;
+  }
+  function pintarLista(){
+    visibles = disponibles.filter(p => coincideProducto(p, norm(buscar.value)));
+    lista.classList.toggle('card', Boolean(visibles.length));
+    lista.innerHTML = visibles.length ? visibles.map(p => `<label class="fila-etiqueta">
+      <input type="checkbox" value="${esc(p.id)}"${seleccion.has(p.id) ? ' checked' : ''}>
+      <span><strong>${esc(p.nombre)}</strong>${p.marca ? `<small>${esc(p.marca)}</small>` : ''}</span>
+      <span class="estado-etiqueta">${codigoDeEtiqueta(p) ? 'Con QR' : 'Sin código'}</span>
+    </label>`).join('') : `<p class="vacio">${disponibles.length ? 'No encontramos productos con esa búsqueda.' : 'No hay productos disponibles para etiquetar.'}</p>`;
+    actualizarControles();
+  }
+  buscar.addEventListener('input', pintarLista);
+  buscar.addEventListener('keydown', e => { if(e.key === 'Enter') e.preventDefault(); });
+  lista.addEventListener('change', e => {
+    if(e.target.checked) seleccion.add(e.target.value);
+    else seleccion.delete(e.target.value);
+    actualizarControles();
+  });
+  seleccionar.addEventListener('click', () => {
+    const quitar = visibles.every(p => seleccion.has(p.id));
+    for(const p of visibles){
+      if(quitar) seleccion.delete(p.id);
+      else seleccion.add(p.id);
+    }
+    $$('.fila-etiqueta input', lista).forEach(campo => { campo.checked = seleccion.has(campo.value); });
+    actualizarControles();
+  });
+  $('form', d).addEventListener('submit', async e => {
+    e.preventDefault();
+    if(preparando || !seleccion.size) return;
+    preparando = true;
+    actualizarControles();
+    try{
+      const {qrcode} = await import('./vendor/qrcode.esm.js');
+      const prepararVista = () => {
+        if(!d.isConnected || d.inert || cierrePendiente) return;
+        recargarEstadoSiCambio();
+        disponibles = productosEtiquetables();
+        const elegidos = disponibles.filter(p => seleccion.has(p.id));
+        if(elegidos.length !== seleccion.size){
+          const ids = new Set(elegidos.map(p => p.id));
+          for(const id of seleccion) if(!ids.has(id)) seleccion.delete(id);
+          pintarLista();
+          toast('El inventario cambió. Revisa los productos elegidos.');
+          return;
+        }
+        const ocupados = new Set(E.productos.map(p => claveCodigo(p.codigo)));
+        const nuevos = new Map();
+        const etiquetas = elegidos.map(p => {
+          if(claveCodigo(p.codigo)) return p;
+          const nuevo = marcar({...p, codigo:generarCodigoEtiqueta(ocupados)});
+          nuevos.set(p.id, nuevo);
+          return nuevo;
+        });
+        if(nuevos.size){
+          const productos = E.productos.map(p => nuevos.get(p.id) || p);
+          if(!guardar({...E, productos})) return;
+          refrescar();
+          disponibles = disponibles.map(p => nuevos.get(p.id) || p);
+        }
+        pintarLista();
+        abrirVistaEtiquetas(etiquetas, qrcode);
+      };
+      if(navigator.locks) await navigator.locks.request(CLAVE + '_etiquetas', prepararVista);
+      else prepararVista();
+    }catch(e){
+      toast('No se pudieron preparar las etiquetas. Inténtalo otra vez.');
+    }finally{
+      preparando = false;
+      actualizarControles();
+    }
+  });
+  pintarLista();
+}
+
+function abrirVistaEtiquetas(etiquetas, crearQR){
+  const hojas = [];
+  for(let i = 0; i < etiquetas.length; i += ETIQUETAS_POR_HOJA){
+    const celdas = etiquetas.slice(i, i + ETIQUETAS_POR_HOJA).map(p => {
+      const codigo = claveCodigo(p.codigo), qr = crearQR(1, 'M');
+      qr.addData(codigo, 'Alphanumeric');
+      qr.make();
+      return `<li class="etiqueta-qr">
+        <span class="dibujo-etiqueta" aria-hidden="true">${qr.createSvgTag({cellSize:1, margin:4, scalable:true})}</span>
+        <div class="texto-etiqueta">
+          <img src="emblema.png" alt="" width="28" height="28">
+          <strong title="${esc(p.nombre)}">${esc(p.nombre)}</strong>
+          <small>${esc(codigo)}</small>
+        </div>
+      </li>`;
+    }).join('');
+    hojas.push(`<div class="pagina-etiquetas"><ol aria-label="Hoja ${hojas.length + 1}">${celdas}</ol></div>`);
+  }
+  const resumen = `${etiquetas.length === 1 ? '1 etiqueta' : etiquetas.length + ' etiquetas'} · ${hojas.length === 1 ? '1 hoja A4' : hojas.length + ' hojas A4'}`;
+  const d = abrirCapa(cabecera('Vista previa', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <div class="resumen-etiquetas"><strong>${resumen}</strong><p class="ayuda">24 etiquetas por hoja, en 3 columnas y 8 filas.</p></div>
+    ${hojas.join('')}
+  </div></div>
+  <footer class="hoja-pie"><div class="in"><button type="button" class="btn">Imprimir etiquetas</button></div></footer>`,
+  {cls:'hoja hoja-vista-etiquetas'});
+  $('.hoja-pie button', d).addEventListener('click', () => {
+    recargarEstadoSiCambio();
+    if(etiquetas.some(p => productoPorCodigo(p.codigo)?.id !== p.id || productoPorCodigo(p.codigo, p.id))){
+      toast('Los códigos cambiaron. Vuelve a preparar las etiquetas.');
+      return;
+    }
+    window.print();
+  });
+}
+
 let lectorLocal;
 async function detectorDeCodigos(){
   try{
@@ -3135,7 +3300,7 @@ function abrirCodigo(origen){
   let codigo = '';
   const modos = `<div class="escaner-modos" role="group" aria-label="Modo de escaneo">${Object.entries(MODOS_ESCANER).map(([v, m]) =>
     `<button type="button" data-modo-escaner="${v}" aria-pressed="${modo === v}">${m.nombre}</button>`).join('')}</div>`;
-  const d = abrirCapa(estructuraEscaner('Escanear', 'Apunta al código de barras del producto', modos, 'Buscar código'),
+  const d = abrirCapa(estructuraEscaner('Escanear', 'Apunta al código de barras o QR del producto', modos, 'Buscar código'),
     {cls:'hoja escaner', tipo:'codigo', alCerrar:() => camara.cerrar()});
   const form = $('form', d), campo = $('input', form), resultado = $('.resultado-escaner', d);
   const estado = $('[data-estado-camara]', d), botonCamara = $('[data-camara]', d);
@@ -3592,6 +3757,7 @@ const ACT = {
     avisarConDeshacer('Producto eliminado', borrados, false);
   },
   compras(b){ abrirCompras(b.dataset.id); },
+  etiquetasQR(){ abrirEtiquetasQR(); },
   vistaCompras(b){ mostrarVistaCompras(b.closest('.hoja-compras'), b.dataset.v); },
   marcarPedido,
   abrirLlegadaPedido(b){ abrirLlegadaPedido(b.dataset.id); },

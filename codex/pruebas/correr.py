@@ -113,7 +113,7 @@ def simular_camara(pagina, *, detector_local=True):
     if detector_local:
         pagina.add_init_script("Object.defineProperty(window, 'BarcodeDetector', {value: undefined, configurable: true});")
     pagina.add_init_script("""(() => {
-      // Conservar el lector de producción y simular únicamente el video de un EAN-13.
+      // Conservar el lector de producción y simular únicamente el video de la cámara.
       window.camaraPrueba = {solicitudes: [], pistas: [], linterna: [], admiteLinterna: false, modo: 'negada'};
       Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async opciones => {
         const camara = window.camaraPrueba;
@@ -125,6 +125,12 @@ def simular_camara(pagina, *, detector_local=True):
         lienzo.height = 240;
         const contexto = lienzo.getContext('2d');
         let escena;
+        let qr;
+        if(camara.modo === 'qr'){
+          qr = new Image();
+          qr.src = camara.qr;
+          await qr.decode();
+        }
         if(camara.modo === 'escena'){
           escena = new Image();
           escena.src = '../codex/diseno/fotos/sunscreen.jpg';
@@ -151,7 +157,9 @@ def simular_camara(pagina, *, detector_local=True):
             contexto.fillStyle = 'white';
             contexto.fillRect(0, 0, lienzo.width, lienzo.height);
           }
-          if(camara.modo === 'ean'){
+          if(qr){
+            contexto.drawImage(qr, (lienzo.width - 174) / 2, (lienzo.height - 174) / 2, 174, 174);
+          }else if(camara.modo === 'ean'){
             const paso = escena ? 3 : 4, x = (lienzo.width - barras.length * paso) / 2;
             const y = escena ? Math.round(lienzo.height * .34) : 55;
             contexto.fillStyle = 'white';
@@ -563,6 +571,17 @@ def prueba_sin_conexion(navegador):
         pagina.locator('#pacLista .fila-paciente').click()
         ficha = pagina.get_by_role('dialog', name='María José Andrade')
         expect(ficha.get_by_role('textbox', name='Mensaje de recordatorio')).to_have_value(re.compile(r'Azelac Serum'))
+        cerrar_hoja(pagina)
+        etiquetas = abrir_etiquetas(pagina)
+        etiquetas.locator('input[value="p1"]').check()
+        etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+        vista = pagina.get_by_role('dialog', name='Vista previa')
+        expect(vista.get_by_text('1 etiqueta · 1 hoja A4')).to_be_visible()
+        preparar_camara_qr(vista.locator('.etiqueta-qr'))
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+        pagina.get_by_role('button', name='Escanear', exact=True).click()
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
     finally:
         sitio.cerrar()
 
@@ -2810,6 +2829,171 @@ def prueba_pedidos_dos_pestanas(navegador, perfil=None):
         sitio.cerrar()
 
 
+def abrir_etiquetas(pagina):
+    inventario(pagina, 'venta')
+    pagina.get_by_role('button', name='Etiquetas QR').click()
+    return pagina.get_by_role('dialog', name='Etiquetas QR')
+
+
+def preparar_camara_qr(etiqueta):
+    etiqueta.locator('svg').evaluate("""svg => {
+      const qr = svg.cloneNode(true);
+      qr.setAttribute('width', '174');
+      qr.setAttribute('height', '174');
+      camaraPrueba.qr = 'data:image/svg+xml,' + encodeURIComponent(qr.outerHTML);
+      camaraPrueba.modo = 'qr';
+    }""")
+
+
+def prueba_etiquetas_qr(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina)
+        codigos = {'p2': '5901234123457', 'p3': 'sp-cabin', 'p4': 'SP-AAAAA'}
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': codigos[p['id']]} if p['id'] in codigos else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        etiquetas = abrir_etiquetas(pagina)
+        preparar = etiquetas.get_by_role('button', name='Preparar etiquetas')
+        expect(preparar).to_be_disabled()
+        expect(etiquetas.get_by_role('checkbox')).to_have_count(2)
+        buscar = etiquetas.get_by_role('searchbox', name='Buscar productos para etiquetar')
+        buscar.fill('hidroplastica')
+        expect(etiquetas.get_by_role('checkbox')).to_have_count(1)
+        etiquetas.get_by_role('button', name='Elegir los visibles').click()
+        expect(etiquetas.get_by_role('checkbox')).to_be_checked()
+        buscar.fill('Azelac')
+        expect(etiquetas.get_by_text('No encontramos productos con esa búsqueda.')).to_be_visible()
+        buscar.fill('Sun Screen')
+        etiquetas.get_by_role('checkbox').check()
+        expect(etiquetas.get_by_text('2 productos elegidos')).to_be_visible()
+        buscar.press('Enter')
+        assert datos_guardados(pagina) == estado
+        pagina.evaluate("""() => {
+          window.guardarOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        preparar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == estado
+        pagina.evaluate("""() => {
+          Storage.prototype.setItem = window.guardarOriginal;
+          const valores = crypto.getRandomValues.bind(crypto);
+          let llamadas = 0;
+          crypto.getRandomValues = datos => llamadas++ ? valores(datos) : datos.fill(0);
+        }""")
+        preparar.click()
+        vista = pagina.get_by_role('dialog', name='Vista previa')
+        expect(vista.get_by_text('2 etiquetas · 1 hoja A4')).to_be_visible()
+        etiqueta = vista.locator('.etiqueta-qr').filter(has_text='Sun Screen Clear')
+        codigo = etiqueta.locator('small').inner_text()
+        assert re.fullmatch(r'SP-[A-Z0-9]{5}', codigo) and codigo not in codigos.values()
+        expect(vista.locator('.etiqueta-qr').filter(has_text='Pure Radiance')).to_contain_text('SP-CABIN')
+        guardado = datos_guardados(pagina)
+        generado = guardado['productos'][0]
+        assert generado['codigo'] == codigo and generado['por'] == 'Elba'
+        assert generado['mod'] >= int(FECHA.timestamp() * 1000)
+        assert guardado['productos'][1:] == estado['productos'][1:]
+        assert guardado['movs'] == estado['movs'] and guardado['ventas'] == estado['ventas']
+        cerrar_hoja(pagina)
+        expect(etiquetas.get_by_role('checkbox')).to_be_checked()
+        expect(etiquetas.get_by_text('Con QR')).to_be_visible()
+        preparar.click()
+        expect(vista.get_by_text(codigo)).to_be_visible()
+        assert datos_guardados(pagina) == guardado
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+        pagina.reload()
+        # Tras recargar, volver a imprimir y escanear el mismo código.
+        assert datos_guardados(pagina)['productos'][0]['codigo'] == codigo
+        etiquetas = abrir_etiquetas(pagina)
+        etiquetas.get_by_role('checkbox', name=re.compile('^Sun Screen')).check()
+        etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+        expect(vista.get_by_text(codigo)).to_be_visible()
+        preparar_camara_qr(vista.locator('.etiqueta-qr'))
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+        pagina.get_by_role('button', name='Escanear', exact=True).click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_impresion_etiquetas(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil, color='dark')
+    try:
+        sitio.pagina.add_init_script('window.impresionesPrueba = 0; window.print = () => window.impresionesPrueba++')
+        base = ESTADO_V1['productos'][0]
+        estado = {**ESTADO_V1, 'productos': [
+            {**base, 'id': f'etiqueta-{i:02}', 'nombre': f'Producto {i:02} · Presentación profesional de cabina'}
+            for i in range(25)
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        etiquetas = abrir_etiquetas(pagina)
+        etiquetas.get_by_role('button', name='Elegir los visibles').click()
+        etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+        vista = pagina.get_by_role('dialog', name='Vista previa')
+        expect(vista.get_by_text('25 etiquetas · 2 hojas A4')).to_be_visible()
+        hojas = vista.locator('.pagina-etiquetas')
+        expect(hojas.nth(0).locator('.etiqueta-qr')).to_have_count(24)
+        expect(hojas.nth(1).locator('.etiqueta-qr')).to_have_count(1)
+        assert len({p['codigo'] for p in datos_guardados(pagina)['productos']}) == 25
+        assert vista.locator('.texto-etiqueta img').first.evaluate('img => img.decode().then(() => img.naturalWidth)') == 128
+        vista.get_by_role('button', name='Imprimir etiquetas').click()
+        assert pagina.evaluate('impresionesPrueba') == 1
+        pagina.emulate_media(media='print')
+        expect(pagina.locator('.franja-prueba')).to_be_hidden()
+        expect(pagina.locator('.form-etiquetas')).to_be_hidden()
+        expect(vista.get_by_role('button', name='Imprimir etiquetas')).to_be_hidden()
+        medidas = hojas.nth(0).locator('ol').evaluate("""hoja => {
+          const estilo = getComputedStyle(hoja);
+          return [estilo.gridTemplateColumns.split(' ').length, estilo.gridTemplateRows.split(' ').length];
+        }""")
+        assert medidas == [3, 8]
+        if navegador.browser_type.name == 'chromium':
+            pdf = pagina.pdf(prefer_css_page_size=True)
+            assert len(re.findall(rb'/Type\s*/Page\b', pdf)) == 2
+            cajas = re.findall(rb'/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]', pdf)
+            assert len(cajas) == 2 and all(abs(float(x) - 595.28) < 1 and abs(float(y) - 841.89) < 1 for x, y in cajas)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_etiquetas_dos_pestanas(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        sitio.pagina.add_init_script('window.impresionesPrueba = 0; window.print = () => window.impresionesPrueba++')
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        etiquetas = abrir_etiquetas(pagina)
+        etiquetas.locator('input[value="p1"]').check()
+        otra = sitio.contexto.new_page()
+        try:
+            otra.clock.install(time=FECHA)
+            otra.goto(APP)
+            seleccion = abrir_etiquetas(otra)
+            seleccion.locator('input[value="p1"]').check()
+            seleccion.locator('input[value="p3"]').check()
+            etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+            codigo = pagina.locator('.etiqueta-qr small').inner_text()
+            seleccion.get_by_role('button', name='Preparar etiquetas').click()
+            expect(otra.locator('.etiqueta-qr')).to_have_count(2)
+            expect(otra.locator('.etiqueta-qr').filter(has_text='Sun Screen')).to_contain_text(codigo)
+            guardado = datos_guardados(otra)
+            assert guardado['productos'][0]['codigo'] == codigo
+            assert re.fullmatch(r'SP-[A-Z0-9]{5}', guardado['productos'][2]['codigo'])
+            assert guardado['productos'][2]['codigo'] != codigo
+            otra.evaluate("guardarCodigoProducto('p1', '5901234123457')")
+            pagina.get_by_role('button', name='Imprimir etiquetas').click()
+            expect(pagina.locator('#toast')).to_contain_text('Los códigos cambiaron')
+            assert pagina.evaluate('impresionesPrueba') == 0
+        finally:
+            otra.close()
+    finally:
+        sitio.cerrar()
+
+
 def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
@@ -2826,7 +3010,7 @@ def capturar(navegador, tarea):
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
-            if tarea in ('T4', 'T6', 'T7', 'T10'):
+            if tarea in ('T4', 'T6', 'T7', 'T10', 'T12'):
                 simular_camara(sitio.pagina)
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
@@ -2839,6 +3023,32 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T12':
+                inventario(pagina, 'venta')
+                guardar(sitio, 'inventario', tema)
+                etiquetas = abrir_etiquetas(pagina)
+                buscar = etiquetas.get_by_role('searchbox', name='Buscar productos para etiquetar')
+                for texto in ('azelac serum', 'hydrating foaming cleanser', 'sun screen clear spf'):
+                    buscar.fill(texto)
+                    etiquetas.get_by_role('checkbox').first.check()
+                buscar.fill('')
+                buscar.blur()
+                for _ in range(21):
+                    etiquetas.locator('.fila-etiqueta input:not(:checked)').first.check()
+                etiquetas.locator('.hoja-cuerpo').evaluate('el => el.scrollTo(0, 0)')
+                guardar(sitio, 'seleccion', tema)
+                etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+                vista = pagina.get_by_role('dialog', name='Vista previa')
+                expect(vista.get_by_text('24 etiquetas · 1 hoja A4')).to_be_visible()
+                guardar(sitio, 'vista-previa', tema)
+                preparar_camara_qr(vista.locator('.etiqueta-qr').filter(has_text='Sun Screen'))
+                cerrar_hoja(pagina)
+                cerrar_hoja(pagina)
+                pagina.get_by_role('button', name='Escanear', exact=True).click()
+                lector = pagina.get_by_role('dialog', name='Escanear')
+                expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+                guardar(sitio, 'escaner', tema)
+                continue
             if tarea == 'T11':
                 pagina.evaluate("""() => {
                   const nombres = ['Hydrating Foaming Cleanser · 200 ml', 'Soothing Toner · 250 ml', 'Sun Screen Clear SPF 50+ · 60 g'];
@@ -3224,8 +3434,8 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T11', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11'],
-                        help='guardar capturas en modo claro y oscuro (T11 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T12', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'],
+                        help='guardar capturas en modo claro y oscuro (T12 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -3239,7 +3449,8 @@ def main():
                         prueba_ficha_paciente, prueba_recordatorios_paciente,
                         prueba_reporte_ventas, prueba_reporte_cabina_inventario,
                         prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner,
-                        prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas]
+                        prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas,
+                        prueba_etiquetas_qr, prueba_impresion_etiquetas, prueba_etiquetas_dos_pestanas]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

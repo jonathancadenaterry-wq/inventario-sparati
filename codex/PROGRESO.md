@@ -223,3 +223,16 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé ocho capturas de 390×844, en claro y oscuro. La lista toma de `Inventario.png` el segmentado, las tarjetas redondeadas, las filas con fotos y los separadores rectos. En «Llegó» el pie fijo deja el botón visible mientras se desplaza el formulario.
 - Pasaron 35 pruebas en Chromium a 390×844 y 32 con su perfil iPhone 14 Pro. Se comprobaron el mensaje por proveedor, las cantidades sugeridas, las entregas parciales sin conexión, el reintento de guardado, Deshacer y la prevención de entradas duplicadas desde otra pestaña. También pasaron los archivos de la versión 1.
 - Sigue T12, etiquetas QR propias. Queda comprobar el teclado de recepción y la apertura de WhatsApp en el iPhone de Elba. Los cambios están en `prueba/` y `codex/`.
+
+### 27-nov-2026 · 14:07 (Ecuador) · T12
+
+**Revisión de las ocho capturas T11 adjuntas**
+
+- **Por pedir, claro y oscuro.** Las píldoras «Pedir 4 unidades» y «Pedir 4 frascos» parten la cantidad en dos líneas. El ancho que ocupan también fuerza saltos en los nombres. En oscuro, el número del proveedor y «Sin WhatsApp registrado» tienen menos presencia que las acciones.
+- **Pedidos, claro y oscuro.** «Cerrar pedido» compite en tamaño con «Llegó». El título y la fecha dejan claro cuándo se hizo el pedido, pero el botón de cierre por sí solo no explica qué pasa con las unidades pendientes.
+- **Llegó el pedido, claro y oscuro.** El foco sobre el primer costo domina la vista inicial. En las tres tarjetas, los campos precargados y editables se ven iguales a los valores ya confirmados. La instrucción de escribir 0 aclara cómo omitir un producto.
+- **Pedido recibido, claro y oscuro.** Debajo del segmentado solo queda el estado vacío. «Pedido completo» se lee en el aviso temporal, repartido en dos líneas junto a «Deshacer». Después de ese aviso, la pestaña no muestra un resumen de lo que se recibió.
+
+**En curso**
+
+- T12, códigos propios y hoja de etiquetas QR.
