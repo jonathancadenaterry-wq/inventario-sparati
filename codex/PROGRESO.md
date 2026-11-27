@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T5
-- Última corrida: 27-nov-2026, 10:17 (Ecuador) · T4 completada
+- Tarea actual: T6
+- Última corrida: 27-nov-2026, 10:34 (Ecuador) · T5 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -93,3 +93,21 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Se guardaron 16 capturas a 390×844 en claro y oscuro. Se compararon la foto, el encabezado, la barra, las acciones, los precios y el historial con `Producto.png`. Se ajustó el espacio del vencimiento y el lote para que los datos del ejemplo quepan en una línea. El foco de los campos de cantidad quedó dentro del campo, visible entre los dos botones. Los campos de fecha nativos siguen mostrando mes/día/año en Chromium.
 - Pasaron 17 pruebas en Chromium y 14 con el perfil de iPhone 14 Pro, incluidos los archivos v1 y la recarga sin conexión. Queda por comprobar el permiso y el enfoque de la cámara en el iPhone de Elba, en Safari y desde la pantalla de inicio.
 - Sigue T5 con «Frasco en uso», las aperturas y el cálculo de rendimiento en la ficha de cabina. El escáner general y sus modos corresponden a T7. Los cambios de la corrida están en `prueba/` y `codex/` para que los guarde el bucle.
+
+### 27-nov-2026 · 10:18–10:34 (Ecuador) · T5
+
+**Revisión de las ocho capturas T4 adjuntas**
+
+- **Ficha y precios.** La foto, la jerarquía del stock y las tres cifras siguen `Producto.png`. En la ficha inicial solo asoman las etiquetas de precio, costo y ganancia sobre la barra inferior. En el desplazamiento a precios queda completa la fila de cifras, pero la última parte visible del historial cruza la barra.
+- **Historial y Deshacer.** En ambas capturas se cortan registros al llegar a la navegación. Mientras aparece «Deshacer», también queda tapado el detalle de la entrada recién registrada.
+- **Ajuste y entrada.** Los nombres largos ocupan dos líneas en el encabezado y repiten «200 ml», aunque los movimientos están expresados en unidades. «Otro» queda solo en la segunda línea de motivos. El selector de fecha muestra «11/27/2026» y el vencimiento vacío pide «mm/dd/yyyy» en el navegador de las capturas.
+- **Código de barras.** Tras denegar el permiso, la explicación queda separada del campo manual por el borde de la tarjeta. La alternativa se puede usar sin cámara. El lector general con encuadre corresponde a T7.
+- **Venta desde la ficha.** El producto ya está en el total, pero el carrito plegado oculta su nombre, por lo que la captura no permite confirmar qué se agregó. Se mantiene el formato de fecha mes/día/año. La selección de paciente y la cuadrícula de `Vender.png` corresponden a T6.
+
+**Trabajo completado**
+
+- La ficha de cabina muestra la foto, el estado del frasco, el avance, la fecha estimada, los frascos sin abrir, el costo por día y el historial. El cálculo toma hasta los tres ciclos completos más recientes. El aviso «Ya pasó el tiempo de uso después de abierto» aparece en la ficha cuando corresponde.
+- «Abrí uno nuevo» registra `apertura` con cantidad cero. «Se terminó» registra `uso` con cantidad −1 y motivo `terminado`. «Deshacer» restaura el stock y la fecha. Al cerrar un frasco que venía abierto de la versión 1, se conserva su fecha original en el historial. Los productos medidos por tratamiento mantienen «Usar» de un toque y «Otra cantidad».
+- Revisé las 14 capturas T5 de 390×844 en modo claro y oscuro. La ficha de Pure Radiance sigue la foto, el avance y las cifras de `Cabina.png`. Las acciones de entrada y ajuste quedan junto a los datos. En la captura de terminación, el aviso «Deshacer» se superpone durante cinco segundos a parte del primer registro visible.
+- Pasaron 19 pruebas en Chromium a 390×844 y 16 con su perfil de iPhone 14 Pro. Se comprobó el promedio de los tres últimos frascos, los cierres el mismo día, la corrección de la fecha, el reintento si falla el guardado, los archivos v1 y el flujo de cabina sin conexión. Queda por probar el recorrido en Safari del iPhone de Elba.
+- Sigue T6 con la selección de paciente, la cuadrícula de productos y el carrito de «Nueva venta». Los cambios de esta corrida están en `prueba/` y `codex/`.

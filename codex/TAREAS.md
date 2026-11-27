@@ -102,7 +102,7 @@ Según `Producto.png`:
 - historial en línea de tiempo.
 - **Hecha cuando:** cada acción crea el movimiento correcto, el historial lo muestra y se puede deshacer desde el toast.
 
-## T5 · Ficha de producto de cabina  [ ]
+## T5 · Ficha de producto de cabina  [x]
 Según `Cabina.png`:
 - Tarjeta «Frasco en uso»:
   - «Abrí uno nuevo» crea un movimiento `apertura` y pone `abierto = hoy`;

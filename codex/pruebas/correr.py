@@ -196,7 +196,9 @@ def prueba_estado_v1(navegador, perfil=None):
         expect(pagina.locator('[data-act=verProd][data-id=p3] .stock')).to_have_text('Queda 1')
         expect(pagina.locator('[data-act=verProd][data-id=p4]')).to_have_count(0)
         pagina.locator('[data-act=verProd][data-id=p3]').click()
-        expect(pagina.locator('.det-stock .q')).to_have_text('1')
+        expect(pagina.locator('.frasco-en-uso .pill')).to_have_text('Abierto hace 13 días')
+        expect(pagina.locator('.resumen-cabina .v').first).to_have_text('0 frascos')
+        expect(pagina.get_by_role('progressbar')).to_have_count(0)
         cerrar_hoja(pagina)
 
         inventario(pagina, 'ventas')
@@ -445,6 +447,20 @@ def prueba_sin_conexion(navegador):
         expect(ficha.get_by_role('button', name='Código de barras Asignado')).to_be_visible()
         assert any(p.get('codigo') == '5901234123457' and 'Péptidos Efecto Botox' in p['nombre']
                    for p in datos_guardados(pagina)['productos'])
+        cerrar_hoja(pagina)
+        inventario(pagina, 'uso')
+        pagina.locator('#listaProd [data-id=p3]').click()
+        cabina = pagina.get_by_role('region', name='Frasco en uso')
+        cabina.get_by_role('button', name='Se terminó', exact=True).click()
+        expect(cabina).to_contain_text('Agotado')
+        ultimos = datos_guardados(pagina)['movs'][-2:]
+        assert [(m['tipo'], m['cant'], m['fecha']) for m in ultimos] == [
+            ('apertura', 0, '2026-11-14'), ('uso', -1, '2026-11-27'),
+        ]
+        expect(pagina.locator('.paso-historial').first).to_contain_text('Duró 13 días')
+        pagina.get_by_role('button', name='Deshacer', exact=True).click()
+        expect(cabina).to_contain_text('Abierto hace 13 días')
+        assert all(m['borrado'] for m in datos_guardados(pagina)['movs'][-2:])
     finally:
         sitio.cerrar()
 
@@ -470,7 +486,7 @@ def prueba_navegacion(navegador, perfil=None):
         producto = pagina.locator('#listaProd [data-id=p3]')
         producto.click()
         expect(pagina.locator('#app')).to_have_attribute('inert', '')
-        pagina.get_by_role('button', name='Otra cantidad').click()
+        pagina.get_by_role('button', name='Llegó más').click()
         cerrar_hoja(pagina)
         expect(pagina.get_by_role('heading', name='Mascarilla hidroplástica Pure Radiance · 280 g')).to_be_visible()
         pagina.get_by_role('button', name='Volver').click()
@@ -617,17 +633,18 @@ def prueba_carrito_y_deshacer(navegador, perfil=None):
 
         inventario(pagina, 'uso')
         pagina.locator('#listaProd [data-id=p3]').click()
-        pagina.get_by_role('button', name='Usar 1 frasco').click()
-        expect(pagina.locator('.det-stock .q')).to_have_text('0')
+        terminar = pagina.get_by_role('button', name='Se terminó', exact=True)
+        terminar.click()
+        expect(pagina.locator('.frasco-en-uso .pill')).to_have_text('Agotado')
         deshacer.click()
-        expect(pagina.locator('.det-stock .q')).to_have_text('1')
+        expect(pagina.locator('.frasco-en-uso .pill')).to_have_text('Abierto hace 13 días')
         pagina.clock.pause_at(FECHA.replace(minute=30))
-        pagina.get_by_role('button', name='Usar 1 frasco').click()
+        terminar.click()
         pagina.clock.run_for(4999)
         expect(deshacer).to_be_visible()
         pagina.clock.run_for(1)
         expect(deshacer).to_be_hidden()
-        expect(pagina.locator('.det-stock .q')).to_have_text('0')
+        expect(pagina.locator('.frasco-en-uso .pill')).to_have_text('Agotado')
     finally:
         sitio.cerrar()
 
@@ -974,6 +991,173 @@ def prueba_ficha_venta(navegador, perfil=None):
         sitio.cerrar()
 
 
+def prueba_frascos_cabina(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(quien='Elba')
+        pagina.clock.set_fixed_time(FECHA)
+        abrir_ajustes(pagina).get_by_role('button', name='Cargar datos de ejemplo').click()
+        expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
+        estado = verificar_ejemplo(pagina)
+        apertura = next(m for m in estado['movs'] if m['tipo'] == 'apertura')
+        producto = next(p for p in estado['productos'] if p['id'] == apertura['prod'])
+        pid = producto['id']
+        pagina.evaluate("""id => {
+          const movs = E.movs.map(m => m.prod === id && m.tipo === 'inicial' ?
+            {...m, cant:m.cant + 1, fecha:'2026-08-01'} : m);
+          // Una pareja más antigua y una terminación borrada no pesan en los últimos tres frascos.
+          movs.push(
+            {id:'antiguo-fin', prod:id, tipo:'uso', cant:-1, motivo:'terminado', fecha:'2026-09-24'},
+            {id:'antiguo-abrir', prod:id, tipo:'apertura', cant:0, fecha:'2026-08-02'},
+            {id:'fin-borrado', prod:id, tipo:'uso', cant:-1, motivo:'terminado', fecha:'2026-11-26', borrado:true});
+          guardar({...E, movs});
+        }""", pid)
+        cerrar_hoja(pagina)
+        inventario(pagina, 'uso')
+        pagina.locator('#qProd').fill(producto['nombre'])
+        pagina.locator(f'#listaProd [data-id="{pid}"]').click()
+        ficha = pagina.get_by_role('dialog', name=producto['nombre'])
+        tarjeta = ficha.get_by_role('region', name='Frasco en uso')
+        historial = ficha.get_by_role('region', name='Historial')
+        barra = tarjeta.get_by_role('progressbar')
+        stock = ficha.locator('.resumen-cabina .cifra:first-child .v')
+        costo = ficha.locator('.costo-dia .v')
+        terminar = tarjeta.get_by_role('button', name='Se terminó', exact=True)
+        abrir = tarjeta.get_by_role('button', name='Abrí uno nuevo', exact=True)
+        deshacer = pagina.get_by_role('button', name='Deshacer', exact=True)
+        expect(ficha.get_by_role('navigation').get_by_role('button', name='Inventario')).to_have_attribute('aria-current', 'page')
+        expect(barra).to_have_attribute('aria-valuenow', '38')
+        expect(tarjeta).to_contain_text('unos 16 días (promedio de tus últimos 3 frascos)')
+        expect(tarjeta.locator('time').nth(0)).to_have_attribute('datetime', '2026-11-21')
+        expect(tarjeta.locator('time').nth(1)).to_have_attribute('datetime', '2026-12-07')
+        expect(costo).to_have_text('$ 0,77')
+        expect(stock).to_have_text('0 frascos')
+        expect(historial.locator('[data-mov=terminado]')).to_have_count(4)
+        expect(historial.locator('[data-mov=terminado]').first).to_contain_text('Duró 17 días')
+        expect(ficha.get_by_role('button', name=re.compile('^Usar '))).to_have_count(0)
+        for tema in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=tema)
+            razones = contrastes(pagina, [['.frasco-cab .pill'], ['.frasco-en-uso .btn.ghost'], ['.costo-dia .v', '.costo-dia']])
+            assert min(razones) >= 4.5, razones
+        assert abrir.bounding_box()['height'] >= 44
+        assert terminar.bounding_box()['width'] >= 44
+
+        antes = datos_guardados(pagina)
+        abrir.click()
+        expect(pagina.locator('#toast')).to_contain_text('Primero anota que se terminó')
+        assert datos_guardados(pagina) == antes
+        pagina.evaluate("""() => {
+          window.setItemOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        terminar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == antes
+        assert pagina.evaluate('id => prodPorId(id).abierto', pid) == producto['abierto']
+        pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
+
+        terminar.click()
+        expect(tarjeta).to_contain_text('Agotado')
+        expect(historial.locator('[data-mov=terminado]').first).to_contain_text('Duró 6 días')
+        expect(costo).to_have_text('$ 0,92')
+        expect(abrir).to_be_disabled()
+        guardado = datos_guardados(pagina)
+        m = guardado['movs'][-1]
+        assert (m['prod'], m['tipo'], m['cant'], m['motivo'], m['fecha'], m['costo']) == (pid, 'uso', -1, 'terminado', '2026-11-27', 12)
+        assert next(p for p in guardado['productos'] if p['id'] == pid)['abierto'] == ''
+        deshacer.click()
+        expect(barra).to_have_attribute('aria-valuenow', '38')
+        expect(costo).to_have_text('$ 0,77')
+        assert datos_guardados(pagina)['movs'][-1]['id'] == m['id']
+        assert datos_guardados(pagina)['movs'][-1]['borrado']
+
+        ficha.get_by_role('button', name='Llegó más').click()
+        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        expect(stock).to_have_text('1 frasco')
+        terminar.click()
+        expect(terminar).to_be_disabled()
+        expect(stock).to_have_text('1 frasco')
+        abrir.click()
+        expect(tarjeta).to_contain_text('Abierto hoy')
+        expect(barra).to_have_attribute('aria-valuenow', '0')
+        expect(stock).to_have_text('0 frascos')
+        assert pagina.evaluate('stockDe', pid) == 1
+        a = datos_guardados(pagina)['movs'][-1]
+        assert (a['prod'], a['tipo'], a['cant'], a['fecha'], a['por']) == (pid, 'apertura', 0, '2026-11-27', 'Elba')
+        actual = next(p for p in datos_guardados(pagina)['productos'] if p['id'] == pid)
+        assert (actual['abierto'], actual['mod'], actual['por']) == (a['fecha'], a['mod'], a['por'])
+        deshacer.click()
+        expect(tarjeta).to_contain_text('Anota cuándo abres un frasco nuevo')
+        expect(stock).to_have_text('1 frasco')
+        assert datos_guardados(pagina)['movs'][-1]['borrado']
+        pagina.clock.set_fixed_time(FECHA + timedelta(days=1))
+        abrir.click()
+        apertura_id = datos_guardados(pagina)['movs'][-1]['id']
+        editar = ficha.get_by_role('button', name='Editar producto')
+        editar.click()
+        pagina.get_by_label('Fecha en que se abrió').fill('2026-11-26')
+        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        expect(pagina.locator('#toast')).to_contain_text('El frasco anterior se terminó el 27 nov')
+        assert datos_guardados(pagina)['movs'][-1]['fecha'] == '2026-11-28'
+        cerrar_hoja(pagina)
+        for fecha, mensaje, avance in [('2026-11-27', 'Abierto hace 1 día', '8'), ('2026-11-28', 'Abierto hoy', '0')]:
+            editar.click()
+            pagina.get_by_label('Fecha en que se abrió').fill(fecha)
+            pagina.get_by_role('button', name='Guardar', exact=True).click()
+            expect(tarjeta).to_contain_text(mensaje)
+            expect(barra).to_have_attribute('aria-valuenow', avance)
+            a = datos_guardados(pagina)['movs'][-1]
+            assert (a['id'], a['tipo'], a['fecha']) == (apertura_id, 'apertura', fecha)
+        terminar.click()
+        expect(historial.locator('[data-mov=terminado]').first).to_contain_text('Duró 1 día')
+        expect(costo).to_have_text('$ 1,50')
+        expect(stock).to_have_text('0 frascos')
+        pagina.reload()
+        expect(pagina.locator(f'#listaProd [data-id="{pid}"] .stock')).to_have_text('Agotado')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_tratamientos_cabina(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        # El saldo inicial del producto v1 queda en 5 ml tras el movimiento previo.
+        pagina = sitio.abrir(estado={**ESTADO_V1,
+            'productos': [{**p, 'unidad': 'ml', 'gasto': .5, 'abierto': '2026-10-26', 'pao': 1}
+                          if p['id'] == 'p3' else p for p in ESTADO_V1['productos']],
+            'movs': [{**m, 'cant': 6} if m['id'] == 'm3' else m for m in ESTADO_V1['movs']],
+        })
+        inventario(pagina, 'uso')
+        pagina.locator('#listaProd [data-id=p3]').click()
+        ficha = pagina.get_by_role('dialog', name=ESTADO_V1['productos'][2]['nombre'])
+        existencias = ficha.get_by_role('region', name='Existencias')
+        expect(existencias.locator('.q')).to_have_text('5')
+        expect(existencias.get_by_text('Ya pasó el tiempo de uso después de abierto', exact=False)).to_be_visible()
+        expect(ficha.get_by_role('region', name='Frasco en uso')).to_have_count(0)
+        rapido = existencias.get_by_role('button', name='Usar 0,5 ml')
+        rapido.click()
+        expect(existencias.locator('.q')).to_have_text('4,5')
+        assert datos_guardados(pagina)['movs'][-1]['cant'] == -.5
+        pagina.get_by_role('button', name='Deshacer', exact=True).click()
+        expect(existencias.locator('.q')).to_have_text('5')
+        existencias.get_by_role('button', name='Otra cantidad').click()
+        pagina.get_by_label('¿Cuánto usaste?').fill('1,75')
+        pagina.get_by_label('Tratamiento (opcional)').fill('Facial')
+        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        expect(existencias.locator('.q')).to_have_text('3,25')
+        expect(ficha.locator('.paso-historial').first).to_contain_text('− 1,75 · Facial')
+        ficha.get_by_role('button', name='Lo abrí hoy').click()
+        expect(existencias.get_by_text('Ya pasó el tiempo de uso después de abierto', exact=False)).to_have_count(0)
+        assert next(p for p in datos_guardados(pagina)['productos'] if p['id'] == 'p3')['abierto'] == '2026-11-27'
+        ficha.get_by_role('button', name='Volver').click()
+        pagina.get_by_role('button', name='Inicio', exact=True).click()
+        pagina.get_by_role('button', name='Usé en cabina').click()
+        pagina.get_by_role('dialog', name='Usé en cabina').locator('[data-id=p3]').click()
+        expect(pagina.get_by_label('¿Cuánto usaste?')).to_have_value('0,5')
+    finally:
+        sitio.cerrar()
+
+
 def prueba_asignar_codigo(navegador, perfil=None):
     sitio = Sitio(navegador, perfil=perfil)
     try:
@@ -1172,13 +1356,14 @@ def prueba_inicio_accesos(navegador, perfil=None):
         expect(selector.locator('.vacio')).to_contain_text('No encontré')
         buscador.fill('mascarilla hidroplastica')
         selector.locator('[data-id=p3]').click()
-        expect(pagina.get_by_role('heading', name='Usar · ' + ESTADO_V1['productos'][2]['nombre'])).to_be_visible()
-        pagina.get_by_role('button', name='Guardar', exact=True).click()
-        expect(selector.locator('[data-id=p3] .stock')).to_have_text('Agotado')
-        expect(buscador).to_have_value('mascarilla hidroplastica')
+        ficha = pagina.get_by_role('dialog', name=ESTADO_V1['productos'][2]['nombre'])
+        ficha.get_by_role('button', name='Se terminó', exact=True).click()
+        expect(ficha.locator('.frasco-en-uso .pill')).to_have_text('Agotado')
         assert datos_guardados(pagina)['movs'][-1]['tipo'] == 'uso'
         pagina.get_by_role('button', name='Deshacer').click()
+        cerrar_hoja(pagina)
         expect(selector.locator('[data-id=p3] .stock')).to_have_text('Queda 1')
+        expect(buscador).to_have_value('mascarilla hidroplastica')
         cerrar_hoja(pagina)
 
         for titulo, formulario, accion, cantidad in [
@@ -1321,7 +1506,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
 
 def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
-    fecha = FECHA.replace(hour=20)
+    fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
     envio = int((fecha - timedelta(days=9)).timestamp() * 1000)
 
     def guardar(sitio, pantalla, tema):
@@ -1348,6 +1533,55 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T5':
+                inventario(pagina, 'uso')
+                nombre = 'Mascarilla hidroplástica Pure Radiance · 280 g'
+                # Usar la foto del catálogo con las cantidades y el historial de Cabina.png.
+                pagina.evaluate("""nombre => {
+                  const p = E.productos.find(p => p.nombre === nombre);
+                  const productos = E.productos.map(x => x === p ?
+                    {...p, unidad:'frascos', costo:24, pao:12, abierto:'2026-11-14', vence:'2027-08-30', prov:'Distribuidora'} : x);
+                  const ciclo = [
+                    ['inicial', 5, '2026-08-15'], ['apertura', 0, '2026-08-16'], ['uso', -1, '2026-09-14'],
+                    ['apertura', 0, '2026-09-14'], ['uso', -1, '2026-10-14'], ['apertura', 0, '2026-10-14'],
+                    ['uso', -1, '2026-11-14'], ['apertura', 0, '2026-11-14'],
+                  ];
+                  const movs = E.movs.filter(m => m.prod !== p.id).concat(ciclo.map(([tipo, cant, fecha], i) =>
+                    ({id:'captura-cabina-' + i, prod:p.id, tipo, cant, fecha, motivo:tipo === 'uso' ? 'terminado' : '', creado:i})));
+                  guardar({...E, productos, movs});
+                  refrescar();
+                }""", nombre)
+                buscador = pagina.get_by_role('searchbox', name='Buscar en el inventario')
+                buscador.fill(nombre)
+                pagina.locator('#listaProd .fila-lista').click()
+                ficha = pagina.get_by_role('dialog', name=nombre)
+                ficha.locator('.foto-ficha img').evaluate('img => img.decode()')
+                guardar(sitio, 'cabina-ficha', tema)
+                frasco = ficha.get_by_role('region', name='Frasco en uso')
+                frasco.evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'cabina-rendimiento', tema)
+                ficha.get_by_role('region', name='Historial').evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'cabina-historial', tema)
+
+                frasco.get_by_role('button', name='Se terminó', exact=True).click()
+                frasco.evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'cabina-terminado', tema)
+                frasco.get_by_role('button', name='Abrí uno nuevo', exact=True).click()
+                guardar(sitio, 'cabina-apertura', tema)
+                pagina.clock.fast_forward(5000)
+                pagina.clock.set_system_time(fecha + timedelta(days=366))
+                pagina.evaluate('refrescar()')
+                expect(frasco.get_by_text('Ya pasó el tiempo de uso después de abierto', exact=False)).to_be_visible()
+                guardar(sitio, 'cabina-aviso', tema)
+
+                cerrar_hoja(pagina)
+                pagina.clock.set_system_time(fecha)
+                tratamiento = pagina.evaluate("productos('uso').find(p => p.unidad === 'ml' && stockDe(p.id) > 0) || "
+                                             "productos('uso').find(p => p.unidad === 'ampollas' && stockDe(p.id) > 0)")
+                buscador.fill(tratamiento['nombre'])
+                pagina.locator(f"#listaProd [data-id={tratamiento['id']}]").click()
+                guardar(sitio, 'cabina-tratamiento', tema)
+                continue
             if tarea == 'T4':
                 inventario(pagina, 'venta')
                 nombre = 'Hydrating Foaming Cleanser · 200 ml'
@@ -1447,14 +1681,15 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T4', choices=['T2', 'T3', 'T4'],
-                        help='guardar capturas en modo claro y oscuro (T4 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T5', choices=['T2', 'T3', 'T4', 'T5'],
+                        help='guardar capturas en modo claro y oscuro (T5 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
                         prueba_formulario_producto, prueba_inventario_resumen_y_orden,
-                        prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo, prueba_apariencia,
+                        prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo,
+                        prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():

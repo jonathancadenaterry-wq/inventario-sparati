@@ -259,27 +259,22 @@ svg.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;st
 @media (prefers-reduced-motion: reduce){
   #app.transicion,.hoja,.hoja-inferior{animation:none}
 }
-/* Detalle */
-.det-cab{display:flex;gap:14px;align-items:center}
+/* Fichas de producto */
 .det-stock{display:flex;align-items:baseline;gap:8px;justify-content:center;padding:6px 0}
 .det-stock .q{font:600 44px/1 var(--serif)}
 .det-stock .u{color:var(--tenue);font-weight:700}
-.avisos-producto{justify-content:center}
-.avisos-producto .pill{white-space:normal;text-align:center}
-
-/* Ficha de producto para vender */
-.ficha-venta>.nav{position:relative;flex:none}
-.ficha-venta .hoja-cuerpo{scroll-padding-bottom:30px}
-.ficha-venta-portada{position:relative;max-width:600px;margin:0 auto}
+.ficha-producto>.nav{position:relative;flex:none}
+.ficha-producto .hoja-cuerpo{scroll-padding-bottom:30px}
+.ficha-portada{position:relative;max-width:600px;margin:0 auto}
 .av.foto-ficha{width:100%;height:188px;border-radius:0 0 30px 30px;font-size:56px}
 .av.foto-ficha.con-foto:has(img){height:clamp(230px, 84.62vw, 330px)}
 .foto-ficha img{object-position:center 25%}
-.ficha-venta-controles{position:absolute;top:20px;left:var(--margen-izq);right:var(--margen-der);display:flex;justify-content:space-between}
-.ficha-venta-contenido{gap:16px;padding-top:20px;padding-bottom:44px}
-.ficha-venta-cab{display:flex;flex-direction:column;gap:8px;overflow-wrap:anywhere}
-.ficha-venta-cab h1{margin:0;font:600 26px/1.15 var(--serif)}
-.ficha-venta-cab p{font-size:14px;color:var(--tenue);margin:0}
-.ficha-venta-cab .pill{white-space:normal}
+.ficha-controles{position:absolute;top:20px;left:var(--margen-izq);right:var(--margen-der);display:flex;justify-content:space-between}
+.ficha-contenido{gap:16px;padding-top:20px;padding-bottom:44px}
+.ficha-cab{display:flex;flex-direction:column;gap:8px;overflow-wrap:anywhere}
+.ficha-cab h1{margin:0;font:600 26px/1.15 var(--serif)}
+.ficha-cab p{font-size:14px;color:var(--tenue);margin:0}
+.ficha-cab .pill{white-space:normal}
 .stock-ficha{--color-stock:var(--bien);gap:12px}
 .stock-ficha.bad{--color-stock:var(--mal)}
 .stock-ficha.warn{--color-stock:var(--atencion)}
@@ -317,12 +312,34 @@ button.dato-ficha{background:none;border:0;border-radius:10px}
 .paso-historial:last-child::before{bottom:0}
 .paso-historial::after{content:"";position:absolute;width:12px;height:12px;left:-5px;top:4px;background:var(--tenue);border-radius:50%}
 .paso-historial[data-mov="venta"]::after{background:var(--marca)}
+.paso-historial[data-mov="apertura"]::after{background:var(--marca)}
 .paso-historial[data-mov="entrada"]::after{background:var(--bien)}
+.paso-historial[data-mov="terminado"]::after{background:var(--mal)}
 .paso-historial time{font-size:12px;font-weight:600;color:var(--tenue)}
 .paso-historial b{font-size:14px;font-weight:600}
 .paso-historial p{margin:0;font-size:13px;color:var(--tenue)}
 .otros-datos-ficha{gap:4px}
 .bloqueo.ficha-abierta .toast{bottom:calc(env(safe-area-inset-bottom) + var(--alto-nav) + 34px)}
+
+/* Cabina */
+.ficha-producto[data-inventario="uso"] .foto-ficha.con-foto{height:250px}
+.ficha-producto[data-inventario="uso"] .foto-ficha img{object-position:center}
+.ficha-producto[data-inventario="uso"] .ficha-cab h1{font-size:24px;line-height:1.2}
+.frasco-en-uso{gap:12px}
+.frasco-cab{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.frasco-cab h2{margin:0;font:600 18px var(--serif)}
+.barra-frasco{height:12px;background:var(--hundido);border-radius:8px;overflow:hidden}
+.barra-frasco span{display:block;width:var(--avance);height:100%;background:var(--marca-llena);border-radius:inherit}
+.fechas-frasco{display:flex;justify-content:space-between;gap:8px;font-size:12px;font-weight:600;color:var(--tenue)}
+.frasco-en-uso p{margin:0;font-size:14px}
+.acciones-cabina{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.acciones-cabina .btn{min-height:52px;padding:8px 10px;font-weight:600;line-height:1.25}
+.acciones-cabina .btn.ghost{color:var(--marca);background:var(--superficie)}
+.acciones-cabina .ico{width:20px;height:20px}
+.resumen-cabina .cifra{padding:14px 12px;gap:4px;border-radius:var(--radio-tarjeta)}
+.resumen-cabina .costo-dia{color:var(--bien-contraste);font-size:12px;font-weight:600}
+a.dato-ficha{text-decoration:none;border-radius:10px}
+a.dato-ficha b{color:var(--marca)}
 
 .visor-codigo{position:relative;overflow:hidden;border-radius:var(--radio-tarjeta);background:#17121A;aspect-ratio:4 / 3}
 .visor-codigo video{width:100%;height:100%;display:block;object-fit:cover}

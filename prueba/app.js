@@ -51,8 +51,14 @@ const hoyISO = () => iso(new Date());
 function aFecha(s){ const [y,m,d] = String(s).split('-').map(Number); return new Date(y, (m||1)-1, d||1); }
 function fCorta(s){ if(!s) return ''; const d = aFecha(s); return d.getDate() + ' ' + MESES_C[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''); }
 function fDia(s){ const d = aFecha(s); return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
-function diasHasta(s){ const h = aFecha(hoyISO()); return Math.round((aFecha(s) - h) / 86400000); }
+const diasEntre = (inicio, fin) => Math.round((aFecha(fin) - aFecha(inicio)) / 86400000);
+const diasHasta = s => diasEntre(hoyISO(), s);
 function diasDesde(s){ return -diasHasta(s); }
+function sumarDias(s, n){
+  const d = aFecha(s);
+  d.setDate(d.getDate() + n);
+  return iso(d);
+}
 function sumarMeses(s, m){
   const d = aFecha(s), mes = d.getMonth() + Number(m);
   const ultimo = new Date(d.getFullYear(), mes + 1, 0).getDate();
@@ -292,15 +298,15 @@ const pila = [];
 let idCapa = 0, resolverCierre, cierrePendiente;
 function activarCapa(){
   const activa = pila.at(-1)?.el;
-  const fichaVenta = activa?.classList.contains('ficha-venta');
+  const fichaProducto = activa?.classList.contains('ficha-producto');
   $('#app').inert = Boolean(activa);
-  barraPrincipal.inert = Boolean(activa) && !fichaVenta;
-  if(fichaVenta){
+  barraPrincipal.inert = Boolean(activa) && !fichaProducto;
+  if(fichaProducto){
     if(barraPrincipal.parentElement !== activa) activa.append(barraPrincipal);
   }
   else if(barraPrincipal.parentElement !== document.body) $('#capas').before(barraPrincipal);
   document.body.classList.toggle('bloqueo', Boolean(activa));
-  document.body.classList.toggle('ficha-abierta', Boolean(fichaVenta));
+  document.body.classList.toggle('ficha-abierta', Boolean(fichaProducto));
   marcarPestanaPrincipal();
   for(const {el} of pila) el.inert = el !== activa;
 }
@@ -492,10 +498,10 @@ function prepararNav(){
   </div>`;
 }
 function marcarPestanaPrincipal(){
-  const enFicha = barraPrincipal.closest('.ficha-venta');
+  const enFicha = barraPrincipal.closest('.ficha-producto');
   const principal = enFicha || esInventario(U.tab) ? 'inventario' : U.tab;
   const venta = $('.nav-vender', barraPrincipal);
-  if(enFicha) venta?.setAttribute('aria-label', 'Vender otros productos');
+  if(enFicha?.dataset.inventario === 'venta') venta?.setAttribute('aria-label', 'Vender otros productos');
   else venta?.removeAttribute('aria-label');
   for(const b of $$('[data-tab]', barraPrincipal)){
     if(b.dataset.tab === principal) b.setAttribute('aria-current', 'page');
@@ -923,8 +929,12 @@ function listaVentasHTML(){
 }
 
 // ---------- Detalle de producto ----------
+function movimientosDelProducto(id){
+  return vivos(E.movs).filter(m => m.prod === id).reverse()
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creado || 0) - (a.creado || 0));
+}
 function verProd(id){
-  const d = abrirCapa('', {tipo:'prod'});
+  const d = abrirCapa('', {tipo:'prod', cls:'hoja ficha-producto'});
   d.dataset.id = id;
   pintarProd(d);
 }
@@ -934,18 +944,45 @@ function pintarProd(d){
   const scroll = $('.hoja-cuerpo', d)?.scrollTop || 0;
   const foco = d.contains(document.activeElement) ? document.activeElement : null;
   const s = stockDe(p.id), avs = avisosDe(p), c = CONSUMO.get(p.id);
-  const movs = vivos(E.movs).filter(m => m.prod === p.id).reverse().sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
-  d.classList.toggle('ficha-venta', p.tipo === 'venta');
+  const movs = movimientosDelProducto(p.id);
+  d.dataset.inventario = p.tipo;
   d.innerHTML = p.tipo === 'venta' ? fichaVenta(p, s, avs, c, movs) : fichaCabina(p, s, avs, c, movs);
   d.setAttribute('aria-label', p.nombre);
   if(pila.at(-1)?.el === d) activarCapa();
   cargarFotos(d);
   $('.hoja-cuerpo', d).scrollTop = scroll;
-  enfocarControl(foco, d);
+  if(foco && !enfocarControl(foco, d)){
+    ($('[data-act="abrirFrasco"]:not(:disabled)', d) || d).focus({preventScroll:true});
+  }
 }
-function fichaVenta(p, s, avisos, consumo, movs){
+function estructuraFicha(p, contenido){
   const id = esc(p.id), [nombre, ...presentacion] = p.nombre.split(' · ');
   const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
+  const venta = p.tipo === 'venta';
+  return `<div class="hoja-cuerpo"><div class="ficha-portada">
+    ${avatar(p, `foto-ficha${p.foto ? ' con-foto' : ''}`)}
+    <div class="ficha-controles"><button class="icon-btn" data-act="cerrar" aria-label="Volver">${IC.volver}</button>
+      <button class="icon-btn" data-act="editarProd" data-id="${id}" aria-label="Editar producto">${IC.lapiz}</button></div>
+    </div><div class="hoja-in ficha-contenido">
+    <header class="ficha-cab"><div class="chips"><span class="pill ${venta ? 'acc' : 'ok'}">${venta ? 'Para vender' : 'Uso en spa'}</span>${p.cat ? `<span class="pill gold">${esc(p.cat)}</span>` : ''}</div>
+      <h1>${titulo}</h1>${p.marca || presentacion.length ? `<p>${esc([p.marca, ...presentacion].filter(Boolean).join(' · '))}</p>` : ''}</header>
+    ${contenido}</div></div>`;
+}
+function venceFicha(p){
+  const fecha = p.vence ? aFecha(p.vence) : null;
+  const vence = fecha ? `<time datetime="${esc(p.vence)}" title="${esc(fCorta(p.vence))}">${MESES_C[fecha.getMonth()]} ${fecha.getFullYear()}</time>` : 'Sin fecha';
+  return p.lote ? `${vence} · lote ${esc(p.lote)}` : vence;
+}
+function avisosFechaFicha(avisos){
+  const fechas = avisos.filter(a => a.clase === 'fecha');
+  return fechas.length ? `<div class="chips avisos-fecha-ficha">${fechas.map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : '';
+}
+function historialFicha(movs, fila){
+  return `<section class="historial-ficha" aria-label="Historial"><h2 class="titulo-seccion">Historial</h2>
+    ${movs.length ? `<ol class="card linea-tiempo" role="list">${movs.map(fila).join('')}</ol>` : '<div class="card muted">Aún no hay movimientos.</div>'}</section>`;
+}
+function fichaVenta(p, s, avisos, consumo, movs){
+  const id = esc(p.id);
   const stock = avisos.find(a => a.clase === 'stock');
   const nivel = stock?.nivel || 'ok';
   const estado = s <= 0 ? 'Agotado' : stock ? 'Por terminarse' : 'Disponible';
@@ -956,9 +993,6 @@ function fichaVenta(p, s, avisos, consumo, movs){
     `Vendes unos <b>${fCant(consumo * 30)} al mes</b> y se acabaría en <b>~${dias} ${dias === 1 ? 'día' : 'días'}</b>.` :
     s > 0 ? 'Con más ventas podremos estimar cuánto durará.' : '';
   const avisoMin = p.min > 0 ? `Te aviso cuando ${p.min === 1 ? 'quede' : 'queden'} ${fCant(p.min)}.` : '';
-  const caducidad = p.vence ? aFecha(p.vence) : null;
-  const vence = caducidad ? `<time datetime="${esc(p.vence)}" title="${esc(fCorta(p.vence))}">${MESES_C[caducidad.getMonth()]} ${caducidad.getFullYear()}</time>` : '';
-  const lote = p.lote ? `lote ${esc(p.lote)}` : '';
   const ventas = new Map(vivos(E.ventas).filter(v => v.items.some(i => i.prod === p.id)).map(v => [v.id, v]));
   const compradoras = new Set([...ventas.values()].map(v => norm(v.pac)).filter(Boolean));
   for(const m of movs) if(m.tipo === 'venta' && !m.venta && norm(m.pac)) compradoras.add(norm(m.pac));
@@ -971,18 +1005,12 @@ function fichaVenta(p, s, avisos, consumo, movs){
     p.prov && ['Proveedor', [p.prov, p.telProv].filter(Boolean).join(' · ')],
     p.notas && ['Notas', p.notas],
   ].filter(Boolean);
-  return `<div class="hoja-cuerpo"><div class="ficha-venta-portada">
-    ${avatar(p, `foto-ficha${p.foto ? ' con-foto' : ''}`)}
-    <div class="ficha-venta-controles"><button class="icon-btn" data-act="cerrar" aria-label="Volver">${IC.volver}</button>
-      <button class="icon-btn" data-act="editarProd" data-id="${id}" aria-label="Editar producto">${IC.lapiz}</button></div>
-    </div><div class="hoja-in ficha-venta-contenido">
-    <header class="ficha-venta-cab"><div class="chips"><span class="pill acc">Para vender</span>${p.cat ? `<span class="pill gold">${esc(p.cat)}</span>` : ''}</div>
-      <h1>${titulo}</h1>${p.marca || presentacion.length ? `<p>${esc([p.marca, ...presentacion].filter(Boolean).join(' · '))}</p>` : ''}</header>
+  return estructuraFicha(p, `
     <section class="card stock-ficha ${nivel}" aria-label="Existencias">
       <div class="det-stock"><span class="q num">${fCant(s)}</span><span class="u">${p.unidad && p.unidad !== 'unidades' ? esc(uTxt(s, p.unidad)) + ' ' : ''}en stock</span><span class="pill ${nivel}">${estado}</span></div>
       <div class="barra-stock" aria-hidden="true">${'<span class="lleno"></span>'.repeat(llenos)}${'<span></span>'.repeat(5 - llenos)}</div>
       ${prediccion || avisoMin ? `<p>${prediccion} ${avisoMin}</p>` : ''}
-      ${avisos.some(a => a.clase === 'fecha') ? `<div class="chips avisos-fecha-ficha">${avisos.filter(a => a.clase === 'fecha').map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : ''}
+      ${avisosFechaFicha(avisos)}
     </section>
     <div class="acciones-ficha" role="group" aria-label="Acciones del producto">
       <button class="btn" data-act="vender" data-id="${id}">${IC.bolsa} Vender</button>
@@ -998,20 +1026,18 @@ function fichaVenta(p, s, avisos, consumo, movs){
     <section class="card datos-ficha" aria-label="Datos del producto">
       <button class="dato-ficha" data-act="asignarCodigo" data-id="${id}"><span class="dato-ico">${IC.escaneo}</span><span>Código de barras</span>
         <b class="${p.codigo ? '' : 'por-asignar'}">${p.codigo ? 'Asignado' : 'Asignar con la cámara'}</b></button>
-      <div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Vence</span><b>${[vence || 'Sin fecha', lote].filter(Boolean).join(' · ')}</b></div>
+      <div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Vence</span><b>${venceFicha(p)}</b></div>
       <div class="dato-ficha"><span class="dato-ico">${IC.pacientes}</span><span>Lo compran</span><b>${compradoras.size} ${compradoras.size === 1 ? 'paciente' : 'pacientes'}</b></div>
     </section>
-    <section class="historial-ficha" aria-labelledby="historialProducto"><h2 class="titulo-seccion" id="historialProducto">Historial</h2>
-      ${movs.length ? `<ol class="card linea-tiempo" role="list">${movs.map(m => filaHistorial(m, ventas.get(m.venta))).join('')}</ol>` : '<div class="card muted">Aún no hay movimientos.</div>'}</section>
+    ${historialFicha(movs, m => filaHistorial(m, ventas.get(m.venta)))}
     ${datos.length || p.telProv ? `<section class="card otros-datos-ficha"><h3>Otros datos</h3>
       ${datos.map(([etiqueta, valor]) => `<div class="dato"><span>${esc(etiqueta)}</span><span>${esc(valor)}</span></div>`).join('')}
       ${p.telProv ? `<a class="btn soft" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">Pedir al proveedor por WhatsApp</a>` : ''}
     </section>` : ''}
     ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${id}">Lo abrí hoy</button>` : ''}
-    <button class="btn danger full" data-act="borrarProd" data-id="${id}">Eliminar producto</button>
-  </div></div>`;
+    <button class="btn danger full" data-act="borrarProd" data-id="${id}">Eliminar producto</button>`);
 }
-function filaHistorial(m, venta){
+function filaHistorial(m, venta, frasco){
   const cant = fCant(Math.abs(m.cant));
   const cambio = m.cant > 0 ? '+' + cant : m.cant < 0 ? '− ' + cant : 'Sin diferencia';
   const motivo = norm(m.motivo);
@@ -1031,46 +1057,123 @@ function filaHistorial(m, venta){
       detalle = [cambio, motivo === 'conteo' ? '' : etiquetaMotivo(m.motivo)];
       break;
     case 'inicial': titulo = 'Cantidad inicial'; detalle = [cant]; break;
-    case 'uso': titulo = 'Uso en tratamiento'; detalle = [cambio, m.trat]; break;
-    case 'apertura': titulo = 'Abrí uno nuevo'; detalle = []; break;
+    case 'uso':
+      titulo = frascoTerminado(m) ? 'Se terminó un frasco' : 'Uso en tratamiento';
+      detalle = [frasco || cambio, m.trat, m.pac, frascoTerminado(m) ? '' : etiquetaMotivo(m.motivo)];
+      break;
+    case 'apertura': titulo = 'Abrí uno nuevo'; detalle = [frasco]; break;
     default: titulo = m.tipo; detalle = [cambio];
   }
   detalle.push(m.nota, m.por);
-  return `<li class="paso-historial" data-mov="${esc(m.tipo)}"><time datetime="${esc(m.fecha)}">${esc(fCorta(m.fecha))}</time>
+  return `<li class="paso-historial" data-mov="${frascoTerminado(m) ? 'terminado' : esc(m.tipo)}"><time datetime="${esc(m.fecha)}">${esc(fCorta(m.fecha))}</time>
     <b>${esc(titulo)}</b>${detalle.some(Boolean) ? `<p>${esc(detalle.filter(Boolean).join(' · '))}</p>` : ''}</li>`;
 }
 const etiquetaMotivo = motivo => Object.hasOwn(MOTIVOS, motivo) ? MOTIVOS[motivo] : motivo;
-function fichaCabina(p, s, avs, c, movs){
-  const datos = [];
-  if(p.costo) datos.push(['Costo', dinero(p.costo) + ' por ' + singular(p.unidad)]);
-  if(p.gasto) datos.push(['Gasto por tratamiento', fCant(p.gasto) + ' ' + uTxt(p.gasto, p.unidad)]);
-  datos.push(['Avisar cuando queden', p.min ? fCant(p.min) + ' ' + uTxt(p.min, p.unidad) : 'No configurado']);
-  if(c) datos.push(['Gasto promedio', fCant(c * 30) + ' ' + (p.unidad || '') + ' al mes']);
-  if(p.vence) datos.push(['Vence', fCorta(p.vence)]);
-  if(p.lote) datos.push(['Lote', p.lote]);
-  if(p.pao) datos.push(['Dura abierto', p.pao + (p.pao === 1 ? ' mes' : ' meses')]);
-  if(p.abierto) datos.push(['Se abrió', fCorta(p.abierto) + (p.pao ? ' · usar antes del ' + fCorta(sumarMeses(p.abierto, p.pao)) : '')]);
-  if(p.prov) datos.push(['Proveedor', p.prov + (p.telProv ? ' · ' + p.telProv : '')]);
-  const etiqueta = {inicial:'Cantidad inicial', entrada:'Llegó', venta:'Venta', uso:'Uso en tratamiento', ajuste:'Ajuste', apertura:'Abrí uno nuevo'};
-  const [nombre, ...presentacion] = p.nombre.split(' · ');
-  const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
-  return cabecera(titulo, `<button class="icon-btn" data-act="editarProd" data-id="${esc(p.id)}" aria-label="Editar producto">${IC.lapiz}</button>`, true) + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <div class="det-cab">${avatar(p, 'xl')}<div><div class="muted">${esc([p.marca, ...presentacion, p.cat].filter(Boolean).join(' · '))}</div>
-      <div class="chips" style="margin-top:6px"><span class="pill gold">Uso en spa</span></div></div></div>
-    <section class="card"><div class="det-stock"><span class="q num" style="color:${avs.some(a => a.clase==='stock' && a.nivel==='bad') ? 'var(--mal)' : avs.some(a => a.clase==='stock') ? 'var(--atencion)' : 'inherit'}">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))}</span></div>
-      ${avs.length ? `<div class="chips avisos-producto">${avs.map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : `<div class="chips" style="justify-content:center"><span class="pill ok">${IC.check} Sin avisos</span></div>`}
-      <div class="acc-grid"><button class="btn" data-act="usarRapido" data-id="${esc(p.id)}">${IC.gota} Usar ${fCant(p.gasto > 0 ? p.gasto : 1)} ${esc(uTxt(p.gasto > 0 ? p.gasto : 1, p.unidad))}</button>
-        <button class="btn gold" data-act="entrada" data-id="${esc(p.id)}">${IC.entrada} Llegó más</button>
-        <button class="btn ghost" data-act="ajuste" data-id="${esc(p.id)}">Contar / corregir</button>
-        <button class="btn ghost" data-act="usar" data-id="${esc(p.id)}">Otra cantidad</button>
-        ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${esc(p.id)}">Lo abrí hoy</button>` : ''}</div>
-      ${p.telProv ? `<a class="btn soft" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">Pedir al proveedor por WhatsApp</a>` : ''}</section>
-    <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Datos</h3>${datos.map(x => `<div class="dato"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}
-      ${p.notas ? `<div class="dato"><span>Notas</span><span style="font-weight:500">${esc(p.notas)}</span></div>` : ''}</section>
-    <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Movimientos</h3>${movs.length ? movs.slice(0, 60).map(m => `<div class="mov"><span>${esc(etiqueta[m.tipo] || m.tipo)}${m.pac ? ' · ' + esc(m.pac) : ''}</span><span class="q num ${m.cant >= 0 ? 'mas' : 'menos'}">${m.cant >= 0 ? '+' : '−'}${fCant(Math.abs(m.cant))}</span>
-      <span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.motivo ? ' · ' + esc(etiquetaMotivo(m.motivo)) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}${m.por ? ' · ' + esc(m.por) : ''}</span></div>`).join('') : '<div class="muted peq">Sin movimientos.</div>'}</section>
-    <button class="btn danger full" data-act="borrarProd" data-id="${esc(p.id)}">Eliminar producto</button>
-  </div></div>`;
+const esPorFrasco = p => p?.tipo === 'uso' && p.unidad === 'frascos';
+const frascoTerminado = m => m.tipo === 'uso' && m.cant === -1 && m.motivo === 'terminado';
+const duracionDias = dias => `${fCant(dias)} ${dias === 1 ? 'día' : 'días'}`;
+const movimientoApertura = (prod, fecha) => marcar({id:uid(), prod, fecha, tipo:'apertura', cant:0}, true);
+
+function aperturaVigente(movs){
+  const ultimo = movs.find(m => m.tipo === 'apertura' || frascoTerminado(m));
+  return ultimo?.tipo === 'apertura' ? ultimo : null;
+}
+
+// La ficha recibe solo los movimientos vigentes, de más reciente a más antiguo.
+function rendimientoFrascos(movs){
+  let apertura = '', saldo = 0;
+  const duraciones = [], detalles = new Map();
+  for(const m of movs.slice().reverse()){
+    saldo = red(saldo + m.cant);
+    if(m.tipo === 'apertura'){
+      apertura = m.fecha;
+      const cerrados = Math.max(0, saldo - 1);
+      detalles.set(m.id, `${cerrados === 1 ? 'Quedó' : 'Quedaron'} ${fCant(cerrados)} sin abrir`);
+    }else if(apertura && frascoTerminado(m)){
+      // Un frasco abierto y terminado en la misma fecha cuenta como un día de uso.
+      const dias = Math.max(1, diasEntre(apertura, m.fecha));
+      duraciones.push(dias);
+      detalles.set(m.id, `Duró ${duracionDias(dias)}`);
+      apertura = '';
+    }
+  }
+  const ultimas = duraciones.slice(-3);
+  return {muestras:ultimas.length, promedio:ultimas.length ? ultimas.reduce((suma, dias) => suma + dias, 0) / ultimas.length : 0, detalles};
+}
+
+function tarjetaFrasco(p, s, avisos, rendimiento){
+  const id = esc(p.id), {promedio, muestras} = rendimiento;
+  const abierto = s > 0 ? p.abierto : '', dias = abierto ? Math.max(0, diasDesde(abierto)) : 0;
+  const estimado = abierto && promedio ? sumarDias(abierto, Math.round(promedio)) : '';
+  const avance = promedio ? Math.min(100, Math.round(dias / promedio * 100)) : 0;
+  const fechaEstimada = estimado && new Intl.DateTimeFormat('es-EC', {
+    day:'numeric', month:'long', ...(aFecha(estimado).getFullYear() === new Date().getFullYear() ? {} : {year:'numeric'}),
+  }).format(aFecha(estimado));
+  const estado = abierto ? dias ? `Abierto hace ${duracionDias(dias)}` : 'Abierto hoy' : s > 0 ? 'Sin abrir' : 'Agotado';
+  const muestra = muestras === 1 ? 'tu último frasco' : `tus últimos ${muestras} frascos`;
+  const diasPromedio = Math.round(promedio);
+  const duracion = promedio ? `Un frasco te dura <b>${diasPromedio === 1 ? 'cerca de ' : 'unos '}${duracionDias(diasPromedio)}</b> (${muestras === 1 ? 'según' : 'promedio de'} ${muestra}).` : '';
+  const fin = estimado ? `${diasHasta(estimado) < 0 ? 'La fecha estimada fue el' : 'Se acabaría alrededor del'} <b>${esc(fechaEstimada)}</b>.` : '';
+  const detalle = abierto ? duracion || 'Cuando anotes que se terminó, podremos estimar cuánto te dura.' :
+    s > 0 ? 'Anota cuándo abres un frasco nuevo.' : 'Registra una entrada cuando lleguen más frascos.';
+  const sinAbrir = red(Math.max(0, s - (abierto ? 1 : 0)));
+  return `<section class="card frasco-en-uso" aria-label="Frasco en uso">
+      <div class="frasco-cab"><h2>Frasco en uso</h2><span class="pill ${s <= 0 ? 'bad' : abierto ? 'acc' : 'ok'}">${estado}</span></div>
+      ${estimado ? `<div class="barra-frasco" role="progressbar" aria-label="Tiempo estimado transcurrido" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${avance}" style="--avance:${avance}%"><span></span></div>
+        <div class="fechas-frasco"><time datetime="${esc(abierto)}">${esc(fCorta(abierto))}</time><time datetime="${estimado}">~${esc(fCorta(estimado))}</time></div>` :
+        abierto ? `<div class="fechas-frasco"><time datetime="${esc(abierto)}">Abierto el ${esc(fCorta(abierto))}</time></div>` : ''}
+      <p>${detalle}${fin ? ' ' + fin : ''}</p>
+      ${avisosFechaFicha(avisos)}
+      <div class="acciones-cabina"><button class="btn ghost" data-act="terminarFrasco" data-id="${id}" ${s < 1 || !abierto ? 'disabled' : ''}>Se terminó</button>
+        <button class="btn" data-act="abrirFrasco" data-id="${id}" ${s < 1 ? 'disabled' : ''}>${IC.gota} Abrí uno nuevo</button></div>
+    </section>
+    <div class="cifras resumen-cabina" role="group" aria-label="Existencias y costo">
+      <div class="cifra"><span class="l">Sin abrir</span><b class="v num">${fCant(sinAbrir)} ${uTxt(sinAbrir, 'frascos')}</b></div>
+      <div class="cifra costo-dia"><span class="l">Costo por día</span><b class="v num">${promedio && p.costo > 0 ? dinero(p.costo / promedio) : '—'}</b>
+        ${p.costo > 0 ? `<span>${dinero(p.costo)} el frasco</span>` : ''}</div>
+    </div>`;
+}
+
+function tarjetaTratamiento(p, s, avisos, consumo){
+  const id = esc(p.id), gasto = p.gasto > 0 ? p.gasto : 1;
+  const stock = avisos.find(a => a.clase === 'stock');
+  return `<section class="card stock-ficha ${stock?.nivel || 'ok'}" aria-label="Existencias">
+    <div class="det-stock"><span class="q num">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))} en stock</span>
+      <span class="pill ${stock?.nivel || 'ok'}">${s <= 0 ? 'Agotado' : stock ? 'Por terminarse' : 'Disponible'}</span></div>
+    ${consumo ? `<p>Usas unos <b>${fCant(consumo * 30)} ${esc(p.unidad || 'unidades')} al mes</b>.</p>` : ''}
+    ${avisosFechaFicha(avisos)}
+    <div class="acciones-cabina"><button class="btn" data-act="usarRapido" data-id="${id}">${IC.gota} Usar ${fCant(gasto)} ${esc(uTxt(gasto, p.unidad))}</button>
+      <button class="btn ghost" data-act="usar" data-id="${id}">Otra cantidad</button></div>
+  </section>`;
+}
+
+function fichaCabina(p, s, avisos, consumo, movs){
+  const id = esc(p.id), frascos = esPorFrasco(p);
+  const rendimiento = frascos ? rendimientoFrascos(movs) : null;
+  const proveedor = esc(p.prov || 'Proveedor');
+  const fichaProveedor = `<span class="dato-ico">${IC.chat}</span><span>Pedir a</span><b>${proveedor}</b>`;
+  const datosExtra = [
+    !frascos && p.costo > 0 && ['Costo', `${dinero(p.costo)} por ${singular(p.unidad)}`],
+    !frascos && p.abierto && ['Se abrió', fCorta(p.abierto)],
+    p.min > 0 && ['Avisar cuando queden', `${fCant(p.min)} ${uTxt(p.min, p.unidad)}`],
+    p.notas && ['Notas', p.notas],
+  ].filter(Boolean);
+  return estructuraFicha(p, `
+    ${frascos ? tarjetaFrasco(p, s, avisos, rendimiento) : tarjetaTratamiento(p, s, avisos, consumo)}
+    <section class="card datos-ficha" aria-label="Datos del producto">
+      ${p.pao > 0 ? `<div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Abierto dura</span><b>${fCant(p.pao)} ${p.pao === 1 ? 'mes' : 'meses'}</b></div>` : ''}
+      <div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Vence</span><b>${venceFicha(p)}</b></div>
+      ${p.telProv ? `<a class="dato-ficha" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">${fichaProveedor}</a>` :
+        p.prov ? `<div class="dato-ficha">${fichaProveedor}</div>` : ''}
+    </section>
+    <div class="acciones-cabina" role="group" aria-label="Acciones de existencias">
+      <button class="btn soft" data-act="entrada" data-id="${id}">${IC.entrada} Llegó más</button>
+      <button class="btn ghost" data-act="ajuste" data-id="${id}">Ajustar cantidad</button>
+      ${!frascos && p.pao > 0 ? `<button class="btn ghost" data-act="abrirHoy" data-id="${id}">Lo abrí hoy</button>` : ''}
+    </div>
+    ${historialFicha(movs, m => filaHistorial(m, null, rendimiento?.detalles.get(m.id)))}
+    ${datosExtra.length ? `<section class="card otros-datos-ficha" aria-label="Otros datos">${datosExtra.map(([etiqueta, valor]) => `<div class="dato"><span>${esc(etiqueta)}</span><span>${esc(valor)}</span></div>`).join('')}</section>` : ''}
+    <button class="btn danger full" data-act="borrarProd" data-id="${id}">Eliminar producto</button>`);
 }
 function waLink(tel, texto){
   let t = String(tel || '').replace(/\D/g, '');
@@ -1219,6 +1322,22 @@ async function guardarProd(){
   const productos = nuevo ? [...E.productos, p] : E.productos.map(x => x.id === id ? p : x);
   const estado = {...E, productos};
   if(nuevo && ini > 0) estado.movs = [...E.movs, marcar({id:uid(), prod:id, tipo:'inicial', cant:red(ini), fecha:hoyISO(), costo:datos.costo}, true)];
+  if(esPorFrasco(p) && p.abierto !== (previo?.abierto || '')){
+    const historico = previo ? movimientosDelProducto(id) : [];
+    const cierre = historico.find(frascoTerminado);
+    if(p.abierto && cierre && p.abierto < cierre.fecha){
+      $('#campo-abierto').focus();
+      toast(`El frasco anterior se terminó el ${fCorta(cierre.fecha)}. Usa esa fecha o una posterior.`);
+      return;
+    }
+    const apertura = aperturaVigente(historico);
+    if(apertura){
+      const cambio = p.abierto ? {fecha:p.abierto} : {borrado:true};
+      estado.movs = estado.movs.map(m => m === apertura ? marcar({...m, ...cambio}) : m);
+    }else if(p.abierto){
+      estado.movs = [...estado.movs, movimientoApertura(id, p.abierto)];
+    }
+  }
   if(!guardar(estado)) return;
   F.guardado = true;
   const fotoVieja = previo?.foto;
@@ -1265,6 +1384,32 @@ async function guardarEntrada(){
       if(!restaurados.length) return actual;
       return marcar({...actual, ...Object.fromEntries(restaurados.map(campo => [campo, p[campo] ?? (campo === 'costo' ? 0 : '')]))});
     }));
+}
+
+// Abrir deja el frasco dentro del stock. Solo se descuenta cuando se termina.
+function registrarFrasco(id, terminado){
+  const p = prodPorId(id), fecha = hoyISO();
+  if(!esPorFrasco(p) || p.borrado || stockDe(id) < 1) return;
+  if(terminado && !p.abierto) return;
+  if(!terminado && p.abierto){
+    toast('Primero anota que se terminó el frasco en uso.');
+    return;
+  }
+  const registros = [];
+  if(terminado){
+    // La versión 1 guardaba la fecha en el producto. Consérvala en el historial al cerrar ese frasco.
+    if(!aperturaVigente(movimientosDelProducto(id))) registros.push(movimientoApertura(id, p.abierto));
+    registros.push(marcar({id:uid(), prod:id, fecha, tipo:'uso', cant:-1, motivo:'terminado', costo:p.costo || 0}, true));
+  }else{
+    registros.push(movimientoApertura(id, fecha));
+  }
+  const actualizado = marcar({...p, abierto:terminado ? '' : fecha});
+  const productos = E.productos.map(x => x === p ? actualizado : x);
+  if(!guardar({...E, productos, movs:[...E.movs, ...registros]})) return;
+  refrescar();
+  const mensaje = terminado ? 'Se terminó un frasco' : 'Abrí uno nuevo';
+  avisarConDeshacer(mensaje, {movs:registros}, true, () => E.productos.map(actual =>
+    actual.id === id && !actual.borrado && actual.abierto === actualizado.abierto ? marcar({...actual, abierto:p.abierto || ''}) : actual));
 }
 
 // Usar en tratamiento
@@ -1922,9 +2067,9 @@ function seleccionarOpcion(b){
 const ACT = {
   async tab(b){
     const tab = b.dataset.tab;
-    const desdeFicha = b.closest('.ficha-venta');
+    const desdeFicha = b.closest('.ficha-producto');
     if(desdeFicha) await cerrarCapa(pila.length);
-    irPantalla(desdeFicha && tab === 'inventario' ? 'venta' : tab);
+    irPantalla(desdeFicha && tab === 'inventario' ? desdeFicha.dataset.inventario : tab);
   },
   cerrar(){ cerrarCapa(); },
   ajustes(){ abrirAjustes(); },
@@ -1947,11 +2092,23 @@ const ACT = {
   escanear(b){ abrirCodigo(b.dataset.modo); },
   asignarCodigo(b){ asignarCodigo(b.dataset.id); },
   vender(b){ formVenta(null, b.dataset.id); },
-  usar(b){ formUso(b.dataset.id); },
+  usar(b){
+    const id = b.dataset.id;
+    if(esPorFrasco(prodPorId(id))) verProd(id);
+    else formUso(id);
+  },
   usarRapido(b){ usarRapido(b.dataset.id); },
+  abrirFrasco(b){ registrarFrasco(b.dataset.id, false); },
+  terminarFrasco(b){ registrarFrasco(b.dataset.id, true); },
   entrada(b){ formEntrada(b.dataset.id); },
-  ajuste(b){ formAjuste(b.dataset.id, Boolean(b.closest('.ficha-venta'))); },
-  abrirHoy(b){ const p = prodPorId(b.dataset.id); p.abierto = hoyISO(); marcar(p); guardar(); refrescar(); toast(`Anotado: ${p.nombre} se abrió hoy. Úsalo antes del ${fCorta(sumarMeses(p.abierto, p.pao))}`); },
+  ajuste(b){ formAjuste(b.dataset.id, Boolean(b.closest('.ficha-producto'))); },
+  abrirHoy(b){
+    const p = prodPorId(b.dataset.id), abierto = hoyISO();
+    const productos = E.productos.map(x => x === p ? marcar({...p, abierto}) : x);
+    if(!guardar({...E, productos})) return;
+    refrescar();
+    toast(`Anotado: ${p.nombre} se abrió hoy. Úsalo antes del ${fCorta(sumarMeses(abierto, p.pao))}`);
+  },
   async borrarProd(b){
     const p = prodPorId(b.dataset.id);
     if(!(await confirmar('¿Eliminar producto?', `«${esc(p.nombre)}» se quita del inventario. Las ventas donde aparece se conservan.`, 'Eliminar', true))) return;
