@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T6
-- Última corrida: 27-nov-2026, 10:34 (Ecuador) · T5 completada
+- Tarea actual: T7
+- Última corrida: 27-nov-2026, 12:45 (Ecuador) · T6 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -111,3 +111,22 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé las 14 capturas T5 de 390×844 en modo claro y oscuro. La ficha de Pure Radiance sigue la foto, el avance y las cifras de `Cabina.png`. Las acciones de entrada y ajuste quedan junto a los datos. En la captura de terminación, el aviso «Deshacer» se superpone durante cinco segundos a parte del primer registro visible.
 - Pasaron 19 pruebas en Chromium a 390×844 y 16 con su perfil de iPhone 14 Pro. Se comprobó el promedio de los tres últimos frascos, los cierres el mismo día, la corrección de la fecha, el reintento si falla el guardado, los archivos v1 y el flujo de cabina sin conexión. Queda por probar el recorrido en Safari del iPhone de Elba.
 - Sigue T6 con la selección de paciente, la cuadrícula de productos y el carrito de «Nueva venta». Los cambios de esta corrida están en `prueba/` y `codex/`.
+
+### 27-nov-2026 · 12:30–12:45 (Ecuador) · T6
+
+**Revisión de las ocho capturas T5 adjuntas**
+
+- **Tratamiento, claro y oscuro.** El encabezado de iniciales ocupa casi 190 px sin foto. «Usar 1 ampolla» salta a dos líneas y el primer movimiento de Historial queda bajo la barra. En oscuro, la categoría y el estado «Disponible» quedan en segundo plano frente al botón magenta.
+- **Ficha y rendimiento, oscuro.** La ficha de Pure Radiance sigue la foto, los colores y la jerarquía de `Cabina.png`. Al abrirla, «Costo por día» y su cifra quedan cortados por la barra inferior. Al desplazar al rendimiento se alcanza a leer el costo y la fecha estimada.
+- **Apertura y terminación, oscuro.** «Deshacer» se superpone al título de Historial al abrir un frasco y tapa el primer movimiento al terminarlo. El botón «Se terminó» desactivado se distingue poco sobre la tarjeta oscura.
+- **Vencimiento, oscuro.** La tarjeta dice «Venció el 30 ago» y la fila de datos dice «Vence ago 2027» para el mismo vencimiento. El formato y el verbo distintos dificultan reconocer que es la misma fecha. El aviso de tiempo después de abierto parte la fecha en dos líneas.
+- **Historial, oscuro.** Las aperturas y los cierres se leen completos al desplazar al final. Los puntos rosados de ambos movimientos se parecen en oscuro. El texto distingue qué pasó en cada fecha.
+
+**Trabajo completado**
+
+- «Nueva venta» muestra las pacientes recientes, permite buscar por nombre o teléfono y agrega una paciente con teléfono opcional al guardar la venta. La cuadrícula presenta hasta nueve de los productos más vendidos en 60 días y ofrece filtros por categoría, búsqueda y escaneo por cámara o código escrito.
+- El carrito queda al pie con el último producto agregado, el total y «Cobrar». Al abrirlo se pueden ajustar cantidades, editar precios, anotar el descuento y elegir la forma y el estado del pago. Si faltan existencias, se pide confirmación antes de guardar. Al registrar una venta, la app vuelve a Inicio y muestra la confirmación animada con «Deshacer».
+- El comprobante opcional incluye los productos, el descuento, el total y el nombre SPARATI. El aviso de éxito y la edición de la venta permiten volver a abrirlo en WhatsApp si el navegador bloquea la primera apertura.
+- Revisé 14 capturas de 390×844 en claro y oscuro. Frente a `Vender.png`, se conservaron la tarjeta de paciente, las tres columnas y la hoja de carrito. En la pantalla corta el carrito plegado deja elegir productos y el detalle abierto se desplaza para alcanzar la fecha, el descuento y la nota.
+- Pasaron 22 pruebas en Chromium a 390×844 y 19 con su perfil iPhone 14 Pro. Se comprobó una venta de tres productos en cinco toques desde Inicio, el cobro sin conexión con un EAN-13, el descuento, el comprobante, la confirmación por falta de existencias, el reintento de guardado, Deshacer y los archivos de la versión 1.
+- Sigue T7 con el escáner general. Queda por comprobar en el iPhone de Elba el calendario, el enfoque de la cámara y la apertura del comprobante de WhatsApp en Safari y desde la pantalla de inicio. Los cambios de la corrida quedaron en `prueba/` y `codex/`.

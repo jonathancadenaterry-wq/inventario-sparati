@@ -395,12 +395,15 @@ function confirmar(titulo, texto, ok = 'Sí', peligro = false){
   });
 }
 let tToast;
-function toast(msg, accion){
+function toast(msg, accion, {exito = false, enlace = ''} = {}){
   let t = $('#toast');
   if(!t){ t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
-  t.innerHTML = '<span></span>' + (accion ? '<button type="button">Deshacer</button>' : '');
+  t.classList.toggle('toast-venta', exito);
+  t.innerHTML = `${exito ? `<span class="check-venta" aria-hidden="true">${IC.check}</span>` : ''}<span class="texto-toast"></span>
+    ${accion ? '<button type="button">Deshacer</button>' : ''}
+    ${enlace ? `<a class="recibo-toast" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir comprobante en WhatsApp</a>` : ''}`;
   t.hidden = false;
-  $('span', t).textContent = $('#anuncio').textContent = msg;
+  $('.texto-toast', t).textContent = $('#anuncio').textContent = msg;
   if(accion) $('button', t).onclick = () => { t.hidden = true; accion(); };
   clearTimeout(tToast);
   tToast = setTimeout(() => { t.hidden = true; }, accion ? 5000 : 3400);
@@ -419,12 +422,12 @@ function guardarBorrado(registrosPorLista, borrado, productos = E.productos){
   }
   return guardar(estado) ? actualizados : null;
 }
-function avisarConDeshacer(mensaje, registrosPorLista, borrado, restaurarProductos){
+function avisarConDeshacer(mensaje, registrosPorLista, borrado, restaurarProductos, opciones){
   toast(mensaje, () => {
     if(!guardarBorrado(registrosPorLista, borrado, restaurarProductos?.())) return;
     refrescar();
     toast('Listo, se deshizo');
-  });
+  }, opciones);
 }
 
 // Trazos de las referencias del diseño, con el color del control que los contiene.
@@ -888,9 +891,8 @@ function filaProducto(p, accion = 'verProd', mostrarMarca = false){
   const precio = p.tipo === 'venta' && p.precio ? `<span class="sin-salto">${dinero(p.precio)}</span>` : '';
   const sub = [mostrarMarca ? esc(p.marca) : '', ...presentacion.map(esc), precio,
     esc(aviso ? textoAviso(aviso) : !presentacion.length && p.tipo === 'uso' ? singular(p.unidad) : '')].filter(Boolean).join(' · ');
-  const cantidadEnVenta = accion === 'vAgregar' ? F.items.find(i => i.prod === p.id)?.cant : '';
   return `<button class="fila-lista" data-act="${accion}" data-id="${esc(p.id)}">${avatar(p)}
-    <span class="tx"><b>${esc(nombre)}</b>${sub ? `<span class="m">${sub}</span>` : ''}${accion === 'vAgregar' ? `<span class="m en-venta"${cantidadEnVenta ? '' : ' hidden'}>${cantidadEnVenta ? esc(cantidadEnVenta) + ' en la venta' : ''}</span>` : ''}</span>
+    <span class="tx"><b>${esc(nombre)}</b>${sub ? `<span class="m">${sub}</span>` : ''}</span>
     ${pildoraStock(p, avs)}</button>`;
 }
 
@@ -1479,127 +1481,365 @@ async function guardarAjuste(){
 }
 
 // ---------- Ventas ----------
+function masVendidosVenta(todos){
+  const hoy = hoyISO(), desde = sumarDias(hoy, -59), cantidades = new Map();
+  for(const v of E.ventas){
+    if(v.borrado || v.fecha < desde || v.fecha > hoy) continue;
+    for(const it of v.items) cantidades.set(it.prod, (cantidades.get(it.prod) || 0) + it.cant);
+  }
+  return [...todos].sort((a, b) =>
+    (cantidades.get(b.id) || 0) - (cantidades.get(a.id) || 0) ||
+    Number(stockDe(b.id) > 0) - Number(stockDe(a.id) > 0)).slice(0, 9);
+}
+function recientesVenta(lista){
+  const hoy = hoyISO();
+  const nombres = new Set(vivos(E.ventas).filter(v => v.pac?.trim() && v.fecha <= hoy)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado)
+    .map(v => norm(v.pac)));
+  const porNombre = new Map(lista.map(p => [norm(p.nombre), p]));
+  return [...nombres].map(n => porNombre.get(n)).filter(Boolean);
+}
 function formVenta(id, prodId){
-  const v = id ? E.ventas.find(x => x.id === id) : null;
-  F = v ? {id:v.id, pac:v.pac || '', tel:v.tel || '', fecha:v.fecha, pago:v.cobrado ? cap(v.pago) : 'Por cobrar', nota:v.nota || '',
-        items:v.items.map(i => ({prod:i.prod, nombre:i.nombre, cant:fCant(i.cant), precio:dineroIn(i.precio), costo:i.costo || 0})), buscar:''}
-    : {id:null, pac:'', tel:'', fecha:hoyISO(), pago:'Efectivo', nota:'', items:[], buscar:''};
-  F.guardar = guardarVenta;
-  F.pagoMarcado = F.pago === 'Por cobrar' ? PAGOS[0] : F.pago;
+  const v = id ? vivos(E.ventas).find(x => x.id === id) : null;
+  if(id && !v) return;
+  const todos = productos('venta'), lista = pacientes();
+  F = {id:v?.id, pac:v?.pac || '', tel:v?.tel || '', fecha:v?.fecha || hoyISO(), nota:v?.nota || '',
+    pago:PAGOS.find(p => norm(p) === norm(v?.pago)) || PAGOS[0], cobrado:v ? Boolean(v.cobrado) : true,
+    descuento:dineroIn(v?.descuento), comprobante:false, buscar:'', categoria:'populares',
+    items:v ? v.items.map(i => ({...i, cant:fCant(i.cant), precio:dineroIn(i.precio)})) : [],
+    todos, populares:masVendidosVenta(todos), lista, recientes:recientesVenta(lista), guardar:guardarVenta};
   if(prodId) agregarItem(prodId);
-  const d = abrirCapa(cabecera(v ? 'Editar venta' : 'Nueva venta', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in" id="fCuerpo"></div></div>
-    <div class="carrito hoja-inferior">
-      <button class="resumen-venta" data-act="verCarrito" aria-controls="detalleVenta" aria-expanded="${Boolean(v)}">
-        <span class="tirador" aria-hidden="true"></span><span><span id="resumenVenta"></span>${IC.volver}</span></button>
-      <div class="carrito-detalle" id="detalleVenta"${v ? '' : ' hidden'}></div>
-      <div class="total"><span>Total</span><span class="num" id="vTotal"></span></div>
+  const categorias = [...new Set(todos.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const escanear = `<button class="btn sm soft escaner-venta" data-act="escanear" data-modo="vender" aria-label="Escanear código de barras">${IC.escaneo} Escanear</button>`;
+  const d = abrirCapa(cabecera(v ? 'Editar venta' : 'Nueva venta', escanear, true) + `
+    <div class="hoja-cuerpo"><div class="hoja-in">
+      <section class="card paciente-venta" aria-label="Paciente"></section>
+      ${buscador('Buscar producto', {campo:'buscar', escaneo:'vender'})}
+      <div class="chips scroll filtros-venta" role="group" aria-label="Filtrar productos">
+        ${opcion('vCategoria', 'populares', 'Más vendidos', true, 'chip')}
+        ${opcion('vCategoria', 'todos', 'Todos', false, 'chip')}
+        ${categorias.map(cat => opcion('vCategoria', 'cat:' + cat, esc(cat), false, 'chip')).join('')}
+      </div>
+      <div class="cuadricula-venta" id="selProd"></div>
+    </div></div>
+    <section class="carrito hoja-inferior" aria-label="Carrito">
+      <button class="resumen-venta" data-act="verCarrito" aria-controls="detalleVenta" aria-expanded="${Boolean(v || prodId)}">
+        <span class="tirador" aria-hidden="true"></span>
+        <span class="resumen-venta-linea"><span id="resumenVenta"></span><span class="fecha-carrito" id="fechaResumen"></span>${IC.volver}</span>
+      </button>
+      <div class="vista-carrito" id="vistaCarrito" hidden></div>
+      <div class="carrito-detalle" id="detalleVenta"${v || prodId ? '' : ' hidden'}>
+        <div class="items-venta" id="itemsVenta"></div>
+        <div class="total" id="totalDetalle"><span>Total</span><span class="num"></span></div>
+        <div class="opciones-venta">
+          <div class="seg pago-venta" role="group" aria-label="Forma de pago">${PAGOS.map(p => opcion('pagoVenta', p, p, F.pago === p)).join('')}</div>
+          <div class="seg" role="group" aria-label="Estado del pago">
+            ${opcion('estadoPagoVenta', 'cobrado', 'Cobrado', F.cobrado)}
+            ${opcion('estadoPagoVenta', 'pendiente', 'Queda pendiente', !F.cobrado)}
+          </div>
+          ${v ? `<a class="btn soft" href="${esc(enlaceComprobante(v))}" target="_blank" rel="noopener">${IC.chat} Abrir comprobante en WhatsApp</a>` :
+            `<label class="check comprobante-venta"><input type="checkbox" id="enviarComprobante"> Enviar comprobante por WhatsApp</label>
+            <p class="peq muted ayuda-comprobante" id="ayudaComprobante" hidden></p>`}
+          <div class="fila2">
+            ${campo('Descuento ($)', 'descuento', {modo:'decimal', ph:'0,00'})}
+            <div class="campo"><label for="fechaVenta">Fecha</label><div class="fecha-venta">
+              <span id="fechaVisible" aria-hidden="true"></span>${IC.calendario}
+              <input type="date" id="fechaVenta" data-f="fecha" value="${esc(F.fecha)}" max="${hoyISO()}">
+            </div></div>
+          </div>
+          ${campo('Nota (opcional)', 'nota', {area:true})}
+        </div>
+      </div>
+      <div class="total" id="totalPlegado"><span>Total</span><span class="num" id="vTotal"></span></div>
       <footer class="hoja-pie"><div class="in">
         ${v ? '<button class="btn danger" data-act="borrarVenta">Eliminar</button>' : ''}
-        <button class="btn ghost" data-act="cerrar">Cancelar</button><button class="btn" data-act="guardarF">Guardar</button>
+        <button class="btn" data-act="guardarF">${IC.check}<span id="accionVenta"></span></button>
       </div></footer>
-    </div>`, {cls:'hoja venta-form', tipo:'form', alCerrar:() => { F = null; }});
-  $('#fCuerpo', d).innerHTML = `<div class="card">
-      ${campo('Paciente', 'pac', {lista:'dlPac', ph:'Nombre de la paciente'})}${listaPacientes()}
-      <div class="fila2">${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}${campo('WhatsApp (opcional)', 'tel', {tipo:'tel', ph:'09…'})}</div></div>
-    ${buscador('Buscar producto', {campo:'buscar', escaneo:'vender'})}
-    <h3 class="titulo-seccion">Productos</h3><div class="filas" id="selProd"></div>`;
+    </section>`, {cls:'hoja venta-form', tipo:'form', alCerrar:() => { F = null; }});
+  $('#enviarComprobante', d)?.addEventListener('change', e => {
+    F.comprobante = e.target.checked;
+    pintarAyudaComprobante();
+  });
+  F.alCambiar = f => {
+    if(f === 'buscar') pintarSelectorVenta();
+    if(f === 'descuento') actualizarTotalesVenta();
+    if(f === 'fecha') pintarFechaVenta();
+  };
+  pintarPacienteVenta();
   pintarSelectorVenta();
   pintarCarrito();
-  F.alCambiar = f => {
-    if(f === 'pac' && !F.tel){
-      const p = pacientes().find(p => norm(p.nombre) === norm(F.pac));
-      if(p?.tel) F.tel = $('#campo-tel', d).value = p.tel;
-    }
-    if(f === 'buscar') pintarSelectorVenta();
+  pintarFechaVenta();
+}
+function pintarPacienteVenta(){
+  const abreviar = nombre => {
+    const [primero, segundo] = nombre.trim().split(/\s+/);
+    return segundo ? primero + ' ' + segundo[0] + '.' : primero;
   };
-  F.alItem = actualizarTotalesVenta;
+  const recientes = F.recientes.filter(p => norm(p.nombre) !== norm(F.pac)).slice(0, 2);
+  $('.paciente-venta').innerHTML = `
+    <div class="paciente-venta-cab">
+      ${F.pac ? avatar({nombre:F.pac}, 'persona') : `<span class="av persona" aria-hidden="true">${IC.pacientes}</span>`}
+      <div class="paciente-venta-nombre"><span>Paciente</span><b>${esc(F.pac || 'Sin nombre')}</b></div>
+      <button class="btn sm sin-fondo" data-act="vBuscaPaciente">${F.pac ? 'Cambiar' : 'Buscar'}</button>
+    </div>
+    <div class="paciente-venta-recientes">
+      ${recientes.length ? `<span>Recientes</span>${recientes.map(p =>
+        `<button class="chip" data-act="vEligePaciente" data-n="${esc(p.nombre)}" aria-label="${esc(p.nombre)}">${esc(abreviar(p.nombre))}</button>`).join('')}` : ''}
+      <button class="chip pac-nueva" data-act="vNuevaPaciente">${IC.mas} Nueva</button>
+    </div>`;
+  pintarAyudaComprobante();
+}
+function buscarPacienteVenta(){
+  const d = abrirCapa(cabecera('Elegir paciente', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    ${buscador('Buscar paciente por nombre o teléfono')}
+    <div class="opciones-paciente-venta">
+      <button class="btn soft sm" data-act="vNuevaPaciente">${IC.mas} Nueva</button>
+      ${F.pac ? '<button class="btn ghost sm" data-act="vNuevaPaciente" data-editar="1">Editar datos</button>' : ''}
+      <button class="btn ghost sm" data-act="vEligePaciente" data-n="">Sin nombre</button>
+    </div>
+    <div class="filas"></div>
+  </div></div>`, {tipo:'seleccionPacienteVenta'});
+  const campo = $('input', d);
+  const pintar = () => {
+    const q = norm(campo.value);
+    const celular = campo.value.trim().replace(/\D/g, '');
+    const lista = q ? F.lista.filter(p => norm(p.nombre).includes(q) ||
+      (celular && !/[a-z]/.test(q) && String(p.tel || '').replace(/\D/g, '').includes(celular))) : F.lista;
+    $('.filas', d).innerHTML = lista.length ? lista.map(p =>
+      `<button class="fila-lista" data-act="vEligePaciente" data-n="${esc(p.nombre)}">${avatar(p, 'persona')}
+        <span class="tx"><b>${esc(p.nombre)}</b>${p.tel ? `<span class="m">${esc(p.tel)}</span>` : ''}</span></button>`).join('') :
+      '<p class="vacio">No encontré pacientes. Puedes agregar una nueva.</p>';
+  };
+  campo.addEventListener('input', pintar);
+  pintar();
+}
+function seleccionarPacienteVenta(nombre, tel){
+  F.pac = nombre;
+  F.tel = tel || '';
+  const desdeSelector = pila.at(-1)?.el.dataset.tipo === 'seleccionPacienteVenta';
+  pintarPacienteVenta();
+  if(desdeSelector) cerrarCapa();
+  else $('.paciente-venta [data-act="vBuscaPaciente"]').focus({preventScroll:true});
+}
+function editarPacienteVenta(editar){
+  const desdeSelector = pila.at(-1)?.el.dataset.tipo === 'seleccionPacienteVenta';
+  const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
+    <span class="tirador" aria-hidden="true"></span><h3>${editar ? 'Datos de la paciente' : 'Nueva paciente'}</h3>
+    <div class="campo"><label for="nombrePacienteVenta">Nombre</label>
+      <input id="nombrePacienteVenta" type="text" autocomplete="off" required value="${editar ? esc(F.pac) : ''}">
+    </div>
+    <div class="campo"><label for="telefonoPacienteVenta">Teléfono (opcional)</label>
+      <input id="telefonoPacienteVenta" type="tel" autocomplete="off" value="${editar ? esc(F.tel) : ''}">
+    </div>
+    <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button>
+      <button class="btn" type="submit">Elegir paciente</button></div>
+  </form>`, {cls:'dlg-fondo', tipo:'nuevaPacienteVenta'});
+  const nombre = $('#nombrePacienteVenta', d);
+  nombre.addEventListener('input', () => nombre.setCustomValidity(''));
+  $('form', d).addEventListener('submit', async e => {
+    e.preventDefault();
+    if(cierrePendiente) return;
+    const escrito = nombre.value.trim().replace(/\s+/g, ' ');
+    if(!escrito){
+      nombre.setCustomValidity('Escribe el nombre de la paciente.');
+      nombre.reportValidity();
+      return;
+    }
+    const ficha = F.lista.find(p => norm(p.nombre) === norm(escrito));
+    const tel = $('#telefonoPacienteVenta', d).value.trim();
+    await cerrarCapa(desdeSelector ? 2 : 1);
+    seleccionarPacienteVenta(ficha?.nombre || escrito, tel || (editar ? '' : ficha?.tel));
+  });
+}
+function pintarAyudaComprobante(){
+  const ayuda = $('#ayudaComprobante');
+  if(!ayuda) return;
+  ayuda.hidden = !F.comprobante;
+  ayuda.textContent = F.tel.replace(/\D/g, '') ? `Para ${F.tel}` : 'Podrás elegir el contacto en WhatsApp.';
+}
+function pintarFechaVenta(){
+  const texto = F.fecha ? fCorta(F.fecha) : 'Elige la fecha';
+  $('#fechaVisible').textContent = texto;
+  $('#fechaResumen').textContent = F.fecha === hoyISO() ? 'Hoy' : texto;
 }
 function agregarItem(pid){
   const p = prodPorId(pid);
+  if(!p || p.borrado || p.tipo !== 'venta') return;
   const ya = F.items.find(i => i.prod === pid);
-  if(ya){ ya.cant = fCant((num(ya.cant) || 0) + 1); return; }
-  F.items.push({prod:pid, nombre:p.nombre, cant:'1', precio:dineroIn(p.precio), costo:p.costo || 0});
+  if(ya) ya.cant = fCant((num(ya.cant) || 0) + 1);
+  else F.items.push({prod:pid, nombre:p.nombre, cant:'1', precio:dineroIn(p.precio ?? 0), costo:p.costo || 0});
+  F.ultimoAgregado = pid;
+  return p;
 }
-const totalF = () => red(F.items.reduce((s, i) => s + (num(i.cant) || 0) * (num(i.precio) || 0), 0));
+function numeroVenta(valor){
+  if(typeof valor === 'number') return num(valor);
+  const limpio = valor.trim().replace(/^\$\s*/, '');
+  return /^(?:\d+(?:[.,]\d+)?|[.,]\d+|\d{1,3}(?:\.\d{3})+,\d+)$/.test(limpio) ? num(limpio) : NaN;
+}
+const importeItemVenta = it => red(numeroVenta(it.cant) || 0) * red(numeroVenta(it.precio) || 0);
+const subtotalVenta = items => red(items.reduce((suma, it) => suma + importeItemVenta(it), 0));
+const descuentoVenta = valor => valor.trim() ? red(numeroVenta(valor)) : 0;
 function pintarSelectorVenta(){
-  const q = norm(F.buscar), selector = $('#selProd');
-  const todos = productos('venta');
-  const ps = todos.filter(p => coincideProducto(p, q)).slice(0, 30);
-  selector.innerHTML = ps.length ? ps.map(p => filaProducto(p, 'vAgregar', true)).join('') :
-    `<div class="vacio">${todos.length ? 'No encontré ese producto.' : 'Agrega productos en Inventario para empezar a vender.'}</div>`;
+  const q = norm(F.buscar), selector = $('#selProd'), categoria = F.categoria;
+  const lista = !q && categoria === 'populares' ? F.populares : F.todos;
+  const ps = lista.filter(p => coincideProducto(p, q) && (!categoria.startsWith('cat:') || p.cat === categoria.slice(4)));
+  selector.innerHTML = ps.length ? ps.map(p => {
+    const stock = stockDe(p.id);
+    const aviso = avisosDe(p).find(a => a.clase === 'fecha');
+    const nivel = stock <= (p.min || 0) || stock === 1 || aviso?.nivel === 'bad' ? 'bad' : aviso ? 'warn' : '';
+    const restante = stock <= 0 ? 'Agotado' : `${stock === 1 ? 'Queda' : 'Quedan'} ${fCant(stock)}`;
+    return `<button class="tarjeta-venta" data-act="vAgregar" data-id="${esc(p.id)}">
+      ${avatar(p)}<span class="nombre-tarjeta-venta">${esc(p.nombre)}</span>
+      <strong class="num">${dinero(p.precio)}</strong><span class="stock-tarjeta-venta ${nivel}">${restante}</span>
+      <span class="cantidad-tarjeta-venta" hidden></span>
+    </button>`;
+  }).join('') : `<div class="vacio">${F.todos.length ? 'No encontré productos con ese filtro.' : 'Agrega productos en Inventario para empezar a vender.'}</div>`;
   cargarFotos(selector);
+  pintarCantidadesVenta();
 }
-function pintarCarrito(){
-  const detalle = $('#detalleVenta');
-  const sc = detalle.scrollTop;
-  detalle.innerHTML = `${F.items.map((it, i) => `<div class="item-venta">
-      <span class="producto-carrito">${avatar(prodPorId(it.prod) || it, 'sm')}<span class="n">${esc(it.nombre)}</span></span><button type="button" class="x" data-act="vQuitar" data-i="${i}" aria-label="Quitar ${esc(it.nombre)}">${IC.x}</button>
-      <div class="ctl">
-        ${pasos('Cantidad', 'cant', '', i)}
-        <div class="campo"><label for="venta-precio-${i}">Precio c/u ($)</label><input id="venta-precio-${i}" type="text" inputmode="decimal" data-item="${i}" data-c="precio" value="${esc(it.precio)}"></div>
-      </div>
-      <span class="sub num" data-sub="${i}"></span></div>`).join('')}
-    <div class="campo"><span class="lbl">Forma de pago</span>
-      <div class="seg" role="group" aria-label="Forma de pago">${PAGOS.map(p => opcion('pagoVenta', p, p, F.pagoMarcado === p)).join('')}</div>
-      <label class="check"><input type="checkbox" id="pagoPendiente"${F.pago === 'Por cobrar' ? ' checked' : ''}> Queda pendiente</label>
-    </div>
-    ${campo('Nota (opcional)', 'nota', {area:true})}`;
-  detalle.scrollTop = sc;
-  $('#pagoPendiente').addEventListener('change', e => { F.pago = e.target.checked ? 'Por cobrar' : F.pagoMarcado; });
-  cargarFotos(detalle);
-  actualizarTotalesVenta();
-}
-function actualizarTotalesVenta(){
-  const n = F.items.length;
-  $('#resumenVenta').textContent = `Venta · ${n} ${n === 1 ? 'producto' : 'productos'}`;
-  $('#vTotal').textContent = dinero(totalF());
-  $$('[data-sub]', $('#detalleVenta')).forEach(e => {
-    const it = F.items[+e.dataset.sub];
-    e.textContent = dinero((num(it.cant) || 0) * (num(it.precio) || 0));
-  });
+function pintarCantidadesVenta(animar){
   const cantidades = new Map(F.items.map(i => [i.prod, i.cant]));
-  for(const b of $$('[data-act="vAgregar"]', $('#selProd'))){
-    const cantidad = cantidades.get(b.dataset.id), etiqueta = $('.en-venta', b);
-    etiqueta.hidden = !cantidad;
-    etiqueta.textContent = cantidad ? cantidad + ' en la venta' : '';
+  for(const boton of $$('.tarjeta-venta', $('#selProd'))){
+    const cantidad = cantidades.get(boton.dataset.id), insignia = $('.cantidad-tarjeta-venta', boton);
+    boton.classList.toggle('en-carrito', Boolean(cantidad));
+    insignia.hidden = !cantidad;
+    insignia.textContent = cantidad ? cantidad : '';
+    insignia.setAttribute('aria-label', cantidad ? cantidad + ' en el carrito' : '');
+    if(cantidad && boton.dataset.id === animar && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+      insignia.animate([{transform:'scale(.8)'}, {transform:'scale(1.18)'}, {transform:'scale(1)'}], {duration:180});
   }
 }
+function pintarCarrito(animar){
+  const items = $('#itemsVenta'), activo = document.activeElement;
+  items.innerHTML = F.items.length ? F.items.map((it, i) => `<div class="item-venta" role="group" aria-label="${esc(it.nombre)}">
+    <button class="producto-carrito" data-act="vPrecio" data-i="${i}" aria-label="Editar precio de ${esc(it.nombre)}">
+      ${avatar(prodPorId(it.prod) || it, 'sm')}<span class="producto-carrito-texto">
+        <span class="n">${esc(it.nombre)}</span><span class="precio-carrito num">${dinero(num(it.precio))} c/u</span>
+      </span>
+    </button>
+    ${pasos('Cantidad', 'cant', '', i)}
+  </div>`).join('') : '<p class="peq muted sin-items">Toca un producto para agregarlo a la venta.</p>';
+  cargarFotos(items);
+  if(!activo.isConnected) enfocarControl(activo, items);
+  actualizarTotalesVenta(animar);
+}
+function actualizarTotalesVenta(animar){
+  const n = F.items.length, ultima = F.items.find(it => it.prod === F.ultimoAgregado) || F.items.at(-1);
+  const subtotal = subtotalVenta(F.items), descuento = descuentoVenta(F.descuento);
+  const total = dinero(Math.max(0, subtotal - (descuento >= 0 ? descuento : 0)));
+  const detalle = $('#detalleVenta'), vista = $('#vistaCarrito');
+  $('#resumenVenta').textContent = `Venta · ${n} ${n === 1 ? 'producto' : 'productos'}`;
+  vista.textContent = ultima ? ultima.nombre : '';
+  vista.hidden = !ultima || !detalle.hidden;
+  $('#vTotal').textContent = total;
+  $('.num', $('#totalDetalle')).textContent = total;
+  $('#totalPlegado').hidden = !detalle.hidden;
+  $('#totalDetalle').hidden = !n;
+  const accion = F.cobrado ? 'Cobrar' : 'Registrar pendiente';
+  const importe = n ? (F.cobrado ? ' ' : ' · ') + total : '';
+  $('#accionVenta').textContent = F.id ? 'Guardar cambios' : accion + importe;
+  $('#accionVenta').parentElement.disabled = !n;
+  pintarCantidadesVenta(animar);
+}
 function agregarALaVenta(id){
-  agregarItem(id);
-  pintarCarrito();
+  const p = agregarItem(id);
+  if(!p) return;
+  pintarCarrito(id);
+  $('#anuncio').textContent = p.nombre + ' en el carrito. ' + $('#resumenVenta').textContent;
+  navigator.vibrate?.(10);
+}
+function editarPrecioVenta(indice){
+  const it = F.items[indice];
+  const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
+    <span class="tirador" aria-hidden="true"></span><h3>Editar precio</h3><p>${esc(it.nombre)}</p>
+    <div class="campo"><label for="precioVenta">Precio c/u ($)</label>
+      <input id="precioVenta" type="text" inputmode="decimal" value="${esc(it.precio)}" required></div>
+    <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button>
+      <button class="btn" type="submit">Aplicar</button></div>
+  </form>`, {cls:'dlg-fondo'});
+  const precio = $('#precioVenta', d);
+  precio.addEventListener('input', () => precio.setCustomValidity(''));
+  $('form', d).addEventListener('submit', async e => {
+    e.preventDefault();
+    if(cierrePendiente) return;
+    const valor = numeroVenta(precio.value);
+    if(!(valor >= 0)){
+      precio.setCustomValidity('Escribe un precio válido.');
+      precio.reportValidity();
+      return;
+    }
+    it.precio = dineroIn(valor);
+    await cerrarCapa();
+    pintarCarrito();
+  });
 }
 document.addEventListener('input', e => {
   const i = e.target.dataset && e.target.dataset.item;
-  if(F && F.items && i !== undefined){ F.items[+i][e.target.dataset.c] = e.target.value; if(F.alItem) F.alItem(); }
+  if(F?.items && i !== undefined){
+    F.items[+i][e.target.dataset.c] = e.target.value;
+    actualizarTotalesVenta();
+  }
 });
+function enlaceComprobante(v){
+  const lineas = v.items.map(it => `${fCant(it.cant)} × ${it.nombre} · ${dinero(importeItemVenta(it))}`);
+  return waLink(v.tel, ['Comprobante SPARATI', fDia(v.fecha) + ' de ' + v.fecha.slice(0, 4),
+    ...(v.pac ? [v.pac] : []), '', ...lineas,
+    ...(v.descuento ? ['Descuento: ' + dinero(v.descuento)] : []),
+    'Total: ' + dinero(totalVenta(v)), v.cobrado ? 'Cobrado · ' + cap(v.pago) : 'Queda pendiente', '', 'Gracias por tu compra.'].join('\n'));
+}
+function cantidadesPorProducto(items){
+  const cantidades = new Map();
+  for(const it of items) cantidades.set(it.prod, red((cantidades.get(it.prod) || 0) + it.cant));
+  return cantidades;
+}
 async function guardarVenta(){
   const formulario = F;
   if(!F.items.length){ toast('Agrega al menos un producto'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
-  for(const it of F.items){ if(!(num(it.cant) > 0)){ toast('Revisa la cantidad de ' + it.nombre); return; } if(!(num(it.precio) >= 0)){ toast('Revisa el precio de ' + it.nombre); return; } }
-  if(!F.pac.trim() && !(await confirmar('¿Guardar sin nombre?', 'No escribiste el nombre de la paciente. Así no sabrás después a quién se lo vendiste.', 'Guardar igual'))) return;
-  if(F !== formulario) return;
-  // Avisar si se vende más de lo que hay
+  for(const it of F.items){
+    if(!(red(numeroVenta(it.cant)) > 0)){ toast('Revisa la cantidad de ' + it.nombre); return; }
+    if(!(numeroVenta(it.precio) >= 0)){ toast('Revisa el precio de ' + it.nombre); return; }
+  }
+  const descuento = descuentoVenta(F.descuento);
+  if(!(descuento >= 0 && descuento <= subtotalVenta(F.items))){
+    toast('El descuento tiene que estar entre cero y el subtotal de la venta.');
+    if($('#detalleVenta').hidden) ACT.verCarrito($('.resumen-venta'));
+    $('#campo-descuento').focus();
+    return;
+  }
   const previo = F.id ? E.ventas.find(x => x.id === F.id) : null;
-  const falta = F.items.filter(it => { const antes = previo ? (previo.items.find(x => x.prod === it.prod) || {cant:0}).cant : 0; return num(it.cant) > stockDe(it.prod) + antes; });
-  if(falta.length && !(await confirmar('No alcanza el inventario', `Según la app no hay suficiente stock para esta venta. Revisa <b>${falta.map(i => esc(i.nombre)).join(', ')}</b>. Si tienes lo necesario, guarda igual y luego ajusta la cantidad en su ficha.`, 'Guardar igual'))) return;
+  const items = F.items.map(it => ({...it, cant:red(numeroVenta(it.cant)), precio:red(numeroVenta(it.precio)), costo:it.costo || 0}));
+  const anteriores = cantidadesPorProducto(previo?.items || []), cantidades = cantidadesPorProducto(items);
+  const falta = [...new Set(items.filter(it =>
+    cantidades.get(it.prod) > red(stockDe(it.prod) + (anteriores.get(it.prod) || 0))).map(it => esc(it.nombre)))];
+  if(falta.length && !(await confirmar('No alcanza el inventario', `Revisa la cantidad disponible de <b>${falta.join(', ')}</b>. Si tienes lo necesario, registra la venta y luego ajusta las existencias en Inventario.`, 'Registrar igual'))) return;
   if(F !== formulario) return;
-  const items = F.items.map(it => ({prod:it.prod, nombre:it.nombre, cant:red(num(it.cant)), precio:red(num(it.precio)), costo:it.costo || 0}));
-  const cobrado = F.pago !== 'Por cobrar';
-  const pago = cobrado && previo && cap(previo.pago) === F.pago ? previo.pago : F.pago;
   const base = previo || {id:uid(), recordados:{}};
-  const v = marcar({...base, pac:F.pac.trim(), tel:F.tel.trim(), fecha:F.fecha, items, cobrado, pago, nota:F.nota.trim()}, !previo);
+  const v = marcar({...base, pac:F.pac, tel:F.tel, fecha:F.fecha, items, cobrado:F.cobrado,
+    pago:norm(F.pago), nota:F.nota.trim(), descuento}, !previo);
   const ventas = previo ? E.ventas.map(x => x === previo ? v : x) : [...E.ventas, v];
   const movs = E.movs.map(m => m.venta === v.id && !m.borrado ? marcar({...m, borrado:true}) : m);
-  const registrados = items.map(it => marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant, fecha:v.fecha, pac:v.pac, precio:it.precio, venta:v.id}, true));
+  const registrados = items.map(it => marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant,
+    fecha:v.fecha, pac:v.pac, precio:it.precio, costo:it.costo || 0, venta:v.id}, true));
   movs.push(...registrados);
   const estado = {...E, ventas, movs, pacientes:[...E.pacientes]};
   completarPacientes(estado);
   if(!guardar(estado)) return;
-  await cerrarCapa();
+  const enlace = !previo && F.comprobante ? enlaceComprobante(v) : '';
+  // La venta ya está guardada. Si se bloquea la pestaña, el aviso ofrece el enlace.
+  if(enlace){
+    try{ window.open(enlace, '_blank', 'noopener'); }
+    catch(e){}
+  }
+  await cerrarCapa(previo ? 1 : pila.length);
+  if(!previo){
+    irPantalla('inicio');
+    window.scrollTo(0, 0);
+  }
   refrescar();
   if(previo) toast('Venta actualizada');
-  else avisarConDeshacer(`Venta guardada · ${dinero(totalVenta(v))}`, {ventas:[v], movs:registrados}, true);
+  else avisarConDeshacer(`${v.cobrado ? 'Venta cobrada' : 'Venta pendiente'} · ${dinero(totalVenta(v))}`,
+    {ventas:[v], movs:registrados}, true, undefined, {exito:true, enlace});
 }
 async function borrarVenta(){
   const formulario = F;
@@ -1699,29 +1939,15 @@ async function detectorDeCodigos(){
   const Detector = await lectorLocal;
   return new Detector({formats:FORMATOS_CODIGO});
 }
-function asignarCodigo(id){
-  const p = prodPorId(id);
-  const d = abrirCapa(cabecera('Asignar código de barras', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in asignar-codigo">
-    <p class="muted">${esc(p.nombre)}</p>
+function visorCamara(){
+  return `
     <div class="visor-codigo" hidden><video playsinline muted autoplay aria-label="Vista de la cámara"></video></div>
     <button class="btn soft" type="button" data-camara>${IC.escaneo} Abrir cámara</button>
-    <p class="ayuda" role="status" id="estadoCamara"></p>
-    <form class="card">
-      <div class="campo"><label for="codigoAsignar">Escribir el código a mano</label>
-        <input type="text" id="codigoAsignar" value="${esc(p.codigo ?? '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="errorAsignar" required>
-        <p class="ayuda error-codigo" id="errorAsignar" role="status"></p></div>
-      <button class="btn" type="submit">Guardar código</button>
-    </form></div></div>`, {tipo:'asignarCodigo', alCerrar:() => {
-    detenerCamara();
-    document.removeEventListener('visibilitychange', pausarCamara);
-  }});
-  const video = $('video', d), visor = video.parentElement, boton = $('[data-camara]', d), estado = $('#estadoCamara', d);
-  const campo = $('#codigoAsignar', d), error = $('#errorAsignar', d), form = $('form', d);
+    <p class="ayuda" role="status" data-estado-camara></p>`;
+}
+function prepararCamara(d, campo, alLeer){
+  const video = $('video', d), visor = video.parentElement, boton = $('[data-camara]', d), estado = $('[data-estado-camara]', d);
   let intento, flujo, espera;
-  function limpiarError(){
-    error.textContent = '';
-    campo.removeAttribute('aria-invalid');
-  }
   function detenerCamara(){
     intento = null;
     clearTimeout(espera);
@@ -1759,10 +1985,8 @@ function asignarCodigo(id){
           const codigo = codigos.find(c => c.rawValue?.trim())?.rawValue;
           if(codigo){
             detenerCamara();
-            campo.value = codigo;
-            limpiarError();
-            estado.textContent = 'Código leído. Revisa que esté bien y guárdalo.';
-            $('[type="submit"]', form).focus();
+            estado.textContent = '';
+            alLeer(codigo, estado);
           } else espera = setTimeout(leer, 120);
         }catch(e){
           if(intento !== actual) return;
@@ -1782,8 +2006,35 @@ function asignarCodigo(id){
   boton.addEventListener('click', abrirCamara);
   campo.addEventListener('input', () => {
     if(intento){ detenerCamara(); estado.textContent = ''; }
-    limpiarError();
   });
+  return {abrir:abrirCamara, cerrar(){
+    detenerCamara();
+    document.removeEventListener('visibilitychange', pausarCamara);
+  }};
+}
+function asignarCodigo(id){
+  const p = prodPorId(id);
+  const d = abrirCapa(cabecera('Asignar código de barras', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in asignar-codigo">
+    <p class="muted">${esc(p.nombre)}</p>
+    ${visorCamara()}
+    <form class="card">
+      <div class="campo"><label for="codigoAsignar">Escribir el código a mano</label>
+        <input type="text" id="codigoAsignar" value="${esc(p.codigo ?? '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="errorAsignar" required>
+        <p class="ayuda error-codigo" id="errorAsignar" role="status"></p></div>
+      <button class="btn" type="submit">Guardar código</button>
+    </form></div></div>`, {tipo:'asignarCodigo', alCerrar:() => camara.cerrar()});
+  const campo = $('#codigoAsignar', d), error = $('#errorAsignar', d), form = $('form', d);
+  function limpiarError(){
+    error.textContent = '';
+    campo.removeAttribute('aria-invalid');
+  }
+  const camara = prepararCamara(d, campo, (codigo, estado) => {
+    campo.value = codigo;
+    limpiarError();
+    estado.textContent = 'Código leído. Revisa que esté bien y guárdalo.';
+    $('[type="submit"]', form).focus();
+  });
+  campo.addEventListener('input', limpiarError);
   form.addEventListener('submit', async e => {
     e.preventDefault();
     if(cierrePendiente) return;
@@ -1805,26 +2056,31 @@ function asignarCodigo(id){
     refrescar();
     toast('Código asignado');
   });
-  if(!p.codigo) abrirCamara();
+  if(!p.codigo) camara.abrir();
 }
 
 function abrirCodigo(modo){
+  const paraVenta = modo === 'vender';
   const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
     <span class="tirador" aria-hidden="true"></span><h3>Escanear</h3>
+    ${paraVenta ? visorCamara() : ''}
     <div class="campo"><label for="codigoEscrito">Escribir el código a mano</label>
       <input type="text" id="codigoEscrito" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
       <span class="ayuda error-codigo" id="errorCodigo" role="status"></span>
     </div>
     <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button><button class="btn" type="submit">Buscar código</button></div>
-  </form>`, {cls:'dlg-fondo', tipo:'codigo'});
+  </form>`, {cls:'dlg-fondo', tipo:'codigo', alCerrar:() => camara?.cerrar()});
   const form = $('form', d), campo = $('#codigoEscrito', d), error = $('#errorCodigo', d);
   campo.setAttribute('aria-describedby', error.id);
   campo.addEventListener('input', () => { error.textContent = ''; campo.removeAttribute('aria-invalid'); });
   form.addEventListener('submit', async e => {
     e.preventDefault();
+    await aplicarCodigo(campo.value);
+  });
+  async function aplicarCodigo(codigo){
     if(cierrePendiente) return;
-    const q = norm(campo.value);
-    const tipo = modo === 'vender' ? 'venta' : esInventario(modo) ? modo : undefined;
+    const q = norm(codigo);
+    const tipo = paraVenta ? 'venta' : esInventario(modo) ? modo : undefined;
     const p = q && productos(tipo).find(p => norm(p.codigo) === q);
     if(!p){
       campo.setAttribute('aria-invalid', 'true');
@@ -1832,10 +2088,15 @@ function abrirCodigo(modo){
       return;
     }
     await cerrarCapa();
-    if(modo === 'vender') agregarALaVenta(p.id);
+    if(paraVenta) agregarALaVenta(p.id);
     else verProd(p.id);
-  });
+  }
+  const camara = paraVenta ? prepararCamara(d, campo, codigo => {
+    campo.value = codigo;
+    aplicarCodigo(codigo);
+  }) : null;
   d.addEventListener('click', e => { if(e.target === d) cerrarCapa(); });
+  camara?.abrir();
 }
 
 // ---------- Compartir entre los dos celulares ----------
@@ -2138,7 +2399,14 @@ const ACT = {
   paso(b){
     const inp = $('input', b.closest('.paso'));
     const v = num(inp.value), d = Number(b.dataset.d);
-    inp.value = fCant(Math.max(0, (isFinite(v) ? v : 0) + d));
+    const siguiente = Math.max(0, (isFinite(v) ? v : 0) + d);
+    if(inp.dataset.item !== undefined && d < 0 && siguiente === 0){
+      F.items.splice(+inp.dataset.item, 1);
+      pintarCarrito();
+      $('.resumen-venta').focus({preventScroll:true});
+      return;
+    }
+    inp.value = fCant(siguiente);
     inp.dispatchEvent(new Event('input', {bubbles:true}));
   },
   async nuevaCat(){
@@ -2151,20 +2419,32 @@ const ACT = {
   fFoto(){ if(!F.cargandoFoto){ const i = $('#inFoto'); i.value = ''; i.click(); } },
   fSinFoto(){ if(F.fotoNueva){ FDB.del(F.fotoNueva).catch(() => {}); F.fotoNueva = null; } F.foto = ''; repintar(); },
   vAgregar(b){ agregarALaVenta(b.dataset.id); },
-  vQuitar(b){
-    F.items.splice(+b.dataset.i, 1);
-    pintarCarrito();
-    $('.resumen-venta').focus({preventScroll:true});
+  vCategoria(b){
+    F.categoria = b.dataset.v;
+    seleccionarOpcion(b);
+    pintarSelectorVenta();
   },
+  vBuscaPaciente(){ buscarPacienteVenta(); },
+  vNuevaPaciente(b){ editarPacienteVenta(Boolean(b.dataset.editar)); },
+  vEligePaciente(b){
+    const p = F.lista.find(p => p.nombre === b.dataset.n);
+    seleccionarPacienteVenta(p?.nombre || '', p?.tel);
+  },
+  vPrecio(b){ editarPrecioVenta(+b.dataset.i); },
   verCarrito(b){
     const detalle = $('#detalleVenta');
     detalle.hidden = !detalle.hidden;
     b.setAttribute('aria-expanded', String(!detalle.hidden));
+    actualizarTotalesVenta();
   },
   pagoVenta(b){
-    F.pagoMarcado = b.dataset.v;
-    if(!$('#pagoPendiente').checked) F.pago = F.pagoMarcado;
+    F.pago = b.dataset.v;
     seleccionarOpcion(b);
+  },
+  estadoPagoVenta(b){
+    F.cobrado = b.dataset.v === 'cobrado';
+    seleccionarOpcion(b);
+    actualizarTotalesVenta();
   },
   editarVenta(b){ formVenta(b.dataset.id); },
   borrarVenta(){ borrarVenta(); },

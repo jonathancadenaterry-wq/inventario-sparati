@@ -7,7 +7,7 @@ import mimetypes
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -158,6 +158,16 @@ def cerrar_hoja(pagina):
     expect(capas).to_have_count(anterior - 1)
 
 
+def nueva_paciente_venta(pagina, nombre, telefono=''):
+    pagina.get_by_role('button', name='Nueva', exact=True).click()
+    ficha = pagina.get_by_role('dialog', name='Nueva paciente')
+    ficha.get_by_label('Nombre', exact=True).fill(nombre)
+    if telefono:
+        ficha.get_by_label('Teléfono (opcional)').fill(telefono)
+    ficha.get_by_role('button', name='Elegir paciente').click()
+    expect(pagina.locator('.paciente-venta-nombre b')).to_have_text(nombre.strip())
+
+
 def contrastes(pagina, pares):
     return pagina.evaluate("""pares => {
       const contexto = document.createElement('canvas').getContext('2d');
@@ -222,11 +232,11 @@ def prueba_edicion(navegador, perfil=None):
         inventario(pagina, 'venta')
         pagina.locator('#listaProd [data-id=p1]').click()
         pagina.get_by_role('dialog').get_by_role('button', name='Vender', exact=True).click()
-        pagina.get_by_label('Paciente', exact=True).fill('Rosa Cauce')
-        pagina.get_by_role('button', name='Guardar', exact=True).click()
-        expect(pagina.locator('#toast')).to_contain_text('Venta guardada')
-        expect(pagina.locator('.det-stock .q')).to_have_text('4')
-        cerrar_hoja(pagina)
+        nueva_paciente_venta(pagina, 'Rosa Cauce')
+        pagina.get_by_role('button', name='Cobrar $ 18,00').click()
+        expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
+        expect(pagina).to_have_url(APP)
+        inventario(pagina, 'venta')
         expect(pagina.locator('[data-act=verProd][data-id=p1] .stock')).to_have_text('4')
         estado = datos_guardados(pagina)
         venta = estado['ventas'][-1]
@@ -461,6 +471,14 @@ def prueba_sin_conexion(navegador):
         pagina.get_by_role('button', name='Deshacer', exact=True).click()
         expect(cabina).to_contain_text('Abierto hace 13 días')
         assert all(m['borrado'] for m in datos_guardados(pagina)['movs'][-2:])
+        pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender', exact=True).click()
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        venta.get_by_role('button', name='Escanear código de barras').click()
+        expect(venta.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
+        venta.get_by_role('button', name=re.compile(r'^Cobrar \$')).click()
+        expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
+        assert 'Péptidos Efecto Botox' in datos_guardados(pagina)['ventas'][-1]['items'][0]['nombre']
+        expect(pagina).to_have_url(APP)
     finally:
         sitio.cerrar()
 
@@ -510,12 +528,13 @@ def prueba_navegacion(navegador, perfil=None):
         barra.get_by_role('button', name='Reportes').click()
         expect(pagina.get_by_role('heading', name='Reportes')).to_be_visible()
         barra.get_by_role('button', name='Vender').click()
-        pagina.get_by_label('Paciente', exact=True).fill('Nombre sin guardar')
+        nueva_paciente_venta(pagina, 'Nombre sin guardar')
         pagina.keyboard.press('Escape')
         expect(pagina.locator('#capas > *')).to_have_count(0)
         expect(pagina.get_by_role('heading', name='Reportes')).to_be_visible()
         barra.get_by_role('button', name='Vender').click()
-        expect(pagina.get_by_label('Paciente', exact=True)).to_have_value('')
+        expect(pagina.locator('.paciente-venta-nombre b')).to_have_text('Sin nombre')
+        assert datos_guardados(pagina) == ESTADO_V1
     finally:
         sitio.cerrar()
 
@@ -579,14 +598,14 @@ def prueba_carrito_y_deshacer(navegador, perfil=None):
         venta = pagina.get_by_role('dialog', name='Nueva venta')
         resumen = pagina.locator('.resumen-venta')
         expect(resumen).to_have_attribute('aria-expanded', 'false')
-        pagina.get_by_label('Paciente', exact=True).fill('Rosa Cauce')
-        venta.get_by_role('button', name='Escanear').click()
+        nueva_paciente_venta(pagina, 'Rosa Cauce')
+        venta.get_by_role('button', name='Escanear', exact=True).click()
         pagina.get_by_label('Escribir el código a mano').fill('12345670')
         pagina.get_by_role('button', name='Buscar código').click()
-        expect(resumen).to_have_text('Venta · 1 producto')
+        expect(resumen.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
         expect(pagina.locator('#vTotal')).to_have_text('$ 18,00')
         pagina.locator('#selProd [data-id=p2]').click()
-        expect(resumen).to_have_text('Venta · 2 productos')
+        expect(resumen.locator('#resumenVenta')).to_have_text('Venta · 2 productos')
         resumen.click()
         expect(resumen).to_have_attribute('aria-expanded', 'true')
         primero = pagina.locator('.item-venta').first
@@ -594,27 +613,31 @@ def prueba_carrito_y_deshacer(navegador, perfil=None):
         expect(primero.get_by_label('Cantidad', exact=True)).to_have_value('2')
         expect(pagina.locator('#vTotal')).to_have_text('$ 60,00')
         primero.get_by_role('button', name='Restar uno').click()
-        primero.get_by_label('Precio c/u ($)').fill('19,50')
+        primero.get_by_role('button', name=re.compile('Editar precio')).click()
+        precio = pagina.get_by_role('dialog', name='Editar precio')
+        precio.get_by_label('Precio c/u ($)').fill('19,50')
+        precio.get_by_role('button', name='Aplicar').click()
         expect(pagina.locator('#vTotal')).to_have_text('$ 43,50')
         pago = pagina.get_by_role('button', name='Tarjeta', exact=True)
         pago.click()
         expect(pago).to_have_attribute('aria-pressed', 'true')
-        pagina.get_by_label('Queda pendiente').check()
-        pagina.get_by_label('Queda pendiente').uncheck()
+        pagina.get_by_role('button', name='Queda pendiente').click()
+        pagina.get_by_role('button', name='Cobrado', exact=True).click()
         pagina.evaluate("""() => {
           window.guardarOriginal = Storage.prototype.setItem;
           Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
         }""")
-        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        cobrar = pagina.get_by_role('button', name='Cobrar $ 43,50')
+        cobrar.click()
         expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
         assert datos_guardados(pagina) == estado
         assert pagina.evaluate("['p1', 'p2'].map(stockDe)") == [5, 4]
         assert pagina.evaluate('E.ventas.length') == 1
         pagina.evaluate('() => { Storage.prototype.setItem = window.guardarOriginal; }')
-        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        cobrar.click()
         expect(pagina.locator('#capas > *')).to_have_count(0)
         ventas = datos_guardados(pagina)['ventas']
-        assert ventas[-1]['pago'] == 'Tarjeta' and ventas[-1]['cobrado']
+        assert ventas[-1]['pago'] == 'tarjeta' and ventas[-1]['cobrado']
         assert ventas[-1]['items'][0]['precio'] == 19.5
 
         inventario(pagina, 'ventas')
@@ -645,6 +668,237 @@ def prueba_carrito_y_deshacer(navegador, perfil=None):
         pagina.clock.run_for(1)
         expect(deshacer).to_be_hidden()
         expect(pagina.locator('.frasco-en-uso .pill')).to_have_text('Agotado')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_venta_rapida(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(quien='Elba')
+        abrir_ajustes(pagina).get_by_role('button', name='Cargar datos de ejemplo').click()
+        expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
+        pagina.clock.fast_forward(5000)
+        cerrar_hoja(pagina)
+        pagina.evaluate("""() => {
+          const {ventas} = E;
+          const v = ventas[0], p = productos('venta').find(p => !p.foto);
+          const it = {prod:p.id, nombre:p.nombre, cant:100, precio:p.precio};
+          const viejas = [
+            {...v, id:'fuera-de-plazo', fecha:sumarDias(hoyISO(), -60), items:[it]},
+            {...v, id:'borrada', fecha:hoyISO(), items:[it], borrado:true},
+            {...v, id:'futura', fecha:sumarDias(hoyISO(), 1), items:[it]},
+          ];
+          guardar({...E, ventas:ventas.concat(viejas)});
+          refrescar();
+          window.toquesVenta = [];
+          document.addEventListener('click', e => {
+            const b = e.target.closest('button[data-act]');
+            if(b) window.toquesVenta.push(b.dataset.act);
+          }, {capture:true});
+        }""")
+        antes = datos_guardados(pagina)
+        cantidad = {}
+        for venta in antes['ventas']:
+            if not venta.get('borrado') and '2026-09-29' <= venta['fecha'] <= '2026-11-27':
+                for it in venta['items']:
+                    cantidad[it['prod']] = cantidad.get(it['prod'], 0) + it['cant']
+        assert len(cantidad) == 9
+
+        def tocar(control):
+            if perfil:
+                control.tap()
+            else:
+                control.click()
+
+        tocar(pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Vender', exact=True))
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        tarjetas = venta.locator('.tarjeta-venta')
+        expect(tarjetas).to_have_count(9)
+        ids = tarjetas.evaluate_all('botones => botones.map(b => b.dataset.id)')
+        assert set(ids) == set(cantidad)
+        assert [cantidad[id_] for id_ in ids] == sorted(cantidad.values(), reverse=True)
+        assert venta.locator('#selProd').evaluate("el => getComputedStyle(el).gridTemplateColumns.split(' ').length") == 3
+        for i in range(3):
+            tarjeta = tarjetas.nth(i)
+            foto = tarjeta.locator('img')
+            expect(foto).to_be_visible()
+            pagina.wait_for_function('(i) => document.querySelectorAll("#selProd button")[i].querySelector("img").naturalWidth > 0', arg=i)
+            tocar(foto)
+        expect(venta.locator('#resumenVenta')).to_have_text('Venta · 3 productos')
+        expect(venta.locator('.cantidad-tarjeta-venta:visible')).to_have_text(['1', '1', '1'])
+        expect(venta.locator('.vista-carrito')).to_contain_text(tarjetas.nth(2).locator('.nombre-tarjeta-venta').inner_text())
+        tocar(venta.get_by_role('button', name=re.compile(r'^Cobrar \$')))
+        expect(pagina.locator('#capas > *')).to_have_count(0)
+        expect(pagina).to_have_url(APP)
+        expect(pagina.locator('.toast-venta')).to_contain_text('Venta cobrada')
+        expect(pagina.locator('.check-venta')).to_be_visible()
+        assert pagina.locator('.check-venta').evaluate('el => getComputedStyle(el).animationName') == 'none'
+        assert pagina.evaluate('toquesVenta') == ['vender', 'vAgregar', 'vAgregar', 'vAgregar', 'guardarF']
+        estado = datos_guardados(pagina)
+        venta = estado['ventas'][-1]
+        assert venta['pac'] == '' and venta['pago'] == 'efectivo' and venta['cobrado']
+        assert [(it['prod'], it['cant']) for it in venta['items']] == [(id_, 1) for id_ in ids[:3]]
+        assert all(m['venta'] == venta['id'] and m['cant'] == -1 for m in estado['movs'][-3:])
+        pagina.get_by_role('button', name='Deshacer').click()
+        estado = datos_guardados(pagina)
+        assert estado['ventas'][-1]['borrado'] and all(m['borrado'] for m in estado['movs'][-3:])
+        assert pagina.evaluate('(ids) => ids.map(stockDe)', ids[:3]) == [
+            round(sum(m['cant'] for m in antes['movs'] if m['prod'] == id_ and not m.get('borrado')), 2)
+            for id_ in ids[:3]
+        ]
+    finally:
+        sitio.cerrar()
+
+
+def prueba_opciones_venta(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        sitio.pagina.add_init_script("""(() => {
+          window.solicitudesWhatsApp = [];
+          window.open = url => {
+            window.solicitudesWhatsApp.push(url);
+            throw new DOMException('Ventana bloqueada', 'NotAllowedError');
+          };
+        })();""")
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': 'SP-ABCDE'} if p['id'] == 'p1' else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        pagina.get_by_role('navigation').get_by_role('button', name='Vender').click()
+        dialogo = pagina.get_by_role('dialog', name='Nueva venta')
+        dialogo.get_by_role('button', name='María José Andrade').click()
+        expect(dialogo.locator('.paciente-venta-nombre b')).to_have_text('María José Andrade')
+        dialogo.get_by_role('button', name='Cambiar').click()
+        pacientes = pagina.get_by_role('dialog', name='Elegir paciente')
+        buscar = pacientes.get_by_role('searchbox')
+        buscar.fill('MARIA JOSE')
+        expect(pacientes.locator('.fila-lista')).to_have_count(1)
+        buscar.fill('099 123')
+        expect(pacientes.locator('.fila-lista')).to_contain_text('María José Andrade')
+        pacientes.get_by_role('button', name='Sin nombre').click()
+        expect(dialogo.locator('.paciente-venta-nombre b')).to_have_text('Sin nombre')
+        nueva_paciente_venta(pagina, '  Clara Niebla ', '099 555 0123')
+        assert datos_guardados(pagina) == estado
+
+        dialogo.get_by_role('button', name='Protector solar', exact=True).click()
+        expect(dialogo.locator('.tarjeta-venta')).to_have_count(1)
+        buscar = dialogo.get_by_role('searchbox', name='Buscar producto')
+        buscar.fill('azelac')
+        expect(dialogo.locator('.tarjeta-venta')).to_have_count(0)
+        dialogo.get_by_role('button', name='Más vendidos').click()
+        expect(dialogo.locator('.tarjeta-venta')).to_contain_text('Azelac')
+        buscar.fill('sp-abcde')
+        tarjeta = dialogo.locator('.tarjeta-venta')
+        expect(tarjeta).to_contain_text('Quedan 5')
+        for color in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=color)
+            expect(pagina.locator('html')).to_have_attribute('data-theme', color)
+            razones = contrastes(pagina, [
+                ['.nombre-tarjeta-venta', '.tarjeta-venta'],
+                ['.stock-tarjeta-venta', '.tarjeta-venta'], ['.pac-nueva', '.paciente-venta'],
+                ['.escaner-venta'], ['.fecha-carrito', '.carrito'],
+            ])
+            assert min(razones) >= 4.5, razones
+        assert dialogo.locator('.hoja-cuerpo').evaluate('el => el.scrollWidth === el.clientWidth')
+        tarjeta.click()
+        resumen = dialogo.locator('.resumen-venta')
+        resumen.click()
+        item = dialogo.locator('.item-venta')
+        item.get_by_role('button', name='Restar uno').click()
+        expect(item).to_have_count(0)
+        expect(dialogo.get_by_role('button', name='Cobrar', exact=True)).to_be_disabled()
+        tarjeta.click()
+        item.get_by_label('Cantidad').fill('6')
+        descuento = dialogo.get_by_label('Descuento ($)')
+        descuento.fill('109')
+        dialogo.get_by_role('button', name='Cobrar $ 0,00').click()
+        expect(pagina.locator('#toast')).to_contain_text('El descuento tiene que estar')
+        descuento.fill('8,5')
+        dialogo.get_by_label('Fecha', exact=True).fill('2026-11-26')
+        expect(dialogo.locator('#fechaVisible')).to_have_text('26 nov')
+        expect(dialogo.locator('#fechaResumen')).to_have_text('26 nov')
+        dialogo.get_by_role('button', name='Transferencia', exact=True).click()
+        dialogo.get_by_role('button', name='Queda pendiente', exact=True).click()
+        dialogo.get_by_label('Enviar comprobante por WhatsApp').check()
+        expect(dialogo.locator('#ayudaComprobante')).to_have_text('Para 099 555 0123')
+        expect(dialogo.locator('#vTotal')).to_have_text('$ 99,50')
+        registrar = dialogo.get_by_role('button', name='Registrar pendiente · $ 99,50')
+        registrar.click()
+        confirmar = pagina.get_by_role('dialog', name='No alcanza el inventario')
+        expect(confirmar).to_contain_text('Sun Screen Clear')
+        confirmar.get_by_role('button', name='Cancelar').click()
+        expect(confirmar).to_have_count(0)
+        assert datos_guardados(pagina) == estado
+        assert pagina.evaluate('solicitudesWhatsApp') == []
+        registrar.click()
+        confirmar.get_by_role('button', name='Registrar igual').click()
+        expect(pagina.locator('#toast')).to_contain_text('Venta pendiente · $ 99,50')
+        guardado = datos_guardados(pagina)
+        v = guardado['ventas'][-1]
+        assert (v['pago'], v['cobrado'], v['descuento'], v['fecha']) == ('transferencia', False, 8.5, '2026-11-26')
+        assert (v['pac'], v['tel']) == ('Clara Niebla', '099 555 0123')
+        assert any((p['nombre'], p['tel']) == (v['pac'], v['tel']) for p in guardado['pacientes'])
+        assert pagina.evaluate("stockDe('p1')") == -1
+        enlaces = pagina.evaluate('solicitudesWhatsApp')
+        assert len(enlaces) == 1
+        comprobante = urlsplit(enlaces[0])
+        assert (comprobante.scheme, comprobante.netloc, comprobante.path) == ('https', 'wa.me', '/593995550123')
+        mensaje = parse_qs(comprobante.query)['text'][0]
+        assert all(texto in mensaje for texto in ('Comprobante SPARATI', '6 × Sun Screen Clear', 'Descuento: $ 8,50',
+                                                  'Total: $ 99,50', 'Queda pendiente'))
+        expect(pagina.get_by_role('link', name='Abrir comprobante en WhatsApp')).to_have_attribute('href', enlaces[0])
+
+        inventario(pagina, 'ventas')
+        pagina.locator('.venta').filter(has_text='Clara Niebla').click()
+        editar = pagina.get_by_role('dialog', name='Editar venta')
+        expect(editar.get_by_role('button', name='Queda pendiente')).to_have_attribute('aria-pressed', 'true')
+        expect(editar.get_by_role('button', name='Transferencia')).to_have_attribute('aria-pressed', 'true')
+        expect(editar.get_by_label('Descuento ($)')).to_have_value('8,50')
+        expect(editar.get_by_role('link', name='Abrir comprobante en WhatsApp')).to_have_attribute('href', enlaces[0])
+        editar.get_by_role('button', name='Cobrado', exact=True).click()
+        editar.get_by_label('Cantidad').fill('5')
+        editar.get_by_role('button', name='Guardar cambios').click()
+        expect(editar).to_have_count(0)
+        guardado = datos_guardados(pagina)
+        actual = guardado['ventas'][-1]
+        assert actual['id'] == v['id'] and actual['creado'] == v['creado']
+        assert actual['cobrado'] and actual['descuento'] == 8.5
+        assert pagina.evaluate("stockDe('p1')") == 0
+        assert pagina.evaluate('solicitudesWhatsApp') == enlaces
+    finally:
+        sitio.cerrar()
+
+
+def prueba_camara_venta(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina)
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': '5901234123457'} if p['id'] == 'p1' else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        pagina.get_by_role('navigation').get_by_role('button', name='Vender').click()
+        assert pagina.evaluate('camaraPrueba.solicitudes') == []
+        dialogo = pagina.get_by_role('dialog', name='Nueva venta')
+        dialogo.get_by_role('button', name='Escanear código de barras').click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        expect(lector.get_by_text('No se dio permiso para la cámara', exact=False)).to_be_visible()
+        expect(lector.get_by_label('Escribir el código a mano')).to_be_visible()
+        pagina.evaluate("camaraPrueba.modo = 'blanca'")
+        lector.get_by_role('button', name='Abrir cámara').click()
+        expect(lector.locator('video')).to_be_visible()
+        for atributo in ('playsinline', 'muted', 'autoplay'):
+            expect(lector.locator('video')).to_have_attribute(atributo, '')
+        assert pagina.evaluate('camaraPrueba.solicitudes.at(-1)') == {
+            'video': {'facingMode': {'ideal': 'environment'}}, 'audio': False,
+        }
+        pagina.evaluate("camaraPrueba.modo = 'ean'")
+        expect(lector).to_have_count(0)
+        expect(dialogo.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
+        expect(dialogo.locator('.cantidad-tarjeta-venta:visible')).to_have_text('1')
+        assert pagina.evaluate('camaraPrueba.pistas[0].readyState') == 'ended'
+        assert datos_guardados(pagina) == estado
     finally:
         sitio.cerrar()
 
@@ -909,8 +1163,11 @@ def prueba_ficha_venta(navegador, perfil=None):
         acciones.get_by_role('button', name='Vender', exact=True).click()
         formulario = pagina.get_by_role('dialog', name='Nueva venta')
         expect(formulario.locator('#vTotal')).to_have_text('$ 16,00')
-        formulario.get_by_label('Paciente', exact=True).fill('Rosa Cauce')
-        formulario.get_by_role('button', name='Guardar', exact=True).click()
+        nueva_paciente_venta(pagina, 'Rosa Cauce')
+        formulario.get_by_role('button', name='Cobrar $ 16,00').click()
+        expect(pagina).to_have_url(APP)
+        inventario(pagina, 'venta')
+        producto.click()
         expect(stock.locator('.q')).to_have_text('0')
         expect(stock).to_contain_text('Agotado')
         expect(stock.locator('.barra-stock .lleno')).to_have_count(0)
@@ -1520,7 +1777,7 @@ def capturar(navegador, tarea):
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
-            if tarea == 'T4':
+            if tarea in ('T4', 'T6'):
                 simular_camara(sitio.pagina)
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
@@ -1533,6 +1790,49 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T6':
+                pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Vender', exact=True).click()
+                venta = pagina.get_by_role('dialog', name='Nueva venta')
+                recientes = venta.locator('.paciente-venta-recientes')
+                recientes.locator('[data-act=vEligePaciente]').first.click()
+                tarjetas = venta.locator('.tarjeta-venta')
+                expect(tarjetas).to_have_count(9)
+                guardar(sitio, 'venta-productos', tema)
+
+                venta.get_by_role('button', name='Cambiar').click()
+                pacientes = pagina.get_by_role('dialog', name='Elegir paciente')
+                pacientes.get_by_role('searchbox').fill('diana')
+                guardar(sitio, 'venta-paciente', tema)
+                pacientes.get_by_role('button', name='Diana Albor', exact=True).click()
+                recientes.get_by_role('button', name='Nueva', exact=True).click()
+                formulario = pagina.get_by_role('dialog', name='Nueva paciente')
+                formulario.get_by_label('Nombre').fill('Rosa Cauce')
+                guardar(sitio, 'venta-nueva-paciente', tema)
+                formulario.get_by_role('button', name='Cancelar').click()
+
+                tarjetas.nth(0).click()
+                tarjetas.nth(1).click()
+                venta.locator('.resumen-venta').click()
+                venta.get_by_role('button', name='Transferencia').click()
+                guardar(sitio, 'venta-carrito', tema)
+                venta.get_by_label('Descuento ($)').fill('2,50')
+                venta.get_by_role('button', name='Queda pendiente').click()
+                venta.get_by_label('Enviar comprobante por WhatsApp').check()
+                venta.get_by_label('Descuento ($)').evaluate("el => el.scrollIntoView({block:'center'})")
+                guardar(sitio, 'venta-descuento', tema)
+                venta.get_by_label('Enviar comprobante por WhatsApp').uncheck()
+                venta.get_by_role('button', name='Cobrado', exact=True).click()
+
+                venta.get_by_role('button', name='Escanear código de barras').click()
+                lector = pagina.get_by_role('dialog', name='Escanear')
+                expect(lector.get_by_text('No se dio permiso', exact=False)).to_be_visible()
+                guardar(sitio, 'venta-escaner', tema)
+                cerrar_hoja(pagina)
+
+                venta.get_by_role('button', name=re.compile(r'^Cobrar \$')).click()
+                expect(pagina.locator('.toast-venta')).to_contain_text('Venta cobrada')
+                guardar(sitio, 'venta-exito', tema)
+                continue
             if tarea == 'T5':
                 inventario(pagina, 'uso')
                 nombre = 'Mascarilla hidroplástica Pure Radiance · 280 g'
@@ -1681,12 +1981,13 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T5', choices=['T2', 'T3', 'T4', 'T5'],
-                        help='guardar capturas en modo claro y oscuro (T5 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T6', choices=['T2', 'T3', 'T4', 'T5', 'T6'],
+                        help='guardar capturas en modo claro y oscuro (T6 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
+                        prueba_venta_rapida, prueba_opciones_venta, prueba_camara_venta,
                         prueba_formulario_producto, prueba_inventario_resumen_y_orden,
                         prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo,
                         prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,

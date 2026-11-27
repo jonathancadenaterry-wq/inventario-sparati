@@ -113,7 +113,7 @@ Según `Cabina.png`:
 - Aviso de tiempo después de abierto (PAO): «Ya pasó el tiempo de uso después de abierto».
 - **Hecha cuando:** con los datos de ejemplo se calcula bien el rendimiento y hay pruebas para estos cálculos.
 
-## T6 · Nueva venta  [ ]
+## T6 · Nueva venta  [x]
 Según `Vender.png`:
 - **Paciente**: recientes, buscar, o «+ Nueva» con nombre y teléfono opcional.
 - **Productos**:
