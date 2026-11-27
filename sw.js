@@ -1,7 +1,7 @@
 /* Guarda la app en el celular para que abra sin internet.
    Con internet trae la versión nueva; sin internet, o si la red tarda más de 4 segundos, usa la copia guardada.
    Solo toca sus propias copias (las que empiezan con «sp-»): en el mismo sitio vive también Cuentas de la casa y el Diario de Inglés. */
-const VERSION = 'sp-v1';
+const VERSION = 'sp-v2';
 const ARCHIVOS = ['./', './index.html', './app.js?v=1', './manifest.webmanifest', './icono-192.png', './icono-512.png', './icono-180.png'];
 
 function guardarTodo(){
@@ -28,8 +28,14 @@ self.addEventListener('message', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
+  const base = new URL(self.registration.scope).pathname;
+  if (!url.pathname.startsWith(base)) return;
+  // La versión de prueba (prueba/) y los documentos (codex/) no son parte de esta app: no se tocan ni se guardan
+  const resto = url.pathname.slice(base.length);
+  if (resto.startsWith('prueba/') || resto.startsWith('codex/')) return;
   const nav = e.request.mode === 'navigate';
+  // Solo la portada de la app se guarda como index.html
+  if (nav && resto !== '' && resto !== 'index.html') return;
   e.respondWith((async () => {
     const c = await caches.open(VERSION);
     const clave = nav ? './index.html' : e.request;
