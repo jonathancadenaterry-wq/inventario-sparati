@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T9
-- Última corrida: 27-nov-2026, 13:19 (Ecuador) · T8 completada
+- Tarea actual: T10
+- Última corrida: 27-nov-2026, 13:33 (Ecuador) · T9 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -167,3 +167,23 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Se revisaron 16 capturas a 390×844 en claro y oscuro y se compararon la cabecera, las tres cifras, los colores, las notas y las compras con `Paciente.png`. El mensaje crece para mostrar el texto completo. En la ficha inicial, el botón de enviar se alcanza al desplazar cuando hay dos productos con nombres largos.
 - Pasaron 27 pruebas en Chromium a 390×844 y 24 con el perfil de iPhone 14 Pro. Se comprobó que Inicio y la ficha quiten el mismo aviso, que el enlace lleve el mensaje editado, que Deshacer lo restaure, que el editor abra sin conexión y que los archivos v1 sigan siendo compatibles.
 - Sigue T9 con Reportes. Queda por verificar el teclado y la apertura de WhatsApp en el iPhone de Elba, desde Safari y desde la pantalla de inicio. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.
+
+### 27-nov-2026 · 13:21–13:33 (Ecuador) · T9
+
+**Revisión de las ocho capturas T8 adjuntas**
+
+- **Lista y compras.** La barra inferior translúcida deja ver texto por debajo de las pestañas. En la lista se superpone a parte de la fila de Sofía. En Compras corta la tarjeta que pasa por debajo y «2 nov» ocupa tres líneas de producto por los nombres completos.
+- **Ficha y recompra.** Los nombres largos agregan líneas al mensaje frente a `Paciente.png`. En la primera vista el botón «Enviar recordatorio» queda más abajo, detrás del borde de la pantalla. En la captura desplazada se ve completo, pero el bloque menta oscuro se distingue poco del resto de las tarjetas.
+- **Recordatorio desde Inicio.** El texto y el botón se leen completos, pero la pantalla solo identifica el nombre y el producto. Se pierde la fecha o el motivo de recompra que daba contexto en Inicio.
+- **Nueva venta.** Los precios de la segunda fila quedan detrás del carrito y algunos nombres de la primera fila terminan en puntos suspensivos. El chip siguiente queda cortado por el borde derecho.
+- **Editar paciente.** El nombre se presenta como un título y la pantalla solo ofrece cambiar teléfono y notas. El espacio entre el formulario y las acciones queda vacío en la captura sin teclado.
+- **Ajustes.** La cabecera fija corta el título «Avisos» al desplazar. La plantilla y su botón se ven completos. «Avanzado» se distingue por el triángulo pequeño del control nativo.
+
+**Trabajo completado**
+
+- Reportes incluye selector de mes y las pestañas Ventas, Cabina e Inventario. Ventas reúne lo vendido con descuentos, ganancia, promedio, barras semanales, productos y formas de pago con los importes por cobrar. El historial de ventas sigue disponible debajo de las acciones para compartir.
+- Cabina muestra el gasto por los usos, los frascos terminados y los productos con más gasto. Los usos nuevos guardan su costo unitario. Inventario muestra los valores a costo y a precio de venta, los productos sin movimiento en 60 días y los vencimientos de los próximos 90 días. En meses anteriores, las existencias se calculan al cierre del mes y se valoran con el catálogo actual.
+- Las tres pestañas tienen impresión con el logo completo, descarga CSV para Excel y resumen por WhatsApp. Se comprobó un PDF A4 generado en Chromium y la descarga sin conexión, incluida la carga del logo. Queda por probar cómo se guarda el PDF y cómo se abre WhatsApp en Safari del iPhone de Elba, también desde la pantalla de inicio.
+- Revisé 12 capturas de 390×844 en claro y oscuro. Frente a `Reportes.png`, se conservaron el selector, la cuadrícula de cifras y las barras magenta. Los meses de más de 28 días muestran una quinta barra y «Formas de pago» queda antes de las acciones para compartir. En las capturas desplazadas se siguen viendo fragmentos de filas bajo la barra inferior translúcida.
+- Pasaron 29 pruebas en Chromium a 390×844 y 26 con su perfil de iPhone 14 Pro. Las barras y las formas de pago cuadran con el total del mes, incluidos descuentos y ventas pendientes. También pasaron los límites de 60 y 90 días, los archivos de la versión 1 y la recarga sin conexión.
+- Sigue T10 con el conteo guiado. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.

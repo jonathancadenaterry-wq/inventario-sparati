@@ -2,6 +2,7 @@
 """Pruebas de SPARATI Prueba con Playwright. Los archivos se sirven por rutas, sin red."""
 
 import argparse
+import csv
 import json
 import mimetypes
 import re
@@ -455,6 +456,12 @@ def prueba_sin_conexion(navegador):
         expect(pagina.get_by_role('img', name='SPARATI')).to_be_visible()
         expect(pagina.get_by_role('group', name='Acciones rápidas')).to_be_visible()
         expect(pagina.get_by_role('list', name='Ventas de los últimos 7 días').locator('.barra')).to_have_count(7)
+        inventario(pagina, 'ventas')
+        expect(pagina.locator('.cifras-reporte .v').first).to_have_text('$ 42,00')
+        assert pagina.evaluate("async () => { const logo = document.querySelector('.cab-impresion-reporte img'); await logo.decode(); return logo.naturalWidth; }") == 480
+        archivo = descargar_excel_reporte(pagina, 'sparati-ventas-2026-11.csv')
+        assert ['Ventas', 'Vendido', '2026-11', '', '', '42,00'] in archivo
+        inventario(pagina, 'inicio')
         ajustar = abrir_ajustes(pagina)
         ajustar.get_by_role('button', name='Cargar datos de ejemplo').click()
         expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
@@ -1685,7 +1692,8 @@ def prueba_tratamientos_cabina(navegador, perfil=None):
         rapido = existencias.get_by_role('button', name='Usar 0,5 ml')
         rapido.click()
         expect(existencias.locator('.q')).to_have_text('4,5')
-        assert datos_guardados(pagina)['movs'][-1]['cant'] == -.5
+        uso = datos_guardados(pagina)['movs'][-1]
+        assert (uso['cant'], uso['costo']) == (-.5, 24)
         pagina.get_by_role('button', name='Deshacer', exact=True).click()
         expect(existencias.locator('.q')).to_have_text('5')
         existencias.get_by_role('button', name='Otra cantidad').click()
@@ -1693,6 +1701,8 @@ def prueba_tratamientos_cabina(navegador, perfil=None):
         pagina.get_by_label('Tratamiento (opcional)').fill('Facial')
         pagina.get_by_role('button', name='Guardar', exact=True).click()
         expect(existencias.locator('.q')).to_have_text('3,25')
+        uso = datos_guardados(pagina)['movs'][-1]
+        assert (uso['cant'], uso['costo']) == (-1.75, 24)
         expect(ficha.locator('.paso-historial').first).to_contain_text('− 1,75 · Facial')
         ficha.get_by_role('button', name='Lo abrí hoy').click()
         expect(existencias.get_by_text('Ya pasó el tiempo de uso después de abierto', exact=False)).to_have_count(0)
@@ -2255,6 +2265,181 @@ def prueba_recordatorios_paciente(navegador, perfil=None):
         sitio.cerrar()
 
 
+def descargar_excel_reporte(pagina, nombre):
+    with pagina.expect_download() as descarga:
+        pagina.get_by_role('button', name='Excel').click()
+    assert descarga.value.suggested_filename == nombre
+    datos = descarga.value.path().read_bytes()
+    assert datos.startswith(b'\xef\xbb\xbf') and b'\r\n' in datos
+    filas = list(csv.reader(datos.decode('utf-8-sig').splitlines(), delimiter=';'))
+    assert filas[0] == ['Sección', 'Concepto', 'Fecha o período', 'Cantidad', 'Unidad', 'Monto (USD)']
+    assert all(len(fila) == len(filas[0]) for fila in filas)
+    return filas
+
+
+def prueba_reporte_ventas(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        base = ESTADO_V1['ventas'][0]
+        producto = base['items'][0]
+        ventas = [
+            base,
+            {**base, 'id': 'efectivo', 'fecha': '2026-11-01', 'pago': 'Efectivo', 'descuento': .25,
+             'pac': ' maria jose  andrade ', 'items': [{**producto, 'cant': 2, 'precio': 10, 'costo': 4}]},
+            {**base, 'id': 'tarjeta', 'fecha': '2026-11-08', 'pago': 'tarjeta', 'pac': 'Sofía',
+             'items': [{'prod': 'brillo', 'nombre': '=Brillo; "coral"', 'cant': 1, 'precio': 23.25, 'costo': 8}]},
+            {**base, 'id': 'pendiente', 'fecha': '2026-11-15', 'cobrado': False, 'pago': 'efectivo', 'pac': '',
+             'items': [{**producto, 'precio': 15, 'costo': 10}]},
+            {**base, 'id': 'sin-forma', 'fecha': '2026-11-25', 'pago': '', 'pac': '',
+             'items': [{**producto, 'precio': 5, 'costo': 0}]},
+            {**base, 'id': 'otra-fecha', 'fecha': '2026-10-29', 'pac': 'Celia'},
+            {**base, 'id': 'borrada', 'fecha': '2026-11-29', 'borrado': True},
+        ]
+        sitio.pagina.add_init_script('window.impresionesPrueba = 0; window.print = () => window.impresionesPrueba++')
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'ventas': ventas})
+        inventario(pagina, 'ventas')
+        cifras = pagina.locator('.cifras-reporte .v')
+        expect(pagina.locator('.mes b')).to_have_text('Noviembre 2026')
+        expect(cifras).to_have_text(['$ 105,00', '$ 54,50', '5', '$ 21,00'])
+        expect(pagina.locator('.nota-cifra')).to_have_text('51,9 % del total')
+        semanas = pagina.get_by_role('list', name='Ventas por semana')
+        expect(semanas.locator('strong')).to_have_text(['$ 19,75', '$ 23,25', '$ 57,00', '$ 5,00', '$ 0,00'])
+        expect(semanas.locator('.semana-actual')).to_have_attribute('title', 'Del 22 al 28')
+        expect(pagina.get_by_text('Montos antes de los descuentos.')).to_be_visible()
+        expect(pagina.locator('.ranking-reporte li').first).to_contain_text('$ 58,00')
+        expect(pagina.locator('.totales-reporte').first).to_contain_text('Pacientes que compraron2')
+        pagos = pagina.locator('.tarjeta-reporte').filter(has=pagina.get_by_role('heading', name='Formas de pago'))
+        expect(pagos.locator('li')).to_have_text([
+            'Efectivo$ 19,75', 'Transferencia$ 42,00', 'Tarjeta$ 23,25', 'Sin forma de pago$ 5,00', 'Por cobrar$ 15,00',
+        ])
+        for tema in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=tema)
+            contrastes_reporte = contrastes(pagina, [
+                ['.ganancia-reporte .v', '.ganancia-reporte'], ['.nota-cifra', '.ganancia-reporte'],
+                ['.acciones-reporte .soft'], ['.acciones-reporte .ghost'], ['.acciones-reporte .btn:first-child'],
+            ])
+            assert min(contrastes_reporte) >= 4.5, contrastes_reporte
+            assert pagina.evaluate('document.documentElement.scrollWidth === innerWidth')
+        enlace = pagina.get_by_role('link', name='Enviar por WhatsApp')
+        url = urlsplit(enlace.get_attribute('href'))
+        mensaje = parse_qs(url.query)['text'][0]
+        assert (url.scheme, url.netloc, url.path) == ('https', 'wa.me', '/')
+        assert 'SPARATI · Ventas · Noviembre 2026' in mensaje and 'Por cobrar: $ 15,00' in mensaje
+        assert base['pac'] not in mensaje and base['tel'] not in mensaje
+
+        filas = descargar_excel_reporte(pagina, 'sparati-ventas-2026-11.csv')
+        assert ['Ventas', 'Vendido', '2026-11', '', '', '105,00'] in filas
+        assert ['Formas de pago', 'Efectivo', '2026-11', '1', '', '19,75'] in filas
+        assert ['Lo más vendido antes de descuentos', '\'=Brillo; "coral"', '2026-11', '1', 'u.', '23,25'] in filas
+        for grupo in ('Ventas por semana', 'Formas de pago'):
+            assert sum(round(float(f[-1].replace(',', '.')) * 100) for f in filas if f[0] == grupo) == 10500
+
+        pagina.get_by_role('button', name='Descargar PDF').click()
+        assert pagina.evaluate('impresionesPrueba') == 1
+        pagina.emulate_media(media='print')
+        cabecera = pagina.locator('.cab-impresion-reporte')
+        expect(cabecera).to_be_visible()
+        expect(cabecera).to_contain_text('Reporte de ventas')
+        expect(cabecera).to_contain_text('Noviembre 2026')
+        assert cabecera.locator('img').evaluate('async img => { await img.decode(); return img.naturalWidth; }') == 480
+        expect(pagina.get_by_role('navigation')).to_have_count(0)
+        expect(pagina.get_by_role('searchbox')).to_have_count(0)
+        expect(pagina.get_by_role('button', name='Descargar PDF')).to_have_count(0)
+        expect(cifras.first).to_be_visible()
+        pagina.emulate_media(media='screen')
+
+        pagina.get_by_role('button', name='Mes anterior').click()
+        expect(pagina.get_by_role('button', name='Mes anterior')).to_be_focused()
+        expect(pagina.locator('.mes b')).to_have_text('Octubre 2026')
+        expect(pagina.locator('#anuncio')).to_have_text('Octubre 2026')
+        expect(semanas.locator('li').last).to_have_attribute('title', 'Del 29 al 31')
+        expect(semanas.locator('strong').last).to_have_text('$ 42,00')
+        pagina.get_by_role('button', name='Mes siguiente').click()
+        expect(pagina.get_by_role('button', name='Mes siguiente')).to_be_disabled()
+        buscar = pagina.get_by_role('searchbox', name='Buscar por paciente o producto')
+        buscar.fill('Celia')
+        pagina.locator('#listaVentas').get_by_role('button', name=re.compile('Celia')).click()
+        expect(pagina.get_by_role('dialog', name='Editar venta')).to_be_visible()
+        cerrar_hoja(pagina)
+        expect(buscar).to_have_value('Celia')
+        expect(cifras.first).to_have_text('$ 105,00')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_reporte_cabina_inventario(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        base = ESTADO_V1['productos']
+        productos = [base[0], {**base[1], 'vence': '2026-11-27'}, base[2], base[3],
+                     {**base[2], 'id': 'p5', 'nombre': 'Ampollas de prueba', 'unidad': 'ampollas', 'costo': 8},
+                     {**base[0], 'id': 'p6', 'nombre': 'Sin movimiento', 'costo': 4, 'precio': 10, 'vence': '2027-02-25'},
+                     {**base[0], 'id': 'p7', 'nombre': 'Movimiento en el límite', 'costo': 3, 'precio': 9, 'vence': '2027-02-26'},
+                     {**base[0], 'id': 'p8', 'nombre': 'Venció ayer', 'costo': 2, 'precio': 5, 'vence': '2026-11-26'}]
+
+        def mov(id, prod, tipo, cant, fecha, **campos):
+            return {'id': id, 'prod': prod, 'tipo': tipo, 'cant': cant, 'fecha': fecha, 'creado': 1, **campos}
+
+        movimientos = [
+            mov('terminado', 'p3', 'uso', -1, '2026-11-23', costo=12, motivo='terminado'),
+            mov('ampollas-inicial', 'p5', 'inicial', 7, '2026-09-01'),
+            mov('ampollas-v1', 'p5', 'uso', -1.5, '2026-11-05'),
+            mov('ampollas-v2', 'p5', 'uso', -.5, '2026-11-22', costo=6),
+            mov('ampollas-borrado', 'p5', 'uso', -2, '2026-11-23', costo=8, borrado=True),
+            mov('sin-movimiento', 'p6', 'inicial', 3, '2026-09-28'),
+            mov('conteo-sin-cambio', 'p6', 'ajuste', 0, '2026-11-27'),
+            mov('entrada-futura', 'p6', 'entrada', 100, '2026-11-28'),
+            mov('movimiento-borrado', 'p6', 'entrada', 100, '2026-11-20', borrado=True),
+            mov('limite-60', 'p7', 'inicial', 1, '2026-09-29'),
+            mov('stock-vencido', 'p8', 'inicial', 2, '2026-11-27'),
+            mov('stock-eliminado', 'p4', 'inicial', 100, '2026-11-27'),
+        ]
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'productos': productos, 'movs': ESTADO_V1['movs'] + movimientos})
+        inventario(pagina, 'ventas')
+        grupo = pagina.get_by_role('group', name='Tipo de reporte')
+        cifras = pagina.locator('.cifras-reporte .v')
+        cabina = grupo.get_by_role('button', name='Cabina')
+        cabina.click()
+        expect(cabina).to_be_focused()
+        expect(cabina).to_have_attribute('aria-pressed', 'true')
+        expect(cifras).to_have_text(['$ 27,00', '2'])
+        expect(pagina.locator('.ranking-reporte li').first).to_contain_text('2 ampollas · $ 15,00')
+        expect(pagina.get_by_text('Para usos antiguos sin costo registrado se usa el costo actual.')).to_be_visible()
+        enlace_cabina = pagina.get_by_role('link', name='Enviar por WhatsApp')
+        assert 'Frascos terminados: 2' in parse_qs(urlsplit(enlace_cabina.get_attribute('href')).query)['text'][0]
+        filas = descargar_excel_reporte(pagina, 'sparati-cabina-2026-11.csv')
+        assert ['Lo que más se gastó', 'Ampollas de prueba', '2026-11', '2', 'ampollas', '15,00'] in filas
+        pagina.get_by_role('button', name='Mes anterior').click()
+        expect(cifras).to_have_text(['$ 0,00', '0'])
+        pagina.get_by_role('button', name='Mes siguiente').click()
+
+        grupo.get_by_role('button', name='Inventario').click()
+        expect(cifras).to_have_text(['$ 167,50', '$ 235,00'])
+        expect(pagina.get_by_text('Existencias al 27 nov', exact=False)).to_be_visible()
+        quietos = pagina.locator('.tarjeta-reporte').filter(has=pagina.get_by_role('heading', name='Sin movimiento en 60 días'))
+        expect(quietos.locator('li')).to_have_count(1)
+        expect(quietos.get_by_role('button')).to_contain_text('3 unidades · $ 12,00')
+        por_vencer = pagina.locator('.tarjeta-reporte').filter(has=pagina.get_by_role('heading', name='Vencen en los próximos 90 días'))
+        expect(por_vencer.locator('li strong')).to_have_text([base[1]['nombre'], 'Sin movimiento'])
+        expect(por_vencer.locator('li').last).to_contain_text('Vence el 25 feb 2027')
+        quietos.get_by_role('button').click()
+        expect(pagina.get_by_role('dialog', name='Sin movimiento')).to_be_visible()
+        cerrar_hoja(pagina)
+        filas = descargar_excel_reporte(pagina, 'sparati-inventario-2026-11.csv')
+        assert ['Sin movimiento en 60 días', 'Sin movimiento', '2026-11-27', '3', 'unidades', '12,00'] in filas
+        assert ['Vencen en los próximos 90 días', 'Sin movimiento', '2027-02-25', '3', 'unidades', '12,00'] in filas
+        assert pagina.evaluate('document.documentElement.scrollWidth === innerWidth')
+        pagina.get_by_role('button', name='Mes anterior').click()
+        expect(cifras).to_have_text(['$ 71,00', '$ 39,00'])
+        expect(pagina.get_by_text('Existencias al 31 oct', exact=False)).to_be_visible()
+        inventario(pagina, 'inicio')
+        pagina.get_by_role('region', name='Ventas de noviembre').get_by_role('button').click()
+        expect(grupo.get_by_role('button', name='Ventas')).to_have_attribute('aria-pressed', 'true')
+        expect(pagina.locator('.mes b')).to_have_text('Noviembre 2026')
+    finally:
+        sitio.cerrar()
+
+
 def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
@@ -2284,7 +2469,30 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
-            if tarea == 'T8':
+            if tarea == 'T9':
+                pagina.evaluate("""() => {
+                  const inicial = E.movs.find(m => m.tipo === 'inicial' && m.cant > 0 &&
+                    !E.movs.some(otro => otro.prod === m.prod && otro.tipo !== 'inicial'));
+                  guardar({...E, movs:E.movs.map(m => m === inicial ? {...m, fecha:sumarDias(hoyISO(), -72)} : m)});
+                }""")
+                inventario(pagina, 'ventas')
+                grupo = pagina.get_by_role('group', name='Tipo de reporte')
+                guardar(sitio, 'ventas', tema)
+                pagina.get_by_role('heading', name='Lo más vendido').evaluate("el => el.scrollIntoView({block:'start'})")
+                pagina.evaluate('window.scrollBy(0, -40)')
+                guardar(sitio, 'ventas-productos', tema)
+                pagina.locator('.acciones-reporte').evaluate("el => el.scrollIntoView({block:'center'})")
+                guardar(sitio, 'ventas-exportar', tema)
+                pagina.evaluate('window.scrollTo(0, 0)')
+                grupo.get_by_role('button', name='Cabina').click()
+                guardar(sitio, 'cabina', tema)
+                grupo.get_by_role('button', name='Inventario').click()
+                guardar(sitio, 'inventario', tema)
+                grupo.get_by_role('button', name='Ventas').click()
+                pagina.emulate_media(media='print')
+                guardar(sitio, 'impresion', tema)
+                continue
+            elif tarea == 'T8':
                 pagina.evaluate("""v => {
                   const ficha = {...pacienteNuevo(v.pac, '0991 234 567'),
                     notas:'Piel mixta. Prefiere protector sin color.', creado:aFecha('2026-05-01').getTime()};
@@ -2572,8 +2780,8 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T8', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'],
-                        help='guardar capturas en modo claro y oscuro (T8 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T9', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'],
+                        help='guardar capturas en modo claro y oscuro (T9 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -2584,7 +2792,8 @@ def main():
                         prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo,
                         prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos,
-                        prueba_ficha_paciente, prueba_recordatorios_paciente]
+                        prueba_ficha_paciente, prueba_recordatorios_paciente,
+                        prueba_reporte_ventas, prueba_reporte_cabina_inventario]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

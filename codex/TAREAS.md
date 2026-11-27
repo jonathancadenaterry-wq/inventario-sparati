@@ -158,7 +158,7 @@ Según `Escaner.png`:
 - Al enviar el recordatorio, se anota en `venta.recordados` para no repetir el aviso.
 - **Hecha cuando:** las pacientes por recordar de Inicio coinciden con las de esta ficha.
 
-## T9 · Reportes  [ ]
+## T9 · Reportes  [x]
 Según `Reportes.png`:
 - selector de mes;
 - **Ventas**: lo vendido, la ganancia, el número de ventas, la venta promedio, las barras por semana, lo más vendido y las formas de pago;

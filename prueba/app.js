@@ -489,7 +489,7 @@ const IC = Object.fromEntries(Object.entries(trazosIconos).map(([nombre, dibujo]
 // ---------- Vistas principales ----------
 const RUTAS = {inicio:'', venta:'#inventario', uso:'#uso-en-spa', pacientes:'#pacientes', ventas:'#reportes'};
 const U = {tab:'inicio', tipo:'venta', qInicio:'', qPac:'', q:{venta:'', uso:''}, filtro:{venta:'todos', uso:'todos'},
-  orden:{venta:'nombre', uso:'nombre'}, mes:hoyISO().slice(0, 7), qVentas:''};
+  orden:{venta:'nombre', uso:'nombre'}, mes:hoyISO().slice(0, 7), reporte:'ventas', qVentas:''};
 const esInventario = tab => tab === 'venta' || tab === 'uso';
 const urlPantalla = tab => location.pathname + location.search + RUTAS[tab];
 const pantallaDeURL = () => Object.keys(RUTAS).find(tab => RUTAS[tab] === location.hash) || 'inicio';
@@ -549,7 +549,7 @@ function render(){
   const app = $('#app');
   const tira = $('.filtros-inventario', app);
   const posicionFiltros = tira?.scrollLeft;
-  app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vVentas() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
+  app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vReportes() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
   marcarPestanaPrincipal();
   const lista = $('#listaProd', app);
   prepararFotosInventario(lista);
@@ -922,28 +922,267 @@ function filaProducto(p, accion = 'verProd', mostrarMarca = false){
     ${pildoraStock(p, avs)}</button>`;
 }
 
-function vVentas(){
-  const [y, m] = U.mes.split('-').map(Number);
-  const vm = vivos(E.ventas).filter(v => v.fecha.startsWith(U.mes));
-  const {total:tot, ganancia:gan} = cifrasVentas(vm);
-  const cobrar = vm.filter(v => !v.cobrado).reduce((s, v) => s + totalVenta(v), 0);
-  const top = new Map();
-  for(const v of vm) for(const it of v.items){ const x = top.get(it.prod) || {n:it.nombre, c:0, t:0}; x.c += it.cant; x.t += it.cant * it.precio; top.set(it.prod, x); }
-  const tops = Array.from(top.values()).sort((a, b) => b.t - a.t).slice(0, 5), maxT = tops.length ? tops[0].t : 1;
-  let h = `<header class="top"><h1>Reportes</h1></header>
-    <div class="mes"><button data-act="mes" data-d="-1" aria-label="Mes anterior">${IC.volver}</button><b>${cap(MESES[m-1])} ${y}</b><button data-act="mes" data-d="1" aria-label="Mes siguiente" ${U.mes >= hoyISO().slice(0, 7) ? 'disabled' : ''}>${IC.siguiente}</button></div>
-    <div class="cifras"><div class="cifra"><span class="v num">${dinero(tot)}</span><span class="l">${vm.length} ${vm.length===1?'venta':'ventas'}</span></div>
-      <div class="cifra"><span class="v num">${dinero(gan)}</span><span class="l">Ganancia (venta − costo)</span></div>
-      ${cobrar ? `<div class="cifra ancha"><span class="v num" style="color:var(--atencion)">${dinero(cobrar)}</span><span class="l">Por cobrar este mes</span></div>` : ''}</div>`;
-  if(tops.length) h += `<section class="card"><h3>Lo más vendido</h3>${tops.map(t => `<div class="top-prod"><span class="n">${esc(t.n)} <span class="muted">· ${fCant(t.c)}</span></span><span class="b" style="width:${Math.max(8, Math.round(t.t / maxT * 70))}px"></span><b class="num">${dinero(t.t)}</b></div>`).join('')}</section>`;
-  h += `<h2 class="titulo-seccion">Ventas</h2>${buscador('Buscar por paciente o producto', {id:'qVentas', valor:U.qVentas})}
-    <div id="listaVentas" class="lista-productos">${listaVentasHTML()}</div>`;
-  return h;
+// ---------- Reportes ----------
+const SECCIONES_REPORTE = {ventas:'Ventas', cabina:'Cabina', inventario:'Inventario'};
+const nombreMes = mes => cap(MESES[Number(mes.slice(5)) - 1]) + ' ' + mes.slice(0, 4);
+const finMes = mes => sumarDias(sumarMeses(mes + '-01', 1), -1);
+const ventasDelMes = mes => vivos(E.ventas).filter(v => v.fecha.startsWith(mes));
+const ORDEN_REPORTE = (a, b) => b.monto - a.monto || b.cant - a.cant || a.nombre.localeCompare(b.nombre, 'es');
+
+function acumularReporte(grupo, id, nombre, unidad, cant, monto){
+  if(!grupo.has(id)) grupo.set(id, {nombre, unidad, cant:0, monto:0});
+  const fila = grupo.get(id);
+  fila.cant = red(fila.cant + cant);
+  fila.monto += monto;
+}
+function datosReporteVentas(mes){
+  const ventas = ventasDelMes(mes);
+  const {total, ganancia} = cifrasVentas(ventas);
+  const ultimo = Number(finMes(mes).slice(-2));
+  const semanas = Array.from({length:Math.ceil(ultimo / 7)}, (_, i) =>
+    ({inicio:i * 7 + 1, fin:Math.min((i + 1) * 7, ultimo), monto:0}));
+  const formas = new Map(PAGOS.map(p => [norm(p), {nombre:p, cant:0, monto:0}]));
+  const sinForma = {nombre:'Sin forma de pago', cant:0, monto:0};
+  const pendiente = {nombre:'Por cobrar', cant:0, monto:0};
+  const pacientes = new Set(), masVendidos = new Map();
+  for(const v of ventas){
+    const importe = totalVenta(v);
+    semanas[Math.floor((Number(v.fecha.slice(-2)) - 1) / 7)].monto += importe;
+    const pago = v.cobrado ? formas.get(norm(v.pago)) || sinForma : pendiente;
+    pago.cant++;
+    pago.monto += importe;
+    if(norm(v.pac)) pacientes.add(norm(v.pac));
+    for(const it of v.items) acumularReporte(masVendidos, it.prod, it.nombre, 'u.', it.cant, it.cant * it.precio);
+  }
+  return {total, ganancia, cantidad:ventas.length, promedio:ventas.length ? red(total / ventas.length) : 0,
+    semanas, pagos:[...formas.values(), sinForma, pendiente].filter(p => p.cant),
+    productos:[...masVendidos.values()].sort(ORDEN_REPORTE), pacientes:pacientes.size,
+    descuentos:ventas.some(v => v.descuento > 0)};
+}
+function datosReporteCabina(mes, catalogo){
+  const usados = new Map();
+  let gasto = 0, terminados = 0, sinCostoGuardado = false;
+  for(const m of vivos(E.movs)){
+    if(m.tipo !== 'uso' || m.cant >= 0 || !m.fecha.startsWith(mes)) continue;
+    const p = catalogo.get(m.prod), cant = -m.cant;
+    // Los usos antiguos podían guardar la cantidad sin guardar el costo.
+    const monto = cant * (m.costo ?? p?.costo ?? 0);
+    if(m.costo == null) sinCostoGuardado = true;
+    gasto += monto;
+    if(frascoTerminado(m)) terminados += cant;
+    acumularReporte(usados, m.prod, p?.nombre || 'Producto sin ficha', p?.unidad || 'unidades', cant, monto);
+  }
+  return {gasto:red(gasto), terminados, sinCostoGuardado, productos:[...usados.values()].sort(ORDEN_REPORTE)};
+}
+function datosReporteInventario(mes, catalogo){
+  const hoy = hoyISO();
+  const corte = hoy.startsWith(mes) ? hoy : finMes(mes);
+  const desde = sumarDias(corte, -59), hasta = sumarDias(corte, 90);
+  const existencias = new Map(), recientes = new Set();
+  for(const m of vivos(E.movs)){
+    if(m.fecha > corte) continue;
+    existencias.set(m.prod, (existencias.get(m.prod) || 0) + m.cant);
+    if(m.cant !== 0 && m.fecha >= desde) recientes.add(m.prod);
+  }
+  let costo = 0, precio = 0;
+  const quietos = [], vencen = [];
+  for(const p of catalogo.values()){
+    const cant = red(existencias.get(p.id) || 0);
+    if(p.borrado || cant <= 0) continue;
+    const monto = cant * (p.costo || 0);
+    costo += monto;
+    if(p.tipo === 'venta') precio += cant * (p.precio || 0);
+    const fila = {id:p.id, nombre:p.nombre, cant, unidad:p.unidad || 'unidades', monto, fecha:p.vence};
+    if(!recientes.has(p.id)) quietos.push(fila);
+    if(p.vence >= corte && p.vence <= hasta) vencen.push(fila);
+  }
+  return {corte, costo:red(costo), precio:red(precio), quietos:quietos.sort(ORDEN_REPORTE),
+    vencen:vencen.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.nombre.localeCompare(b.nombre, 'es'))};
+}
+function datosReporte(){
+  const {mes, reporte} = U;
+  const catalogo = new Map(E.productos.map(p => [p.id, p]));
+  const cabina = reporte !== 'inventario' ? datosReporteCabina(mes, catalogo) : null;
+  if(reporte === 'cabina') return cabina;
+  if(reporte === 'inventario') return datosReporteInventario(mes, catalogo);
+  return {...datosReporteVentas(mes), gastoCabina:cabina.gasto};
+}
+function cifraReporte(etiqueta, valor, detalle = '', clase = ''){
+  return `<div class="cifra ${clase}"><span class="l">${etiqueta}</span><b class="v num">${valor}</b>
+    ${detalle ? `<span class="nota-cifra">${detalle}</span>` : ''}</div>`;
+}
+function filaReporte(etiqueta, valor, icono){
+  return `<li class="dato-ficha">${icono ? `<span class="dato-ico">${IC[icono]}</span>` : ''}
+    <span>${esc(etiqueta)}</span><b class="num">${valor}</b></li>`;
+}
+function barrasReporte(titulo, filas, nota = ''){
+  const maximo = filas[0]?.monto || 1;
+  return `<section class="card tarjeta-reporte"><h2>${titulo}</h2>
+    ${nota ? `<p class="nota-reporte">${nota}</p>` : ''}
+    ${filas.length ? `<ul class="lista-reporte ranking-reporte">${filas.slice(0, 4).map(f => `<li>
+      <div><strong>${esc(f.nombre)}</strong><span>${fCant(f.cant)} ${esc(uTxt(f.cant, f.unidad))} · <b class="num">${dinero(f.monto)}</b></span></div>
+      <i style="--proporcion:${Math.max(0, f.monto / maximo * 100)}%" aria-hidden="true"></i></li>`).join('')}</ul>` :
+      '<p class="nota-reporte">Todavía no hay registros en este mes.</p>'}</section>`;
+}
+function reporteVentasHTML(r){
+  const maximo = Math.max(0, ...r.semanas.map(s => s.monto)) || 1;
+  const actual = hoyISO().startsWith(U.mes) ? Math.floor((Number(hoyISO().slice(-2)) - 1) / 7) : -1;
+  return `<div class="cifras cifras-reporte">
+    ${cifraReporte('Vendido', dinero(r.total))}
+    ${cifraReporte('Ganancia', dinero(r.ganancia), r.total > 0 ? fCant(red(r.ganancia / r.total * 1000) / 10) + ' % del total' : '',
+      r.ganancia < 0 ? 'perdida-reporte' : 'ganancia-reporte')}
+    ${cifraReporte('Ventas', fCant(r.cantidad))}
+    ${cifraReporte('Venta promedio', dinero(r.promedio))}
+  </div>
+  <section class="card tarjeta-reporte">
+    <h2 id="ventasPorSemana">Ventas por semana</h2>
+    <ul class="lista-reporte semanas-reporte" aria-labelledby="ventasPorSemana">
+      ${r.semanas.map((s, i) => `<li class="${i === actual ? 'semana-actual' : ''}" title="Del ${s.inicio} al ${s.fin}">
+        <span class="solo-lectura">Días ${s.inicio} a ${s.fin} · ${dinero(s.monto)}</span>
+        <strong class="num" aria-hidden="true">${dinero(s.monto)}</strong>
+        <i aria-hidden="true" style="--alto-barra:${Math.max(2, Math.round(s.monto / maximo * 130))}px"></i>
+        <span aria-hidden="true">S${i + 1}</span>
+      </li>`).join('')}
+    </ul>
+  </section>
+  ${barrasReporte('Lo más vendido', r.productos, r.descuentos ? 'Montos antes de los descuentos.' : '')}
+  <ul class="card lista-reporte totales-reporte" aria-label="Otros datos del mes">
+    ${filaReporte('Gasto en cabina', dinero(r.gastoCabina), 'gota')}
+    ${filaReporte('Pacientes que compraron', fCant(r.pacientes), 'pacientes')}
+  </ul>
+  <section class="card tarjeta-reporte">
+    <h2>Formas de pago</h2>
+    ${r.pagos.length ? `<ul class="lista-reporte totales-reporte">${r.pagos.map(p => filaReporte(p.nombre, dinero(p.monto))).join('')}</ul>` :
+      '<p class="nota-reporte">Todavía no hay ventas en este mes.</p>'}
+  </section>`;
+}
+function reporteCabinaHTML(r){
+  return `<div class="cifras cifras-reporte">
+    ${cifraReporte('Gasto en cabina', dinero(r.gasto))}
+    ${cifraReporte('Frascos terminados', fCant(r.terminados))}
+  </div>
+  ${barrasReporte('Lo que más se gastó', r.productos,
+    r.sinCostoGuardado ? 'Para usos antiguos sin costo registrado se usa el costo actual.' : '')}`;
+}
+function listaReporteInventario(titulo, filas, vacio, porVencer = false){
+  return `<section class="card tarjeta-reporte"><h2>${titulo}</h2>
+    ${filas.length ? `<ul class="lista-reporte inventario-reporte-lista">${filas.map(f => `<li>
+      <button data-act="verProd" data-id="${esc(f.id)}">
+        <strong>${esc(f.nombre)}</strong>
+        <span>${fCant(f.cant)} ${esc(uTxt(f.cant, f.unidad))}${porVencer ? ' · Vence el ' + fCorta(f.fecha) : ' · ' + dinero(f.monto)}</span>
+        ${IC.siguiente}
+      </button></li>`).join('')}</ul>` : `<p class="nota-reporte">${vacio}</p>`}</section>`;
+}
+function reporteInventarioHTML(r){
+  return `<div class="cifras cifras-reporte">
+    ${cifraReporte('Valor a costo', dinero(r.costo))}
+    ${cifraReporte('Valor a precio de venta', dinero(r.precio))}
+  </div>
+  <p class="nota-reporte">Existencias al ${fCorta(r.corte)}. Los costos, precios y vencimientos vienen del catálogo actual.</p>
+  ${listaReporteInventario('Sin movimiento en 60 días', r.quietos, 'No hay productos con existencias paradas.')}
+  ${listaReporteInventario('Vencen en los próximos 90 días', r.vencen, 'No hay productos por vencer en ese plazo.', true)}`;
+}
+function vReportes(){
+  const {mes, reporte} = U, r = datosReporte(), titulo = SECCIONES_REPORTE[reporte];
+  const contenido = {ventas:reporteVentasHTML, cabina:reporteCabinaHTML, inventario:reporteInventarioHTML}[reporte](r);
+  const enlace = waLink('', textoReporte(r));
+  return `<section class="reporte" aria-label="Reportes">
+    <header class="top no-imprimir-reporte"><h1>Reportes</h1></header>
+    <div class="mes no-imprimir-reporte">
+      <button data-act="mes" data-d="-1" aria-label="Mes anterior">${IC.volver}</button>
+      <b>${nombreMes(mes)}</b>
+      <button data-act="mes" data-d="1" aria-label="Mes siguiente" ${mes >= hoyISO().slice(0, 7) ? 'disabled' : ''}>${IC.siguiente}</button>
+    </div>
+    <div class="seg no-imprimir-reporte" role="group" aria-label="Tipo de reporte">
+      ${Object.entries(SECCIONES_REPORTE).map(([v, n]) => opcion('tipoReporte', v, n, reporte === v)).join('')}
+    </div>
+    <header class="cab-impresion-reporte">
+      <img src="logo-completo.png" alt="SPARATI" width="480" height="520">
+      <div><h1>Reporte de ${titulo.toLowerCase()}</h1><p>${nombreMes(mes)}</p></div>
+    </header>
+    ${contenido}
+    <div class="acciones-reporte no-imprimir-reporte" role="group" aria-label="Compartir reporte de ${titulo.toLowerCase()}">
+      <button class="btn" data-act="imprimirReporte">${IC.pdf} Descargar PDF</button>
+      <a class="btn soft" href="${esc(enlace)}" target="_blank" rel="noopener">${IC.chat} Enviar por WhatsApp</a>
+      <button class="btn ghost" data-act="excelReporte">${IC.etiqueta} Excel</button>
+    </div>
+  </section>
+  ${reporte === 'ventas' ? `<section class="historial-reporte no-imprimir-reporte" aria-labelledby="historialReporte">
+    <h2 class="titulo-seccion" id="historialReporte">Historial de ventas</h2>
+    ${buscador('Buscar por paciente o producto', {id:'qVentas', valor:U.qVentas})}
+    <div id="listaVentas" class="lista-productos">${listaVentasHTML()}</div>
+  </section>` : ''}`;
+}
+function textoReporte(r){
+  const tipo = U.reporte;
+  const lineas = [`SPARATI · ${SECCIONES_REPORTE[tipo]} · ${nombreMes(U.mes)}`];
+  if(tipo === 'ventas'){
+    lineas.push(`Vendido: ${dinero(r.total)}`, `Ganancia: ${dinero(r.ganancia)}`,
+      `Ventas: ${r.cantidad} · Promedio: ${dinero(r.promedio)}`, `Pacientes que compraron: ${r.pacientes}`,
+      `Gasto en cabina: ${dinero(r.gastoCabina)}`,
+      ...r.pagos.map(p => `${p.nombre}: ${dinero(p.monto)}`));
+  }else if(tipo === 'cabina'){
+    lineas.push(`Gasto en cabina: ${dinero(r.gasto)}`, `Frascos terminados: ${r.terminados}`);
+    if(r.sinCostoGuardado) lineas.push('Para usos antiguos sin costo registrado se usa el costo actual.');
+  }else{
+    lineas.push(`Existencias al ${fCorta(r.corte)}`, `Valor a costo: ${dinero(r.costo)}`,
+      `Valor a precio de venta: ${dinero(r.precio)}`,
+      `Productos sin movimiento en 60 días: ${r.quietos.length}`,
+      `Productos que vencen en los próximos 90 días: ${r.vencen.length}`);
+  }
+  if(r.productos?.length){
+    const titulo = tipo === 'cabina' ? 'Lo que más se gastó' : 'Lo más vendido';
+    lineas.push('', titulo, ...r.productos.slice(0, 3).map(p => `• ${p.nombre}: ${fCant(p.cant)} ${uTxt(p.cant, p.unidad)}`));
+  }
+  return lineas.join('\n');
+}
+function filasCSVReporte(r){
+  const mes = U.mes;
+  const filas = [['Sección', 'Concepto', 'Fecha o período', 'Cantidad', 'Unidad', 'Monto (USD)']];
+  const fila = (seccion, concepto, {fecha = mes, cant = '', unidad = '', monto = ''} = {}) => {
+    filas.push([seccion, concepto, fecha, cant, unidad, typeof monto === 'number' ? red(monto).toFixed(2).replace('.', ',') : monto]);
+  };
+  const productos = (seccion, lista) => lista.forEach(p => fila(seccion, p.nombre, p));
+  if(U.reporte === 'ventas'){
+    fila('Ventas', 'Vendido', {monto:r.total});
+    fila('Ventas', 'Ganancia', {monto:r.ganancia});
+    fila('Ventas', 'Ventas', {cant:r.cantidad});
+    fila('Ventas', 'Venta promedio', {monto:r.promedio});
+    fila('Ventas', 'Pacientes que compraron', {cant:r.pacientes});
+    fila('Ventas', 'Gasto en cabina', {monto:r.gastoCabina});
+    r.semanas.forEach((s, i) => fila('Ventas por semana', `Semana ${i + 1} · días ${s.inicio} a ${s.fin}`, s));
+    productos(r.descuentos ? 'Lo más vendido antes de descuentos' : 'Lo más vendido', r.productos);
+    r.pagos.forEach(p => fila('Formas de pago', p.nombre, p));
+  }else if(U.reporte === 'cabina'){
+    fila('Cabina', 'Gasto en cabina', {monto:r.gasto});
+    fila('Cabina', 'Frascos terminados', {cant:r.terminados});
+    if(r.sinCostoGuardado) fila('Cabina', 'Para usos antiguos sin costo registrado se usa el costo actual.');
+    productos('Lo que más se gastó', r.productos);
+  }else{
+    fila('Inventario', 'Valor a costo', {fecha:r.corte, monto:r.costo});
+    fila('Inventario', 'Valor a precio de venta', {fecha:r.corte, monto:r.precio});
+    fila('Inventario', 'Costos, precios y vencimientos del catálogo actual.', {fecha:r.corte});
+    fila('Inventario', 'Productos sin movimiento en 60 días', {fecha:r.corte, cant:r.quietos.length});
+    fila('Inventario', 'Productos que vencen en los próximos 90 días', {fecha:r.corte, cant:r.vencen.length});
+    productos('Sin movimiento en 60 días', r.quietos.map(p => ({...p, fecha:r.corte})));
+    productos('Vencen en los próximos 90 días', r.vencen);
+  }
+  return filas;
+}
+function celdaCSVReporte(valor, columna){
+  if(typeof valor === 'number') return fCant(valor);
+  // Excel interpreta ciertos textos como fórmulas. La columna de montos contiene números ya formateados.
+  const texto = columna !== 5 && /^(?:[\t\r\n]|\s*[=+@-])/.test(valor) ? "'" + valor : valor;
+  return /[;"\r\n]/.test(texto) ? '"' + texto.replace(/"/g, '""') + '"' : texto;
+}
+function descargarReporteCSV(){
+  const filas = filasCSVReporte(datosReporte()).map(f => f.map(celdaCSVReporte).join(';'));
+  const archivo = new Blob(['\uFEFF', filas.join('\r\n'), '\r\n'], {type:'text/csv;charset=utf-8'});
+  descargarArchivo(archivo, `sparati-${U.reporte}-${U.mes}.csv`);
 }
 function listaVentasHTML(){
   const q = norm(U.qVentas);
-  let vs = vivos(E.ventas);
-  vs = q ? vs.filter(v => norm(v.pac + ' ' + v.items.map(i => i.nombre).join(' ')).includes(q)) : vs.filter(v => v.fecha.startsWith(U.mes));
+  const vs = q ? vivos(E.ventas).filter(v => norm(v.pac + ' ' + v.items.map(i => i.nombre).join(' ')).includes(q)) : ventasDelMes(U.mes);
   vs.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
   if(!vs.length) return `<div class="vacio">${q ? 'No hay ventas con esa búsqueda.' : 'No hay ventas en este mes.'}</div>`;
   let h = '', dia = '';
@@ -1470,14 +1709,15 @@ function guardarUso(){
   const p = prodPorId(F.prod), c = num(F.cant);
   if(!(c > 0)){ toast('Escribe cuánto usaste'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
-  const m = marcar({id:uid(), prod:p.id, tipo:'uso', cant:-red(c), fecha:F.fecha, pac:F.pac.trim(), trat:F.trat.trim(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
+  const m = marcar({id:uid(), prod:p.id, tipo:'uso', cant:-red(c), fecha:F.fecha, costo:p.costo || 0,
+    pac:F.pac.trim(), trat:F.trat.trim(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
   if(!guardar({...E, movs:[...E.movs, m]})) return;
   cerrarCapa(); refrescar();
   avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}`, {movs:[m]}, true);
 }
 function usarRapido(id){
   const p = prodPorId(id), c = p.gasto > 0 ? p.gasto : 1;
-  const m = marcar({id:uid(), prod:id, tipo:'uso', cant:-c, fecha:hoyISO(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
+  const m = marcar({id:uid(), prod:id, tipo:'uso', cant:-c, fecha:hoyISO(), costo:p.costo || 0, nota:p.lote ? 'Lote ' + p.lote : ''}, true);
   if(!guardar({...E, movs:[...E.movs, m]})) return;
   refrescar();
   avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}. Quedan ${fCant(stockDe(id))}`, {movs:[m]}, true);
@@ -2538,6 +2778,16 @@ function abrirCodigo(origen){
 }
 
 // ---------- Compartir entre los dos celulares ----------
+function descargarArchivo(archivo, nombre){
+  const enlace = document.createElement('a');
+  const url = URL.createObjectURL(archivo);
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 async function enviar(){
   if(!quien()){ elegirQuien(); return; }
   toast('Preparando el archivo…');
@@ -2553,9 +2803,7 @@ async function enviar(){
     if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:'SPARATI Prueba'}); hecho = true; }
   }catch(e){ if(e && e.name === 'AbortError'){ toast('Envío cancelado'); return; } }
   if(!hecho){
-    const url = URL.createObjectURL(new Blob([texto], {type:'text/plain'}));
-    const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    descargarArchivo(new Blob([texto], {type:'text/plain'}), nombre);
     toast('Archivo guardado en Descargas: ' + nombre);
   } else toast(`Listo. Si lo mandaste por WhatsApp, ${otro()} lo abre con «Recibir».`);
   E.sync.envio = ahora(); guardar(); refrescar(); pintarAjustes();
@@ -2796,6 +3044,7 @@ const ACT = {
   selectorInicio(b){ abrirSelectorInicio(b.dataset.accion); },
   ventasInicio(){
     U.mes = hoyISO().slice(0, 7);
+    U.reporte = 'ventas';
     U.qVentas = '';
     desplazamientos.delete('ventas');
     irPantalla('ventas');
@@ -2905,8 +3154,19 @@ const ACT = {
   mes(b){
     const [y, m] = U.mes.split('-').map(Number), d = new Date(y, m - 1 + Number(b.dataset.d), 1);
     const nm = iso(d).slice(0, 7); if(nm > hoyISO().slice(0, 7)) return;
-    U.mes = nm; render();
+    U.mes = nm;
+    render();
+    if(!enfocarControl(b, $('#app'))) $('.mes button:not(:disabled)')?.focus({preventScroll:true});
+    $('#anuncio').textContent = nombreMes(nm);
   },
+  tipoReporte(b){
+    if(U.reporte === b.dataset.v) return;
+    U.reporte = b.dataset.v;
+    render();
+    enfocarControl(b, $('#app'));
+  },
+  imprimirReporte(){ window.print(); },
+  excelReporte(){ descargarReporteCSV(); },
   verPaciente(b){ verPaciente(b.dataset.n); },
   editarPaciente(b){ editarPaciente(b.dataset.n); },
   ventaPaciente(b){
