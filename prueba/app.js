@@ -18,6 +18,7 @@ const CATS = {
 const UNIDADES = ['unidades','frascos','cajas','ampollas','jeringas','sobres','ml','g','pares','paquetes'];
 const PAGOS = ['Efectivo','Transferencia','Tarjeta'];
 const MOTIVOS = {conteo:'Conteo', dañado:'Se dañó', vencido:'Se venció', regalo:'Regalo', otro:'Otro'};
+const PLANTILLA_RECORDATORIO = 'Hola, {nombre}. Te escribe Elba de SPARATI. Tu {producto} ya debe estar por terminarse. ¿Te separo uno?';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -74,7 +75,8 @@ function haceTxt(ms){
 // ---------- Estado ----------
 function estadoInicial(){
   return {v:1, productos:[], movs:[], ventas:[], pacientes:[], cats:{venta:[], uso:[]},
-    ajustes:{diasVence:60, tema:'auto'}, sync:{envio:0, recibo:0, de:''}, creado:ahora()};
+    ajustes:{diasVence:60, tema:'auto', plantillaRecordatorio:PLANTILLA_RECORDATORIO},
+    sync:{envio:0, recibo:0, de:''}, creado:ahora()};
 }
 let E, YO;
 function cargar(){
@@ -178,22 +180,26 @@ function paraPedir(id){
   });
 }
 // Pacientes a quienes conviene volver a ofrecer un producto (según cuántos días le dura)
-function recompras(){
-  const ult = new Map();
+function recompras(lista = pacientes()){
+  const porProducto = new Map(vivos(E.productos).filter(p => p.tipo === 'venta' && p.duraPac > 0).map(p => [p.id, p]));
   const hoy = hoyISO();
-  for(const v of vivos(E.ventas).filter(v => v.fecha <= hoy)) for(const it of v.items){
-    const p = prodPorId(it.prod);
-    if(!p || p.borrado || !(p.duraPac > 0) || !v.pac) continue;
-    const k = JSON.stringify([norm(v.pac), it.prod]), x = ult.get(k);
-    if(!x || v.fecha > x.v.fecha || (v.fecha === x.v.fecha && v.creado >= x.v.creado)) ult.set(k, {v, p});
-  }
   const r = [];
-  for(const {v, p} of ult.values()){
-    if(v.recordados && v.recordados[p.id]) continue;
-    const d = diasDesde(v.fecha);
-    if(d >= p.duraPac - 5 && d <= p.duraPac + 60) r.push({v, p, d});
+  for(const paciente of lista){
+    const vistos = new Set();
+    for(const v of paciente.compras){
+      if(v.fecha > hoy) continue;
+      const d = diasEntre(v.fecha, hoy);
+      for(const it of v.items){
+        const p = porProducto.get(it.prod);
+        if(!p || vistos.has(p.id)) continue;
+        vistos.add(p.id);
+        if(!v.recordados?.[p.id] && d >= p.duraPac - 5 && d <= p.duraPac + 60){
+          r.push({paciente, v, p, d, fecha:sumarDias(v.fecha, p.duraPac)});
+        }
+      }
+    }
   }
-  return r.sort((a, b) => (a.p.duraPac - a.d) - (b.p.duraPac - b.d));
+  return r.sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 const porCobrar = () => vivos(E.ventas).filter(v => !v.cobrado).sort((a, b) => b.fecha.localeCompare(a.fecha));
 const totalVenta = v => red(v.items.reduce((s, it) => s + it.cant * it.precio, 0) - (v.descuento || 0));
@@ -203,15 +209,32 @@ function cifrasVentas(ventas){
   return {total, ganancia:red(total - ventas.reduce((s, v) => s + costoVenta(v), 0))};
 }
 function pacientes(){
-  const m = new Map();
-  for(const v of vivos(E.ventas)) if(v.pac){ const k = norm(v.pac); const x = m.get(k); if(!x || v.fecha >= x.fecha) m.set(k, {nombre:v.pac, tel:v.tel || (x && x.tel) || '', fecha:v.fecha}); else if(!x.tel && v.tel) x.tel = v.tel; }
-  for(const mv of vivos(E.movs)) if(mv.pac && !m.has(norm(mv.pac))) m.set(norm(mv.pac), {nombre:mv.pac, tel:'', fecha:mv.fecha});
-  for(const p of vivos(E.pacientes)){
-    const k = norm(p.nombre);
-    const historial = m.get(k);
-    m.set(k, historial ? {...historial, tel:historial.tel || p.tel || ''} : p);
+  const lista = new Map(E.pacientes.map(p => [norm(p.nombre),
+    {...p, compras:[], usos:[]}]));
+  const persona = nombre => {
+    const k = norm(nombre);
+    if(!k) return null;
+    if(!lista.has(k)) lista.set(k, {nombre:nombre.trim(), tel:'', compras:[], usos:[]});
+    const p = lista.get(k);
+    return p.borrado ? null : p;
+  };
+  const historial = (a, b) => b.fecha.localeCompare(a.fecha) || (b.creado || 0) - (a.creado || 0);
+  for(const v of vivos(E.ventas).reverse().sort(historial)){
+    const p = persona(v.pac);
+    if(!p) continue;
+    p.compras.push(v);
+    if(!p.id && !p.tel && v.tel) p.tel = v.tel;
   }
-  return Array.from(m.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  for(const m of vivos(E.movs)){
+    const p = persona(m.pac);
+    if(p && m.tipo === 'uso') p.usos.push(m);
+  }
+  return vivos([...lista.values()]).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+function coincidePaciente(p, texto){
+  const q = norm(texto), digitos = q.replace(/\D/g, '');
+  return norm(p.nombre).includes(q) ||
+    (digitos && !/[a-z]/.test(q) && String(p.tel || '').replace(/\D/g, '').includes(digitos));
 }
 
 function actualizarAvisos(){
@@ -298,15 +321,15 @@ const pila = [];
 let idCapa = 0, resolverCierre, cierrePendiente;
 function activarCapa(){
   const activa = pila.at(-1)?.el;
-  const fichaProducto = activa?.classList.contains('ficha-producto');
+  const ficha = activa?.matches('.ficha-producto, .ficha-paciente');
   $('#app').inert = Boolean(activa);
-  barraPrincipal.inert = Boolean(activa) && !fichaProducto;
-  if(fichaProducto){
+  barraPrincipal.inert = Boolean(activa) && !ficha;
+  if(ficha){
     if(barraPrincipal.parentElement !== activa) activa.append(barraPrincipal);
   }
   else if(barraPrincipal.parentElement !== document.body) $('#capas').before(barraPrincipal);
   document.body.classList.toggle('bloqueo', Boolean(activa));
-  document.body.classList.toggle('ficha-abierta', Boolean(fichaProducto));
+  document.body.classList.toggle('ficha-abierta', Boolean(ficha));
   marcarPestanaPrincipal();
   for(const {el} of pila) el.inert = el !== activa;
 }
@@ -503,7 +526,8 @@ function prepararNav(){
 }
 function marcarPestanaPrincipal(){
   const enFicha = barraPrincipal.closest('.ficha-producto');
-  const principal = enFicha || esInventario(U.tab) ? 'inventario' : U.tab;
+  const principal = barraPrincipal.closest('.ficha-paciente') ? 'pacientes' :
+    enFicha || esInventario(U.tab) ? 'inventario' : U.tab;
   const venta = $('.nav-vender', barraPrincipal);
   if(enFicha?.dataset.inventario === 'venta') venta?.setAttribute('aria-label', 'Vender otros productos');
   else venta?.removeAttribute('aria-label');
@@ -568,7 +592,7 @@ function pintarBusquedaInicio(){
   resultados.hidden = !q;
   if(!q) return;
   const ps = productos().filter(p => coincideProducto(p, q)).slice(0, 20);
-  const pac = pacientes().filter(p => norm(p.nombre).includes(q)).slice(0, 10);
+  const pac = pacientes().filter(p => coincidePaciente(p, q)).slice(0, 10);
   resultados.innerHTML = (ps.length ? `<section class="grupo-productos"><h2>Productos</h2><div class="filas">${ps.map(p => filaProducto(p, 'verProd', true)).join('')}</div></section>` : '') +
     (pac.length ? `<section class="grupo-productos"><h2>Pacientes</h2><div class="filas">${pac.map(filaPaciente).join('')}</div></section>` : '') ||
     '<div class="vacio">No encontré productos ni pacientes con esa búsqueda.</div>';
@@ -631,7 +655,7 @@ function avisosInicio(){
     porProducto.get(a.p.id).push(a);
   }
   for(const r of recompras()){
-    const nombre = norm(r.v.pac);
+    const nombre = r.paciente.nombre;
     if(!porPaciente.has(nombre)) porPaciente.set(nombre, []);
     porPaciente.get(nombre).push(r);
   }
@@ -666,13 +690,13 @@ function filasAtencion(avisos, filtro, muestra = false){
       titulo:avisosFecha[0].p.nombre, detalle:avisosFecha.map(estado).join('<br>'),
       accion:'verProd', atributos:`data-id="${esc(avisosFecha[0].p.id)}"`, etiqueta:'Ver',
     })).join('');
-  if(!filtro || filtro === 'paciente') h += deClase('paciente').flatMap(rs => muestra ? rs.slice(0, 1) : rs).map(({v, p, d}) => {
+  if(!filtro || filtro === 'paciente') h += deClase('paciente').flatMap(rs => muestra ? rs.slice(0, 1) : rs).map(({paciente, v, p, d}) => {
     const tiempo = p.duraPac - d;
     const detalle = tiempo > 0 ? 'Se acabaría esta semana' : tiempo === 0 ? 'Se acabaría hoy' : 'Ya se le habría terminado';
     return filaAtencion({
-      imagen:avatar({nombre:v.pac}, 'persona'), titulo:v.pac, detalle:`${esc(p.nombre)} · ${detalle}`,
+      imagen:avatar(paciente, 'persona'), titulo:paciente.nombre, detalle:`${esc(p.nombre)} · ${detalle}`,
       accion:'recompra', atributos:`data-v="${esc(v.id)}" data-p="${esc(p.id)}"`,
-      etiqueta:'Escribir', icono:IC.chat, contexto:v.pac + ' · ' + p.nombre,
+      etiqueta:'Escribir', icono:IC.chat, contexto:paciente.nombre + ' · ' + p.nombre,
     });
   }).join('');
   if(!filtro && avisos.envio.length){
@@ -1514,11 +1538,11 @@ function recientesVenta(lista){
   const porNombre = new Map(lista.map(p => [norm(p.nombre), p]));
   return [...nombres].map(n => porNombre.get(n)).filter(Boolean);
 }
-function formVenta(id, prodId){
+function formVenta(id, prodId, paciente){
   const v = id ? vivos(E.ventas).find(x => x.id === id) : null;
   if(id && !v) return;
   const anterior = F, lista = pacientes();
-  F = {id:v?.id, pac:v?.pac || '', tel:v?.tel || '', fecha:v?.fecha || hoyISO(), nota:v?.nota || '',
+  F = {id:v?.id, pac:v?.pac || paciente?.nombre || '', tel:v?.tel || paciente?.tel || '', fecha:v?.fecha || hoyISO(), nota:v?.nota || '',
     pago:PAGOS.find(p => norm(p) === norm(v?.pago)) || PAGOS[0], cobrado:v ? Boolean(v.cobrado) : true,
     descuento:dineroIn(v?.descuento), comprobante:false, buscar:'', categoria:'populares',
     items:v ? v.items.map(i => ({...i, cant:fCant(i.cant), precio:dineroIn(i.precio)})) : [],
@@ -1623,10 +1647,7 @@ function buscarPacienteVenta(){
   </div></div>`, {tipo:'seleccionPacienteVenta'});
   const campo = $('input', d);
   const pintar = () => {
-    const q = norm(campo.value);
-    const celular = campo.value.trim().replace(/\D/g, '');
-    const lista = q ? F.lista.filter(p => norm(p.nombre).includes(q) ||
-      (celular && !/[a-z]/.test(q) && String(p.tel || '').replace(/\D/g, '').includes(celular))) : F.lista;
+    const lista = F.lista.filter(p => coincidePaciente(p, campo.value));
     $('.filas', d).innerHTML = lista.length ? lista.map(p =>
       `<button class="fila-lista" data-act="vEligePaciente" data-n="${esc(p.nombre)}">${avatar(p, 'persona')}
         <span class="tx"><b>${esc(p.nombre)}</b>${p.tel ? `<span class="m">${esc(p.tel)}</span>` : ''}</span></button>`).join('') :
@@ -1635,9 +1656,10 @@ function buscarPacienteVenta(){
   campo.addEventListener('input', pintar);
   pintar();
 }
-function seleccionarPacienteVenta(nombre, tel){
+function seleccionarPacienteVenta(nombre, tel, telEditado = false){
   F.pac = nombre;
   F.tel = tel || '';
+  F.telEditado = telEditado;
   const desdeSelector = pila.at(-1)?.el.dataset.tipo === 'seleccionPacienteVenta';
   pintarPacienteVenta();
   if(desdeSelector) cerrarCapa();
@@ -1670,7 +1692,7 @@ function editarPacienteVenta(editar){
     const ficha = F.lista.find(p => norm(p.nombre) === norm(escrito));
     const tel = $('#telefonoPacienteVenta', d).value.trim();
     await cerrarCapa(desdeSelector ? 2 : 1);
-    seleccionarPacienteVenta(ficha?.nombre || escrito, tel || (editar ? '' : ficha?.tel));
+    seleccionarPacienteVenta(ficha?.nombre || escrito, tel || (editar ? '' : ficha?.tel), editar || Boolean(tel));
   });
 }
 function pintarAyudaComprobante(){
@@ -1844,7 +1866,8 @@ async function guardarVenta(){
   if(falta.length && !(await confirmar('No alcanza el inventario', `Revisa la cantidad disponible de <b>${falta.join(', ')}</b>. Si tienes lo necesario, registra la venta y luego ajusta las existencias en Inventario.`, 'Registrar igual'))) return;
   if(F !== formulario) return;
   const base = previo || {id:uid(), recordados:{}};
-  const v = marcar({...base, pac:F.pac, tel:F.tel, fecha:F.fecha, items, cobrado:F.cobrado,
+  const recordados = norm(base.pac) === norm(F.pac) ? base.recordados : {};
+  const v = marcar({...base, pac:F.pac, tel:F.tel, fecha:F.fecha, items, cobrado:F.cobrado, recordados,
     pago:norm(F.pago), nota:F.nota.trim(), descuento}, !previo);
   const ventas = previo ? E.ventas.map(x => x === previo ? v : x) : [...E.ventas, v];
   const movs = E.movs.map(m => m.venta === v.id && !m.borrado ? marcar({...m, borrado:true}) : m);
@@ -1852,6 +1875,8 @@ async function guardarVenta(){
     fecha:v.fecha, pac:v.pac, precio:it.precio, costo:it.costo || 0, venta:v.id}, true));
   movs.push(...registrados);
   const estado = {...E, ventas, movs, pacientes:[...E.pacientes]};
+  if(F.telEditado) estado.pacientes = estado.pacientes.map(p =>
+    !p.borrado && norm(p.nombre) === norm(v.pac) && p.tel !== v.tel ? marcar({...p, tel:v.tel}) : p);
   completarPacientes(estado);
   if(!guardar(estado)) return;
   const enlace = !previo && F.comprobante ? enlaceComprobante(v) : '';
@@ -1889,33 +1914,192 @@ function vPacientes(){
     <div class="filas" id="pacLista">${filasPacientes(U.qPac)}</div>`;
 }
 function filasPacientes(q){
-  const lista = pacientes().filter(p => norm(p.nombre).includes(norm(q)));
+  const lista = pacientes().filter(p => coincidePaciente(p, q));
   if(!lista.length) return `<div class="vacio">${q ? 'No encontré pacientes con esa búsqueda.' : 'Todavía no hay pacientes. Aparecen solas cuando registras ventas.'}</div>`;
   return lista.map(filaPaciente).join('');
 }
 function filaPaciente(p){
-  const vs = vivos(E.ventas).filter(v => norm(v.pac) === norm(p.nombre)).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const detalle = vs.length ? `${vs.length} ${vs.length === 1 ? 'compra' : 'compras'} · última ${fCorta(vs[0].fecha)}` : 'Sin compras';
-  return `<button class="fila-lista" data-act="verPaciente" data-n="${esc(p.nombre)}">${avatar(p, 'persona')}
-    <span class="tx"><b>${esc(p.nombre)}</b><span class="m">${esc(detalle)}</span></span><span class="num">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span></button>`;
+  const detalle = p.compras.length ? 'Última compra · ' + fCorta(p.compras[0].fecha) : 'Sin compras';
+  return `<button class="fila-lista fila-paciente" data-act="verPaciente" data-n="${esc(p.nombre)}">${avatar(p, 'persona')}
+    <span class="tx"><b>${esc(p.nombre)}</b><span class="m">${esc(detalle)}</span></span>
+    <span class="num total-paciente"><span class="solo-lectura">Total de compras </span>${dinero(cifrasVentas(p.compras).total)}</span></button>`;
 }
+const pacientePorNombre = nombre => pacientes().find(p => norm(p.nombre) === norm(nombre));
 function verPaciente(nombre){
-  const d = abrirCapa('', {tipo:'paciente'});
+  const p = pacientePorNombre(nombre);
+  if(!p) return;
+  const d = abrirCapa('', {tipo:'paciente', cls:'hoja ficha-paciente'});
   d.dataset.n = nombre;
-  pintarPaciente(d);
+  pintarPaciente(d, p);
 }
-function pintarPaciente(d){
-  const n = d.dataset.n, k = norm(n);
-  const vs = vivos(E.ventas).filter(v => norm(v.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const usos = vivos(E.movs).filter(m => m.tipo === 'uso' && norm(m.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const tel = pacientes().find(p => norm(p.nombre) === k)?.tel || '';
-  d.innerHTML = cabecera(esc(n), '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <div class="cifras"><div class="cifra"><span class="v num">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span><span class="l">${vs.length} ${vs.length===1?'compra':'compras'}</span></div>
-      <div class="cifra"><span class="v num">${usos.length}</span><span class="l">Productos usados en tratamientos</span></div></div>
-    ${tel ? `<a class="btn soft" href="${waLink(tel, 'Hola ' + n.split(' ')[0] + ', ')}" target="_blank" rel="noopener">Escribirle por WhatsApp</a>` : ''}
-    <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Compras</h3>${vs.length ? vs.map(v => `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(', '))}</b><div class="d">${esc(fDia(v.fecha))} ${v.fecha.slice(0, 4)}</div></div><span class="pill ${v.cobrado ? 'acc' : 'warn'} num">${dinero(totalVenta(v))}</span></button>`).join('') : '<div class="muted peq">Sin compras.</div>'}</section>
-    ${usos.length ? `<section class="card" style="gap:0"><h3 style="margin-bottom:4px">Usado en sus tratamientos</h3>${usos.map(m => { const p = prodPorId(m.prod); return `<div class="mov"><span>${esc(p ? p.nombre : 'Producto borrado')}</span><span class="q num">${fCant(-m.cant)} ${esc(p ? p.unidad : '')}</span><span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}</span></div>`; }).join('')}</section>` : ''}
+function pintarPaciente(d, p = pacientePorNombre(d.dataset.n)){
+  if(!p) return;
+  const cuerpo = $('.hoja-cuerpo', d), scroll = cuerpo?.scrollTop || 0;
+  const foco = cuerpo?.contains(document.activeElement) && document.activeElement;
+  const compras = p.compras, usos = p.usos.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const fechas = [...new Set(compras.map(v => v.fecha))];
+  const frecuencia = fechas.length > 1 ? Math.round(diasEntre(fechas.at(-1), fechas[0]) / (fechas.length - 1)) : 0;
+  const antigua = [fechas.at(-1), p.creado ? iso(new Date(p.creado)) : '', usos.at(-1)?.fecha].filter(Boolean).sort()[0];
+  const desde = antigua ? aFecha(antigua) : null;
+  const subtitulo = [desde && `Paciente desde ${MESES[desde.getMonth()]} ${desde.getFullYear()}`, p.tel || 'Sin teléfono'].filter(Boolean).join(' · ');
+  const pendientes = recompras([p]), nombre = esc(p.nombre);
+  // La barra se mueve a la ficha activa. El repintado reemplaza su contenido.
+  d.innerHTML = `<div class="hoja-cuerpo"><div class="hoja-in contenido-paciente">
+    <div class="controles-paciente"><button class="icon-btn" data-act="cerrar" aria-label="Volver">${IC.volver}</button>
+      <button class="icon-btn" data-act="editarPaciente" data-n="${nombre}" aria-label="Editar paciente">${IC.lapiz}</button></div>
+    <header class="cab-paciente">${avatar(p, 'persona')}
+      <h1>${nombre}</h1><p>${esc(subtitulo)}</p></header>
+    <div class="acc-grid acciones-paciente" role="group" aria-label="Acciones de la paciente">
+      <a class="btn" href="${esc(waLink(p.tel, `Hola, ${p.nombre}.`))}" target="_blank" rel="noopener">${IC.chat} WhatsApp</a>
+      <button class="btn soft" data-act="ventaPaciente" data-n="${nombre}">${IC.bolsa} Nueva venta</button></div>
+    <div class="cifras cifras-paciente" role="group" aria-label="Resumen de compras">
+      <div class="cifra"><span class="l">Compró</span><b class="v num">${dinero(cifrasVentas(compras).total)}</b></div>
+      <div class="cifra"><span class="l">Compras</span><b class="v num">${compras.length}</b></div>
+      <div class="cifra"><span class="l">Vuelve cada</span><b class="v num">${frecuencia ? '~' + duracionDias(frecuencia) : '<span aria-label="Aún sin datos">—</span>'}</b></div>
+    </div>
+    ${pendientes.length ? `<section class="recompra-paciente" aria-label="Le toca volver a comprar">
+      <h2 class="titulo-seccion">Le toca volver a comprar</h2>
+      <div class="productos-recompra" role="group" aria-label="Producto para recordar">${pendientes.map((r, i) => `
+        <button class="producto-recompra" type="button" data-recompra="${i}" aria-pressed="${i === 0}">${avatar(r.p)}
+          <span><b>${esc(r.p.nombre)}</b><small>${diasHasta(r.fecha) < 0 ? 'Se le habría acabado el ' : 'Se le acaba ~'}${esc(fCorta(r.fecha))}</small></span>
+          ${pendientes.length > 1 ? IC.check : ''}</button>`).join('')}</div>
+      ${editorRecordatorio()}</section>` : ''}
+    <section class="card notas-paciente" aria-label="Notas"><h2>Notas</h2>
+      <p>${p.notas ? esc(p.notas) : '<span class="muted">Todavía no hay notas.</span>'}</p></section>
+    <section class="historial-paciente" aria-label="Compras"><h2 class="titulo-seccion">Compras</h2>
+      <div class="filas">${compras.length ? compras.map(filaCompraPaciente).join('') : '<p class="vacio">Todavía no hay compras.</p>'}</div></section>
+    ${usos.length ? `<section class="card"><h3>Usado en sus tratamientos</h3>${usos.map(m => {
+      const prod = prodPorId(m.prod);
+      return `<div class="mov"><span>${esc(prod ? prod.nombre : 'Producto borrado')}</span><span class="q num">${fCant(-m.cant)} ${esc(prod?.unidad)}</span>
+        <span class="s">${esc([fCorta(m.fecha), m.trat, m.nota].filter(Boolean).join(' · '))}</span></div>`;
+    }).join('')}</section>` : ''}
   </div></div>`;
+  d.setAttribute('aria-label', p.nombre);
+  if(pila.at(-1)?.el === d) activarCapa();
+  if(pendientes.length) prepararRecordatorio(d, pendientes);
+  cargarFotos(d);
+  $('.hoja-cuerpo', d).scrollTop = scroll;
+  if(foco && !enfocarControl(foco, d) && !d.inert) $('[data-act="cerrar"]', d).focus({preventScroll:true});
+}
+function filaCompraPaciente(v){
+  const fecha = aFecha(v.fecha);
+  const pago = [v.pago && cap(v.pago), !v.cobrado && 'Por cobrar'].filter(Boolean).join(' · ');
+  const items = v.items.map(i => (i.cant === 1 ? '' : fCant(i.cant) + ' × ') + i.nombre).join(' · ');
+  return `<button class="fila-lista compra-paciente" data-act="editarVenta" data-id="${esc(v.id)}">
+    <time datetime="${esc(v.fecha)}" aria-label="${esc(fCorta(v.fecha))}"><b>${fecha.getDate()}</b><span>${MESES_C[fecha.getMonth()]}${fecha.getFullYear() !== new Date().getFullYear() ? ' ' + fecha.getFullYear() : ''}</span></time>
+    <span class="tx"><b>${esc(items)}</b>${pago ? `<span class="m">${esc(pago)}</span>` : ''}</span>
+    <strong class="num">${dinero(totalVenta(v))}</strong></button>`;
+}
+function editarPaciente(nombre){
+  const p = pacientePorNombre(nombre);
+  if(!p) return;
+  const d = abrirCapa(cabecera('Editar paciente', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <form id="datosPaciente" class="card"><h3>${esc(p.nombre)}</h3>
+      <div class="campo"><label for="telefonoPaciente">Teléfono (opcional)</label>
+        <input id="telefonoPaciente" type="tel" autocomplete="off" value="${esc(p.tel)}"></div>
+      <div class="campo"><label for="notasPaciente">Notas</label>
+        <textarea id="notasPaciente" rows="4" placeholder="Ej.: Prefiere protector sin color">${esc(p.notas)}</textarea></div>
+    </form></div></div>
+    <footer class="hoja-pie"><div class="in"><button class="btn ghost" data-act="cerrar">Cancelar</button>
+      <button class="btn" type="submit" form="datosPaciente">Guardar</button></div></footer>`, {tipo:'edicionPaciente'});
+  $('form', d).addEventListener('submit', async e => {
+    e.preventDefault();
+    if(cierrePendiente) return;
+    const tel = $('#telefonoPaciente', d).value.trim(), notas = $('#notasPaciente', d).value.trim();
+    const actual = vivos(E.pacientes).find(f => norm(f.nombre) === norm(p.nombre));
+    if(!actual || tel !== actual.tel || notas !== (actual.notas || '')){
+      const ficha = actual ? marcar({...actual, tel, notas}) : {...pacienteNuevo(p.nombre, tel), notas};
+      const pacientes = actual ? E.pacientes.map(f => f === actual ? ficha : f) : [...E.pacientes, ficha];
+      if(!guardar({...E, pacientes})) return;
+    }
+    await cerrarCapa();
+    refrescar();
+    toast('Datos de la paciente guardados');
+  });
+}
+
+// El mensaje se prepara en la app y WhatsApp abre el contacto con el texto listo.
+function editorRecordatorio(){
+  return `<div class="editor-recordatorio">
+    <label class="mensaje-recordatorio"><span class="solo-lectura">Mensaje de recordatorio</span>${IC.lapiz}
+      <textarea rows="5" required></textarea></label>
+    <a class="btn full" data-enviar-recordatorio target="_blank" rel="noopener">${IC.chat} Enviar recordatorio</a>
+  </div>`;
+}
+function prepararRecordatorio(d, pendientes, cerrarAlEnviar = false){
+  const campo = $('.mensaje-recordatorio textarea', d), enlace = $('[data-enviar-recordatorio]', d);
+  const opciones = $$('[data-recompra]', d);
+  const borradores = d.borradoresRecordatorio ||= new Map();
+  const claves = pendientes.map(({v, p}) => JSON.stringify([v.id, p.id]));
+  let elegido = 0;
+  const actualizar = () => {
+    const {paciente} = pendientes[elegido];
+    campo.setCustomValidity('');
+    enlace.href = waLink(paciente.tel, campo.value.trim());
+  };
+  const elegir = indice => {
+    elegido = indice;
+    const {paciente, p} = pendientes[indice];
+    campo.value = borradores.get(claves[indice]) ?? mensajeRecordatorio(paciente, p);
+    opciones.forEach((b, i) => b.setAttribute('aria-pressed', String(i === indice)));
+    actualizar();
+  };
+  campo.addEventListener('input', () => {
+    borradores.set(claves[elegido], campo.value);
+    actualizar();
+  });
+  opciones.forEach((b, i) => b.addEventListener('click', () => elegir(i)));
+  elegir(0);
+  enlace.addEventListener('click', e => {
+    if(!campo.value.trim()){
+      e.preventDefault();
+      campo.setCustomValidity('Escribe el recordatorio que quieres enviar.');
+      campo.reportValidity();
+      return;
+    }
+    const {v, p} = pendientes[elegido];
+    const paciente = pacientePorNombre(v.pac);
+    const pendiente = paciente && recompras([paciente]).find(r => r.v.id === v.id && r.p.id === p.id);
+    if(!pendiente){
+      e.preventDefault();
+      toast('Este recordatorio ya no está pendiente.');
+      return;
+    }
+    const venta = marcar({...pendiente.v, recordados:{...pendiente.v.recordados, [p.id]:true}});
+    if(!guardar({...E, ventas:E.ventas.map(x => x === pendiente.v ? venta : x)})){
+      e.preventDefault();
+      return;
+    }
+    borradores.delete(claves[elegido]);
+    enlace.href = waLink(paciente.tel, campo.value.trim());
+    // Dejar que Safari abra el enlace del toque antes de retirar el control.
+    setTimeout(async () => {
+      if(cerrarAlEnviar && pila.at(-1)?.el === d) await cerrarCapa();
+      refrescar();
+      toast('Recordatorio anotado', () => {
+        const actual = E.ventas.find(x => x.id === venta.id && !x.borrado);
+        if(actual !== venta){ toast('Ese registro cambió mientras tanto.'); return; }
+        const recordados = {...actual.recordados};
+        delete recordados[p.id];
+        if(!guardar({...E, ventas:E.ventas.map(x => x === actual ? marcar({...x, recordados}) : x)})) return;
+        refrescar();
+        toast('Recordatorio pendiente otra vez');
+      });
+    }, 0);
+  });
+}
+function mensajeRecordatorio(paciente, producto){
+  const plantilla = E.ajustes.plantillaRecordatorio || PLANTILLA_RECORDATORIO;
+  return plantilla.replace(/\{(nombre|producto)\}/g, (_, campo) => campo === 'nombre' ? paciente.nombre : producto.nombre);
+}
+function abrirRecordatorio(venta, producto){
+  const pendiente = recompras().find(r => r.v.id === venta && r.p.id === producto);
+  if(!pendiente) return;
+  const {paciente, p} = pendiente;
+  const d = abrirCapa(cabecera('Recordatorio', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <section class="card recompra-paciente"><header><h3>${esc(paciente.nombre)}</h3><p>${esc(p.nombre)}</p></header>
+      ${editorRecordatorio()}</section></div></div>`, {tipo:'recordatorio'});
+  prepararRecordatorio(d, [pendiente], true);
 }
 
 // ---------- Lista de compras ----------
@@ -2543,6 +2727,12 @@ function pintarAjustes(d = capaArriba('ajustes')){
       ${badge ? (permiso === 'granted' ? '<div class="peq">✓ El ícono de la app muestra cuántos productos tienen avisos.</div>'
         : `<button class="btn sm soft" data-act="permisoBadge">Mostrar el número de avisos en el ícono</button><div class="peq muted">El celular te pedirá permiso de notificaciones; solo se usa para el número del ícono.</div>`)
         : '<div class="peq muted">Los avisos aparecen al abrir la app, en Inicio y con un número rojo junto a Inventario.</div>'}</section>
+    <form class="card" id="formPlantillaRecordatorio">
+      <h3>Recordatorios de compra</h3>
+      <div class="campo"><label for="plantillaRecordatorio">Mensaje base para WhatsApp</label>
+        <textarea id="plantillaRecordatorio" rows="4" required aria-describedby="ayudaPlantilla">${esc(E.ajustes.plantillaRecordatorio || PLANTILLA_RECORDATORIO)}</textarea>
+        <span class="ayuda" id="ayudaPlantilla">Usa {nombre} y {producto} para poner esos datos en cada mensaje.</span></div>
+      <button type="submit" class="btn soft">Guardar mensaje base</button></form>
     <section class="card"><h3>Apariencia</h3><div class="seg" role="group" aria-label="Tema">${[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([v, n]) => opcion('aTema', v, n, E.ajustes.tema === v)).join('')}</div></section>
     <details class="card"><summary style="font-weight:800;cursor:pointer">Avanzado</summary>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
@@ -2556,6 +2746,20 @@ function pintarAjustes(d = capaArriba('ajustes')){
   if(!activo.isConnected) enfocarControl(activo, d);
   const bt = $('#aBorrarTxt', d);
   bt.addEventListener('input', () => { $('#aBorrar', d).disabled = bt.value.trim().toUpperCase() !== 'BORRAR'; });
+  const campo = $('#plantillaRecordatorio', d);
+  campo.addEventListener('input', () => campo.setCustomValidity(''));
+  $('#formPlantillaRecordatorio', d).addEventListener('submit', e => {
+    e.preventDefault();
+    const plantillaRecordatorio = campo.value.trim();
+    if(!plantillaRecordatorio){
+      campo.setCustomValidity('Escribe un mensaje base.');
+      campo.reportValidity();
+      return;
+    }
+    if(!guardar({...E, ajustes:{...E.ajustes, plantillaRecordatorio}})) return;
+    campo.value = plantillaRecordatorio;
+    toast('Mensaje base guardado');
+  });
 }
 function elegirQuien(){
   const d = abrirCapa(`<div class="hoja-cuerpo"><div class="hoja-in bienvenida">
@@ -2582,9 +2786,9 @@ function seleccionarOpcion(b){
 const ACT = {
   async tab(b){
     const tab = b.dataset.tab;
-    const desdeFicha = b.closest('.ficha-producto');
+    const desdeFicha = b.closest('.ficha-producto, .ficha-paciente');
     if(desdeFicha) await cerrarCapa(pila.length);
-    irPantalla(desdeFicha && tab === 'inventario' ? desdeFicha.dataset.inventario : tab);
+    irPantalla(tab === 'inventario' && desdeFicha?.dataset.inventario ? desdeFicha.dataset.inventario : tab);
   },
   cerrar(){ cerrarCapa(); },
   ajustes(){ abrirAjustes(); },
@@ -2704,25 +2908,12 @@ const ACT = {
     U.mes = nm; render();
   },
   verPaciente(b){ verPaciente(b.dataset.n); },
-  recompra(b){
-    const v = E.ventas.find(x => x.id === b.dataset.v), p = prodPorId(b.dataset.p);
-    if(!v || v.borrado || !p || p.borrado) return;
-    const tel = pacientes().find(x => norm(x.nombre) === norm(v.pac))?.tel || v.tel;
-    const msg = `Hola ${v.pac.trim().split(/\s+/)[0]}, ¿cómo te ha ido con ${p.nombre}? Si ya se te está terminando, te puedo separar otro. SPARATI`;
-    abrirCapa(cabecera('Recordatorio', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
-      <section class="card"><h3>${esc(v.pac)}</h3><p class="mensaje-recordatorio">${esc(msg)}</p>
-        <a class="btn" href="${waLink(tel, msg)}" target="_blank" rel="noopener">${IC.chat} Abrir WhatsApp</a>
-        <button class="btn ghost" data-act="recordado" data-v="${esc(v.id)}" data-p="${esc(p.id)}">Ya le escribí</button>
-      </section></div></div>`, {tipo:'recordatorio'});
+  editarPaciente(b){ editarPaciente(b.dataset.n); },
+  ventaPaciente(b){
+    const p = pacientePorNombre(b.dataset.n);
+    if(p) formVenta(null, null, p);
   },
-  async recordado(b){
-    const ventas = E.ventas.map(v => v.id === b.dataset.v ?
-      marcar({...v, recordados:{...v.recordados, [b.dataset.p]:true}}) : v);
-    if(!guardar({...E, ventas})) return;
-    await cerrarCapa();
-    refrescar();
-    toast('Recordatorio anotado');
-  },
+  recompra(b){ abrirRecordatorio(b.dataset.v, b.dataset.p); },
   // Compartir y ajustes
   enviar(){ enviar(); },
   recibir(){ recibir(); },

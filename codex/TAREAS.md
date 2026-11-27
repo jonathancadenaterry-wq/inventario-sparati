@@ -42,6 +42,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
   - Paciente, en la lista nueva `pacientes:[{id, nombre, tel, notas, creado, mod, por, borrado}]`.
     - Las ventas siguen guardando `pac` y `tel` como texto para seguir siendo compatibles.
     - Al recibir un archivo de la versión 1, la lista de pacientes se arma a partir de los nombres de las ventas.
+  - Ajustes: `plantillaRecordatorio` guarda el mensaje base de WhatsApp en este celular.
 - Los mismos `id` se mantienen siempre. Todo cambio pone `mod = Date.now()` y `por = quien()`.
 
 **Prueba obligatoria del contrato.**
@@ -146,7 +147,7 @@ Según `Escaner.png`:
   - la lógica de asignar y buscar el código tiene pruebas;
   - en `PROGRESO.md` queda anotado qué falta probar en un iPhone real.
 
-## T8 · Pacientes  [ ]
+## T8 · Pacientes  [x]
 - **Lista** con buscador, la última compra y lo que gastó en total.
 - **Ficha** según `Paciente.png`:
   - iniciales, teléfono, y los botones WhatsApp y Nueva venta;

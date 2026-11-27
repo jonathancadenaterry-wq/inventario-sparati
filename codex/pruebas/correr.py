@@ -98,6 +98,16 @@ def datos_guardados(pagina):
     return pagina.evaluate('(clave) => JSON.parse(localStorage.getItem(clave))', CLAVE)
 
 
+def interceptar_recordatorios(pagina):
+    pagina.add_init_script("""window.recordatoriosPrueba = [];
+      window.addEventListener('click', e => {
+        const enlace = e.target.closest('[data-enviar-recordatorio]');
+        if(!enlace || e.defaultPrevented) return;
+        e.preventDefault();
+        window.recordatoriosPrueba.push(enlace.href);
+      });""")
+
+
 def simular_camara(pagina, *, detector_local=True):
     if detector_local:
         pagina.add_init_script("Object.defineProperty(window, 'BarcodeDetector', {value: undefined, configurable: true});")
@@ -517,6 +527,19 @@ def prueba_sin_conexion(navegador):
         expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
         assert 'Péptidos Efecto Botox' in datos_guardados(pagina)['ventas'][-1]['items'][0]['nombre']
         expect(pagina).to_have_url(APP)
+        # El editor de recordatorios usa los datos locales después de recargar sin conexión.
+        pagina.evaluate("""() => {
+          const productos = E.productos.map(p => p.id === 'p2' ? {...p, duraPac:7} : p);
+          guardar({...E, productos});
+          refrescar();
+        }""")
+        pagina.reload()
+        expect(pagina.locator('.contador-inicio.paciente b')).to_have_text(re.compile(r'^[1-9]\d*$'))
+        pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Pacientes').click()
+        pagina.get_by_role('searchbox', name='Buscar paciente').fill('maría josé')
+        pagina.locator('#pacLista .fila-paciente').click()
+        ficha = pagina.get_by_role('dialog', name='María José Andrade')
+        expect(ficha.get_by_role('textbox', name='Mensaje de recordatorio')).to_have_value(re.compile(r'Azelac Serum'))
     finally:
         sitio.cerrar()
 
@@ -1933,6 +1956,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
     sitio = Sitio(navegador, perfil=perfil)
     try:
         sitio.pagina.clock.set_fixed_time(FECHA)
+        interceptar_recordatorios(sitio.pagina)
         hoy = int(FECHA.timestamp() * 1000)
         cambios = {
             'p1': {'min': 5, 'duraPac': 10, 'vence': '2027-01-11', 'mod': hoy},
@@ -2004,10 +2028,12 @@ def prueba_inicio_avisos(navegador, perfil=None):
         for producto, restantes in [('p2', 1), ('p1', 0)]:
             lista.locator(f'[data-p={producto}]').click()
             aviso = pagina.get_by_role('dialog', name='Recordatorio')
-            expect(aviso.get_by_role('link', name='Abrir WhatsApp')).to_have_attribute(
+            enviar = aviso.get_by_role('link', name='Enviar recordatorio')
+            expect(enviar).to_have_attribute(
                 'href', re.compile(r'^https://wa\.me/593991234567\?text='))
-            expect(aviso).to_contain_text('Hola María')
-            aviso.get_by_role('button', name='Ya le escribí').click()
+            expect(aviso.get_by_role('textbox', name='Mensaje de recordatorio')).to_have_value(
+                re.compile(r'^Hola, María José Andrade\.'))
+            enviar.click()
             expect(lista.locator('li')).to_have_count(restantes)
         assert datos_guardados(pagina)['ventas'][0]['recordados'] == {'p2': True, 'p1': True}
         cerrar_hoja(pagina)
@@ -2027,6 +2053,204 @@ def prueba_inicio_avisos(navegador, perfil=None):
         ajustes.get_by_role('button', name='30 días').click()
         cerrar_hoja(pagina)
         expect(contadores.locator('.fecha b')).to_have_text('2')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_ficha_paciente(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        v = ESTADO_V1['ventas'][0]
+        otra = {'id': 'paciente:ines cauce', 'nombre': 'Inés Cauce', 'tel': '', 'notas': ''}
+        nombre = v['pac']
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'pacientes': [otra], 'ventas': [
+            v,
+            {**v, 'id': 'compra-anterior', 'pac': 'maria jose andrade', 'fecha': '2026-10-26',
+             'items': [v['items'][1]], 'descuento': 4, 'cobrado': False, 'pago': 'efectivo'},
+            {**v, 'id': 'compra-mismo-dia', 'items': [v['items'][0]]},
+            {**v, 'id': 'venta-borrada', 'borrado': True},
+        ]})
+        barra = pagina.get_by_role('navigation', name='Principal')
+        barra.get_by_role('button', name='Pacientes').click()
+        buscador = pagina.get_by_role('searchbox', name='Buscar paciente')
+        expect(pagina.locator('#pacLista .fila-paciente')).to_have_count(2)
+        buscador.fill('099 123 4567')
+        filas = pagina.locator('#pacLista .fila-paciente')
+        expect(filas).to_have_count(1)
+        expect(filas).to_contain_text('Última compra · 20 nov')
+        expect(filas).to_contain_text('$ 80,00')
+        filas.click()
+
+        ficha = pagina.get_by_role('dialog', name=nombre)
+        expect(ficha.get_by_role('heading', name=nombre)).to_be_visible()
+        expect(ficha.locator('.cab-paciente .av')).to_have_text('MJ')
+        expect(ficha.locator('.cab-paciente p')).to_contain_text('0991234567')
+        expect(ficha.get_by_role('group', name='Resumen de compras').locator('.v')).to_have_text(
+            ['$ 80,00', '3', '~25 días'])
+        expect(barra.get_by_role('button', name='Pacientes')).to_have_attribute('aria-current', 'page')
+        compras = ficha.get_by_role('region', name='Compras')
+        expect(compras.locator('.compra-paciente')).to_have_count(3)
+        vieja = compras.locator('[data-id=compra-anterior]')
+        expect(vieja).to_contain_text('Efectivo · Por cobrar')
+        expect(vieja).to_contain_text('$ 20,00')
+        vieja.click()
+        expect(pagina.get_by_role('dialog', name='Editar venta')).to_be_visible()
+        cerrar_hoja(pagina)
+        expect(vieja).to_be_focused()
+
+        paciente_editar = ficha.get_by_role('button', name='Editar paciente')
+        paciente_editar.click()
+        editar = pagina.get_by_role('dialog', name='Editar paciente')
+        editar.get_by_label('Teléfono (opcional)').fill('099 876 5432')
+        notas = 'Prefiere protector sin color.\nConsulta antes de separar.'
+        editar.get_by_label('Notas').fill(notas)
+        antes = datos_guardados(pagina)
+        pagina.evaluate("""() => {
+          window.guardadoOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        guardar = editar.get_by_role('button', name='Guardar', exact=True)
+        guardar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == antes
+        pagina.evaluate('() => { Storage.prototype.setItem = guardadoOriginal; }')
+        guardar.click()
+        expect(editar).to_have_count(0)
+        expect(ficha.get_by_role('region', name='Notas').locator('p')).to_have_text(
+            'Prefiere protector sin color. Consulta antes de separar.')
+        expect(ficha.get_by_role('link', name='WhatsApp', exact=True)).to_have_attribute(
+            'href', re.compile(r'^https://wa\.me/593998765432\?text='))
+        estado = datos_guardados(pagina)
+        paciente = next(p for p in estado['pacientes'] if p['nombre'] == nombre)
+        assert (paciente['id'], paciente['notas'], paciente['por']) == (
+            'paciente:maria jose andrade', notas, 'Jonathan')
+        assert estado['ventas'] == antes['ventas']
+        expect(paciente_editar).to_be_focused()
+
+        nueva = ficha.get_by_role('button', name='Nueva venta')
+        nueva.click()
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        expect(venta.locator('.paciente-venta-nombre b')).to_have_text(nombre)
+        venta.get_by_role('searchbox', name='Buscar producto').fill('Azelac')
+        venta.locator('.tarjeta-venta').click()
+        venta.get_by_role('button', name=re.compile(r'^Cobrar \$')).click()
+        expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
+        final = datos_guardados(pagina)['ventas'][-1]
+        assert (final['pac'], final['tel']) == (nombre, '099 876 5432')
+
+        pagina.reload()
+        barra.get_by_role('button', name='Pacientes').click()
+        buscador.fill('nada coincide')
+        expect(pagina.locator('#pacLista')).to_contain_text('No encontré pacientes')
+        buscador.fill('ines')
+        filas.click()
+        infrecuente = pagina.get_by_role('dialog', name='Inés Cauce')
+        expect(infrecuente.get_by_text('Todavía no hay compras.')).to_be_visible()
+        expect(infrecuente.locator('.recompra-paciente')).to_have_count(0)
+        expect(infrecuente.locator('.cab-paciente p')).to_contain_text('Sin teléfono')
+        barra.get_by_role('button', name='Reportes').click()
+        expect(pagina.get_by_role('heading', name='Reportes')).to_be_visible()
+    finally:
+        sitio.cerrar()
+
+
+def prueba_recordatorios_paciente(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        interceptar_recordatorios(sitio.pagina)
+        v = ESTADO_V1['ventas'][0]
+        nombre = v['pac']
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'productos': [
+            {**p, 'duraPac': {'p1': 12, 'p2': 7}.get(p['id'], 0)} for p in ESTADO_V1['productos']
+        ], 'ventas': [
+            {**v, 'id': 'anterior', 'fecha': '2026-10-20', 'recordados': {'p1': True, 'p2': True}},
+            v,
+            {**v, 'id': 'fecha-futura', 'fecha': '2026-11-28'},
+        ]}, quien='Elba')
+        ajustes = abrir_ajustes(pagina)
+        plantilla = 'Hola, {nombre}. ¿Te guardo {producto}?\nElba & SPARATI'
+        campo = ajustes.get_by_label('Mensaje base para WhatsApp')
+        expect(campo).to_have_value(re.compile(r'\{nombre\}.*\{producto\}'))
+        campo.fill(plantilla)
+        ajustes.get_by_role('button', name='Guardar mensaje base').click()
+        expect(pagina.locator('#toast')).to_have_text('Mensaje base guardado')
+        assert datos_guardados(pagina)['ajustes']['plantillaRecordatorio'] == plantilla
+        pagina.reload()
+        expect(pagina.locator('.contador-inicio.paciente b')).to_have_text('1')
+        barra = pagina.get_by_role('navigation', name='Principal')
+        barra.get_by_role('button', name='Pacientes').click()
+        pagina.locator('#pacLista .fila-paciente').click()
+        ficha = pagina.get_by_role('dialog', name=nombre)
+        recordatorios = ficha.get_by_role('region', name='Le toca volver a comprar')
+        opciones = recordatorios.get_by_role('group', name='Producto para recordar')
+        expect(opciones.locator('button')).to_have_count(2)
+        expect(opciones.locator('button').first).to_contain_text('Se le acaba ~27 nov')
+        expect(opciones.locator('button').last).to_contain_text('Se le acaba ~2 dic')
+        texto = recordatorios.get_by_role('textbox', name='Mensaje de recordatorio')
+        expect(texto).to_have_value(plantilla.format(nombre=nombre, producto=v['items'][1]['nombre']))
+        assert texto.evaluate('el => el.scrollHeight <= el.clientHeight + 1')
+        assert recordatorios.get_by_role('link', name='Enviar recordatorio').bounding_box()['height'] >= 44
+        for tema in ('dark', 'light'):
+            pagina.evaluate('(tema) => document.documentElement.dataset.theme = tema', tema)
+            razones = contrastes(pagina, [
+                ['.producto-recompra small', '.recompra-paciente'],
+                ['.editor-recordatorio .btn'], ['.mensaje-recordatorio textarea'],
+                ['.acciones-paciente .btn.soft'], ['.cab-paciente .av'],
+            ])
+            assert min(razones) >= 4.5, (tema, razones)
+        sun = opciones.get_by_role('button', name=re.compile('Sun Screen'))
+        sun.click()
+        expect(sun).to_have_attribute('aria-pressed', 'true')
+        expect(texto).to_have_value(plantilla.format(nombre=nombre, producto=v['items'][0]['nombre']))
+        enviar = recordatorios.get_by_role('link', name='Enviar recordatorio')
+        texto.fill('   ')
+        enviar.click()
+        assert pagina.evaluate('recordatoriosPrueba') == []
+        assert datos_guardados(pagina)['ventas'][1]['recordados'] == {}
+        borrador = 'Hola, María José.\n¿Te separo un protector? & gracias.'
+        texto.fill(borrador)
+        opciones.locator('button').first.click()
+        sun.click()
+        expect(texto).to_have_value(borrador)
+
+        pagina.evaluate("""() => {
+          window.guardadoOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        enviar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        expect(texto).to_have_value(borrador)
+        assert pagina.evaluate('recordatoriosPrueba') == []
+        pagina.evaluate('() => { Storage.prototype.setItem = guardadoOriginal; }')
+        enviar.click()
+        expect(opciones.locator('button')).to_have_count(1)
+        assert datos_guardados(pagina)['ventas'][1]['recordados'] == {'p1': True}
+        url = urlsplit(pagina.evaluate('recordatoriosPrueba[0]'))
+        assert (url.scheme, url.netloc, url.path) == ('https', 'wa.me', '/593991234567')
+        assert parse_qs(url.query)['text'] == [borrador]
+        pagina.get_by_role('button', name='Deshacer').click()
+        expect(opciones.locator('button')).to_have_count(2)
+        assert datos_guardados(pagina)['ventas'][1]['recordados'] == {}
+        opciones.get_by_role('button', name=re.compile('Sun Screen')).click()
+        enviar.click()
+        expect(opciones.locator('button')).to_have_count(1)
+        barra.get_by_role('button', name='Inicio').click()
+
+        pagina.get_by_role('button', name='1 Pacientes por recordar').click()
+        lista = pagina.get_by_role('dialog', name='Pacientes por recordar')
+        expect(lista.locator('li')).to_have_count(1)
+        lista.locator('[data-p=p2]').click()
+        aviso = pagina.get_by_role('dialog', name='Recordatorio')
+        expect(aviso.get_by_role('textbox', name='Mensaje de recordatorio')).to_have_value(
+            plantilla.format(nombre=nombre, producto=v['items'][1]['nombre']))
+        aviso.get_by_role('link', name='Enviar recordatorio').click()
+        expect(lista.locator('li')).to_have_count(0)
+        assert datos_guardados(pagina)['ventas'][1]['recordados'] == {'p1': True, 'p2': True}
+        cerrar_hoja(pagina)
+        expect(pagina.locator('.contador-inicio.paciente b')).to_have_text('0')
+        barra.get_by_role('button', name='Pacientes').click()
+        pagina.locator('#pacLista .fila-paciente').click()
+        expect(ficha.locator('.recompra-paciente')).to_have_count(0)
     finally:
         sitio.cerrar()
 
@@ -2060,6 +2284,58 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T8':
+                pagina.evaluate("""v => {
+                  const ficha = {...pacienteNuevo(v.pac, '0991 234 567'),
+                    notas:'Piel mixta. Prefiere protector sin color.', creado:aFecha('2026-05-01').getTime()};
+                  const ventaDe = (fecha, productos, i) => ({...v, id:'captura-' + i, tel:ficha.tel, fecha,
+                    items:productos.map(([p, precio]) => ({prod:p.id, nombre:p.nombre, cant:1, precio, costo:p.costo})),
+                    pago:i === 0 ? 'transferencia' : 'efectivo'});
+                  const azelac = E.productos.find(p => p.nombre.startsWith('Azelac Serum ('));
+                  const protector = E.productos.find(p => p.nombre.startsWith('Sun Screen Clear SPF 50+'));
+                  const niacin = E.productos.find(p => p.nombre.startsWith('Niacinamide 10 %'));
+                  const compras = [
+                    ['2026-11-02', [[azelac, 24], [protector, 18]]],
+                    ['2026-10-08', [[niacin, 22]]],
+                    ['2026-09-10', [[azelac, 24]]],
+                    ...['2026-08-16', '2026-07-22', '2026-06-27', '2026-06-05'].map(fecha => [fecha, [[azelac, 24.5]]]),
+                  ].map(([fecha, items], i) => ventaDe(fecha, items, i));
+                  const productos = E.productos.map(p =>
+                    p === azelac ? {...p, duraPac:26} : p === protector ? {...p, duraPac:30} : p === niacin ? {...p, duraPac:0} : p);
+                  guardar({...E, productos, ventas:[...E.ventas, ...compras], pacientes:[...E.pacientes, ficha]});
+                  refrescar();
+                }""", ESTADO_V1['ventas'][0])
+                nombre = ESTADO_V1['ventas'][0]['pac']
+                barra = pagina.get_by_role('navigation', name='Principal')
+                barra.get_by_role('button', name='Pacientes').click()
+                guardar(sitio, 'pacientes-lista', tema)
+                pagina.locator('#pacLista .fila-paciente').filter(has_text=nombre).click()
+                ficha = pagina.get_by_role('dialog', name=nombre)
+                ficha.locator('.recompra-paciente img').first.evaluate('img => img.decode()')
+                guardar(sitio, 'paciente-ficha', tema)
+                recompra = ficha.get_by_role('region', name='Le toca volver a comprar')
+                recompra.evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'paciente-recompra', tema)
+                ficha.get_by_role('region', name='Notas').evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'paciente-compras', tema)
+                ficha.get_by_role('button', name='Editar paciente').click()
+                guardar(sitio, 'paciente-editar', tema)
+                cerrar_hoja(pagina)
+                ficha.get_by_role('button', name='Nueva venta').click()
+                guardar(sitio, 'paciente-nueva-venta', tema)
+                cerrar_hoja(pagina)
+                barra.get_by_role('button', name='Inicio').click()
+                pagina.locator('.contador-inicio.paciente').click()
+                avisos = pagina.get_by_role('dialog', name='Pacientes por recordar')
+                avisos.get_by_role('button', name=re.compile('Escribir · María José Andrade · Azelac')).click()
+                guardar(sitio, 'paciente-recordatorio-inicio', tema)
+                cerrar_hoja(pagina)
+                cerrar_hoja(pagina)
+                ajustes = abrir_ajustes(pagina)
+                plantilla = ajustes.locator('#formPlantillaRecordatorio')
+                plantilla.evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'paciente-plantilla', tema)
+                continue
             if tarea == 'T7':
                 pagina.evaluate("""() => {
                   const productos = E.productos.map(p => p.nombre.startsWith('Sun Screen Clear SPF 50+') ?
@@ -2296,8 +2572,8 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T7', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
-                        help='guardar capturas en modo claro y oscuro (T7 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T8', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'],
+                        help='guardar capturas en modo claro y oscuro (T8 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -2307,7 +2583,8 @@ def main():
                         prueba_formulario_producto, prueba_inventario_resumen_y_orden,
                         prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo,
                         prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,
-                        prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos]
+                        prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos,
+                        prueba_ficha_paciente, prueba_recordatorios_paciente]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

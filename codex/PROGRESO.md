@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T8
-- Última corrida: 27-nov-2026, 13:05 (Ecuador) · T7 completada
+- Tarea actual: T9
+- Última corrida: 27-nov-2026, 13:19 (Ecuador) · T8 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -150,3 +150,20 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Pasaron 25 pruebas en Chromium a 390×844 y 22 con su perfil iPhone 14 Pro. Se comprobó la lectura de EAN-13 con video simulado y ZXing sin conexión, la asignación y creación de códigos, los cuatro modos, el cierre de la cámara, el contraste y la compatibilidad con los archivos de la versión 1.
 - Queda comprobar en el iPhone de Elba, en Safari y desde la pantalla de inicio, el permiso, el enfoque de la cámara trasera al leer códigos impresos, la linterna si se ofrece, el sonido, el teclado, las zonas seguras y el cierre de la cámara al bloquear el teléfono o volver atrás.
 - Sigue T8 con la lista, la ficha y los recordatorios de pacientes. Los cambios de la corrida quedaron en `prueba/` y `codex/`.
+
+### 27-nov-2026 · 13:07–13:19 (Ecuador) · T8
+
+**Revisión de las ocho capturas T7 adjuntas**
+
+- **Cámara y producto encontrado.** El encuadre menta y la tarjeta inferior siguen `Escaner.png`. La instrucción blanca cae sobre una zona clara de la imagen. Con el producto encontrado, los dos enlaces del pie quedan muy juntos y se leen con menos jerarquía que la acción manual centrada del diseño. La foto de fondo es una simulación.
+- **Permiso y escritura manual.** El mensaje y la alternativa se entienden. El campo vacío no da un ejemplo de código. «Abrir cámara» se ve como enlace secundario aunque es el control para reintentar.
+- **Código desconocido, asignación y creación.** Las acciones del código desconocido se parten en dos líneas. En asignación se ve el código y el foco, pero las cifras de stock aparecen sin etiqueta. En creación, el pie fijo deja a la vista solo el título de «Existencias» y obliga a desplazar para ver el primer campo.
+- **Contar y selector de conteo.** La tarjeta sin cámara aparece al comienzo y deja gran parte de la pantalla vacía. «Contar producto» ocupa dos líneas. El selector repite el número de existencias sin etiqueta y la última fila queda a medias al pie de la captura. El recorrido guiado se revisará en T10.
+
+**Trabajo completado**
+
+- La lista de Pacientes busca por nombre o teléfono y muestra la última compra y el total. La ficha reúne las iniciales, WhatsApp, «Nueva venta» con la paciente elegida, tres cifras de compras, notas e historial. Editar el teléfono o las notas guarda la ficha con su mismo identificador y conserva los datos registrados en las ventas anteriores.
+- La ficha e Inicio aplican el mismo cálculo de recompra a la última compra de cada producto. Se puede elegir el producto, editar el mensaje y guardar su plantilla en Ajustes. El toque en «Enviar recordatorio» abre WhatsApp con el texto listo y anota el producto en la venta. «Deshacer» vuelve a mostrar el aviso. El envío del mensaje se confirma dentro de WhatsApp.
+- Se revisaron 16 capturas a 390×844 en claro y oscuro y se compararon la cabecera, las tres cifras, los colores, las notas y las compras con `Paciente.png`. El mensaje crece para mostrar el texto completo. En la ficha inicial, el botón de enviar se alcanza al desplazar cuando hay dos productos con nombres largos.
+- Pasaron 27 pruebas en Chromium a 390×844 y 24 con el perfil de iPhone 14 Pro. Se comprobó que Inicio y la ficha quiten el mismo aviso, que el enlace lleve el mensaje editado, que Deshacer lo restaure, que el editor abra sin conexión y que los archivos v1 sigan siendo compatibles.
+- Sigue T9 con Reportes. Queda por verificar el teclado y la apertura de WhatsApp en el iPhone de Elba, desde Safari y desde la pantalla de inicio. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.
