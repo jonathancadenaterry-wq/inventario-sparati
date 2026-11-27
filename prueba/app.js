@@ -365,6 +365,7 @@ window.addEventListener('popstate', e => {
   activarCapa();
   if(!pila.length) mostrarPantalla(pantallaDeURL());
   const activa = pila.at(-1)?.el;
+  if(activa?.classList.contains('venta-form')) actualizarCatalogoVenta(activa);
   if(foco && !enfocarControl(foco, activa || $('#app'))){
     (activa?.querySelector('[data-act="cerrar"]') || $('.nav [aria-current]'))?.focus({preventScroll:true});
   }
@@ -703,7 +704,7 @@ function pintarAvisosInicio(d){
 function abrirSelectorInicio(accion){
   const {titulo} = ACCIONES_INICIO[accion];
   const d = abrirCapa(cabecera(titulo, '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
-    ${buscador('Buscar producto')}<div class="filas selector-inicio-lista"></div></div></div>`, {tipo:'selectorInicio'});
+    ${buscador('Buscar producto', {escaneo:accion})}<div class="filas selector-inicio-lista"></div></div></div>`, {tipo:'selectorInicio'});
   d.dataset.accion = accion;
   $('input', d).addEventListener('input', () => pintarSelectorInicio(d));
   pintarSelectorInicio(d);
@@ -884,6 +885,7 @@ function pildoraStock(p, avs = avisosDe(p)){
   const texto = s <= 0 ? 'Agotado' : bajo ? `${s === 1 ? 'Queda' : 'Quedan'} ${cantidad}` : cantidad;
   return `<span class="pill stock ${estado}" title="${cantidad} ${esc(uTxt(s, p.unidad))}">${texto}</span>`;
 }
+const textoStock = s => s <= 0 ? 'Agotado' : `${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)}`;
 function filaProducto(p, accion = 'verProd', mostrarMarca = false){
   const [nombre, ...presentacion] = p.nombre.split(' · ');
   const avs = avisosDe(p);
@@ -1196,9 +1198,12 @@ function refrescar(){
 // ---------- Formularios (estado F + campos data-f) ----------
 let F = null;
 function hojaForm(titulo, tipo, pintar, alCerrar){
+  const anterior = capaArriba('form')?.formulario || null;
+  const formulario = F;
   const d = abrirCapa(cabecera(titulo) + `<div class="hoja-cuerpo"><div class="hoja-in" id="fCuerpo"></div></div>
     <footer class="hoja-pie"><div class="in"><button class="btn ghost" data-act="cerrar">Cancelar</button><button class="btn" data-act="guardarF">Guardar</button></div></footer>`,
-    {tipo, alCerrar:() => { if(alCerrar) alCerrar(); F = null; }});
+    {tipo, alCerrar:() => { alCerrar?.(formulario); F = anterior; }});
+  d.formulario = formulario;
   F.pintar = pintar;
   pintar();
   return d;
@@ -1214,7 +1219,7 @@ function repintar(){
 function campo(label, f, op = {}){
   const v = F[f] ?? '';
   const tipo = op.tipo || 'text';
-  const id = 'campo-' + f;
+  const id = op.id || 'campo-' + f;
   const attrs = (op.modo ? ` inputmode="${op.modo}"` : '') + (op.ph ? ` placeholder="${esc(op.ph)}"` : '') + (op.lista ? ` list="${op.lista}"` : '') + (op.max ? ` max="${op.max}"` : '') + (op.codigo ? ' autocapitalize="off" spellcheck="false"' : '') + ' autocomplete="off"';
   const input = op.area ? `<textarea id="${id}" data-f="${f}"${attrs}>${esc(v)}</textarea>` : `<input id="${id}" type="${tipo}" data-f="${f}" value="${esc(v)}"${attrs}>`;
   return `<div class="campo"><label for="${id}">${label}</label>${input}${op.ayuda ? `<span class="ayuda">${op.ayuda}</span>` : ''}</div>`;
@@ -1239,16 +1244,16 @@ document.addEventListener('input', e => {
 });
 
 // Producto nuevo o editar
-function formProd(id, tipo){
+function formProd(id, tipo, codigo = ''){
   const p = id ? prodPorId(id) : null;
   F = p ? {id:p.id, tipo:p.tipo, nombre:p.nombre, marca:p.marca || '', cat:p.cat || '', unidad:p.unidad || 'unidades', inicial:'',
       codigo:String(p.codigo ?? ''), min:p.min ? fCant(p.min) : '', max:p.max > 0 ? fCant(p.max) : '',
       costo:dineroIn(p.costo), precio:dineroIn(p.precio), gasto:p.gasto ? fCant(p.gasto) : '', duraPac:p.duraPac || '',
       vence:p.vence || '', lote:p.lote || '', abierto:p.abierto || '', pao:p.pao || '', prov:p.prov || '', telProv:p.telProv || '', notas:p.notas || '', foto:p.foto || '', fotoNueva:null}
-    : {id:null, tipo:tipo || 'venta', nombre:'', marca:'', cat:'', unidad:'unidades', inicial:'', codigo:'', min:'', max:'', costo:'', precio:'', gasto:'1', duraPac:'',
+    : {id:null, tipo:tipo || 'venta', nombre:'', marca:'', cat:'', unidad:'unidades', inicial:'', codigo, min:'', max:'', costo:'', precio:'', gasto:'1', duraPac:'',
       vence:'', lote:'', abierto:'', pao:'', prov:'', telProv:'', notas:'', foto:'', fotoNueva:null};
   F.guardar = guardarProd;
-  hojaForm(p ? 'Editar producto' : 'Nuevo producto', 'form', pintarFormProd, () => { if(F && F.fotoNueva && !F.guardado) FDB.del(F.fotoNueva).catch(() => {}); });
+  hojaForm(p ? 'Editar producto' : 'Nuevo producto', 'form', pintarFormProd, f => { if(f.fotoNueva && !f.guardado) FDB.del(f.fotoNueva).catch(() => {}); });
 }
 function pintarFormProd(){
   const cu = $('#fCuerpo');
@@ -1313,12 +1318,18 @@ async function guardarProd(){
     return;
   }
   if(F.abierto && F.abierto > hoyISO()){ toast('La fecha de apertura no puede ser futura'); return; }
-  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat:F.cat, unidad:F.unidad || 'unidades', codigo:F.codigo.trim(), max:max > 0 ? red(max) : 0,
+  const codigo = F.codigo.trim(), previo = F.id ? prodPorId(F.id) : null;
+  const duplicado = codigo !== String(previo?.codigo ?? '').trim() && productoPorCodigo(codigo, F.id);
+  if(duplicado){
+    $('#campo-codigo').focus();
+    toast(`Ese código ya está asignado a ${duplicado.nombre}.`);
+    return;
+  }
+  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat:F.cat, unidad:F.unidad || 'unidades', codigo, max:max > 0 ? red(max) : 0,
     min:min > 0 ? red(min) : 0, costo:costo > 0 ? red(costo) : 0, precio:F.tipo === 'venta' && precio > 0 ? red(precio) : 0,
     gasto:F.tipo === 'uso' && gasto > 0 ? red(gasto) : 0, duraPac:F.tipo === 'venta' && dura > 0 ? dura : 0,
     vence:F.vence || '', lote:F.lote.trim(), abierto:F.abierto || '', pao:pao > 0 ? pao : 0,
     prov:F.prov.trim(), telProv:F.telProv.trim(), notas:F.notas.trim(), foto:F.fotoNueva || F.foto || ''};
-  const previo = F.id ? prodPorId(F.id) : null;
   const id = F.id || uid(), nuevo = !F.id;
   const p = marcar({...previo, id, ...datos}, nuevo);
   const productos = nuevo ? [...E.productos, p] : E.productos.map(x => x.id === id ? p : x);
@@ -1345,7 +1356,7 @@ async function guardarProd(){
   const fotoVieja = previo?.foto;
   if(fotoVieja && fotoVieja !== p.foto && !productos.some(x => x.foto === fotoVieja)) FDB.del(fotoVieja).catch(() => {});
   await cerrarCapa();
-  if(nuevo && esInventario(U.tab) && U.tab !== p.tipo) irPantalla(p.tipo);
+  if(nuevo && !pila.length && esInventario(U.tab) && U.tab !== p.tipo) irPantalla(p.tipo);
   refrescar();
   toast(nuevo ? 'Producto agregado' : 'Cambios guardados');
 }
@@ -1427,6 +1438,10 @@ function formUso(id){
       ${p.lote ? `<div class="peq muted">Lote en uso: ${esc(p.lote)}. Queda anotado con este registro.</div>` : ''}`;
   });
 }
+function usarProducto(id){
+  if(esPorFrasco(prodPorId(id))) verProd(id);
+  else formUso(id);
+}
 function guardarUso(){
   const p = prodPorId(F.prod), c = num(F.cant);
   if(!(c > 0)){ toast('Escribe cuánto usaste'); return; }
@@ -1502,24 +1517,19 @@ function recientesVenta(lista){
 function formVenta(id, prodId){
   const v = id ? vivos(E.ventas).find(x => x.id === id) : null;
   if(id && !v) return;
-  const todos = productos('venta'), lista = pacientes();
+  const anterior = F, lista = pacientes();
   F = {id:v?.id, pac:v?.pac || '', tel:v?.tel || '', fecha:v?.fecha || hoyISO(), nota:v?.nota || '',
     pago:PAGOS.find(p => norm(p) === norm(v?.pago)) || PAGOS[0], cobrado:v ? Boolean(v.cobrado) : true,
     descuento:dineroIn(v?.descuento), comprobante:false, buscar:'', categoria:'populares',
     items:v ? v.items.map(i => ({...i, cant:fCant(i.cant), precio:dineroIn(i.precio)})) : [],
-    todos, populares:masVendidosVenta(todos), lista, recientes:recientesVenta(lista), guardar:guardarVenta};
+    lista, recientes:recientesVenta(lista), guardar:guardarVenta};
   if(prodId) agregarItem(prodId);
-  const categorias = [...new Set(todos.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const escanear = `<button class="btn sm soft escaner-venta" data-act="escanear" data-modo="vender" aria-label="Escanear código de barras">${IC.escaneo} Escanear</button>`;
   const d = abrirCapa(cabecera(v ? 'Editar venta' : 'Nueva venta', escanear, true) + `
     <div class="hoja-cuerpo"><div class="hoja-in">
       <section class="card paciente-venta" aria-label="Paciente"></section>
       ${buscador('Buscar producto', {campo:'buscar', escaneo:'vender'})}
-      <div class="chips scroll filtros-venta" role="group" aria-label="Filtrar productos">
-        ${opcion('vCategoria', 'populares', 'Más vendidos', true, 'chip')}
-        ${opcion('vCategoria', 'todos', 'Todos', false, 'chip')}
-        ${categorias.map(cat => opcion('vCategoria', 'cat:' + cat, esc(cat), false, 'chip')).join('')}
-      </div>
+      <div class="chips scroll filtros-venta" role="group" aria-label="Filtrar productos"></div>
       <div class="cuadricula-venta" id="selProd"></div>
     </div></div>
     <section class="carrito hoja-inferior" aria-label="Carrito">
@@ -1547,7 +1557,7 @@ function formVenta(id, prodId){
               <input type="date" id="fechaVenta" data-f="fecha" value="${esc(F.fecha)}" max="${hoyISO()}">
             </div></div>
           </div>
-          ${campo('Nota (opcional)', 'nota', {area:true})}
+          ${campo('Nota (opcional)', 'nota', {area:true, id:'notaVenta'})}
         </div>
       </div>
       <div class="total" id="totalPlegado"><span>Total</span><span class="num" id="vTotal"></span></div>
@@ -1555,7 +1565,8 @@ function formVenta(id, prodId){
         ${v ? '<button class="btn danger" data-act="borrarVenta">Eliminar</button>' : ''}
         <button class="btn" data-act="guardarF">${IC.check}<span id="accionVenta"></span></button>
       </div></footer>
-    </section>`, {cls:'hoja venta-form', tipo:'form', alCerrar:() => { F = null; }});
+    </section>`, {cls:'hoja venta-form', tipo:'form', alCerrar:() => { F = anterior; }});
+  d.formulario = F;
   $('#enviarComprobante', d)?.addEventListener('change', e => {
     F.comprobante = e.target.checked;
     pintarAyudaComprobante();
@@ -1566,9 +1577,20 @@ function formVenta(id, prodId){
     if(f === 'fecha') pintarFechaVenta();
   };
   pintarPacienteVenta();
-  pintarSelectorVenta();
+  actualizarCatalogoVenta(d);
   pintarCarrito();
   pintarFechaVenta();
+}
+function actualizarCatalogoVenta(d){
+  const todos = productos('venta');
+  const categorias = [...new Set(todos.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const filtros = $('.filtros-venta', d), scroll = filtros.scrollLeft;
+  F.todos = todos;
+  F.populares = masVendidosVenta(todos);
+  filtros.innerHTML = [['populares', 'Más vendidos'], ['todos', 'Todos'], ...categorias.map(cat => ['cat:' + cat, cat])]
+    .map(([v, texto]) => opcion('vCategoria', v, esc(texto), F.categoria === v, 'chip')).join('');
+  filtros.scrollLeft = scroll;
+  pintarSelectorVenta();
 }
 function pintarPacienteVenta(){
   const abreviar = nombre => {
@@ -1687,7 +1709,7 @@ function pintarSelectorVenta(){
     const stock = stockDe(p.id);
     const aviso = avisosDe(p).find(a => a.clase === 'fecha');
     const nivel = stock <= (p.min || 0) || stock === 1 || aviso?.nivel === 'bad' ? 'bad' : aviso ? 'warn' : '';
-    const restante = stock <= 0 ? 'Agotado' : `${stock === 1 ? 'Queda' : 'Quedan'} ${fCant(stock)}`;
+    const restante = textoStock(stock);
     return `<button class="tarjeta-venta" data-act="vAgregar" data-id="${esc(p.id)}">
       ${avatar(p)}<span class="nombre-tarjeta-venta">${esc(p.nombre)}</span>
       <strong class="num">${dinero(p.precio)}</strong><span class="stock-tarjeta-venta ${nivel}">${restante}</span>
@@ -1747,6 +1769,13 @@ function agregarALaVenta(id){
   pintarCarrito(id);
   $('#anuncio').textContent = p.nombre + ' en el carrito. ' + $('#resumenVenta').textContent;
   navigator.vibrate?.(10);
+}
+async function venderProducto(id){
+  const venta = capaArriba('form');
+  if(!id || !venta?.classList.contains('venta-form')){ formVenta(null, id); return; }
+  const encima = pila.length - 1 - pila.findIndex(c => c.el === venta);
+  if(encima) await cerrarCapa(encima);
+  if(pila.at(-1)?.el === venta) agregarALaVenta(id);
 }
 function editarPrecioVenta(indice){
   const it = F.items[indice];
@@ -1919,18 +1948,47 @@ async function compartirTexto(t){
 
 // ---------- Códigos de barras ----------
 const FORMATOS_CODIGO = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code'];
+function claveCodigo(codigo){
+  const valor = String(codigo ?? '').trim();
+  return /^SP-/i.test(valor) ? valor.toUpperCase() : valor;
+}
+function varianteUPC(clave){
+  // Algunos lectores devuelven UPC-A como EAN-13, con un cero delante.
+  const ean = /^0\d{12}$/.test(clave), upc = ean ? clave.slice(1) : clave;
+  if(!/^\d{12}$/.test(upc)) return '';
+  const suma = [...upc].reduce((s, cifra, i) => s + Number(cifra) * (i % 2 ? 1 : 3), 0);
+  return suma % 10 === 0 ? (ean ? upc : '0' + upc) : '';
+}
+function productoPorCodigo(codigo, excepto){
+  const clave = claveCodigo(codigo);
+  if(!clave) return;
+  const buscar = valor => E.productos.find(p => !p.borrado && p.id !== excepto && claveCodigo(p.codigo) === valor);
+  const variante = varianteUPC(clave);
+  return buscar(clave) || (variante ? buscar(variante) : undefined);
+}
+function guardarCodigoProducto(id, codigo){
+  const actual = prodPorId(id);
+  if(!actual || actual.borrado) return false;
+  if(actual.codigo === codigo) return true;
+  const actualizado = marcar({...actual, codigo});
+  return guardar({...E, productos:E.productos.map(p => p === actual ? actualizado : p)});
+}
 let lectorLocal;
 async function detectorDeCodigos(){
-  const formatos = await window.BarcodeDetector?.getSupportedFormats?.().catch(() => []);
-  if(formatos && FORMATOS_CODIGO.every(f => formatos.includes(f))) return new window.BarcodeDetector({formats:FORMATOS_CODIGO});
+  try{
+    const formatos = await window.BarcodeDetector?.getSupportedFormats?.();
+    if(formatos && FORMATOS_CODIGO.every(f => formatos.includes(f))) return new window.BarcodeDetector({formats:FORMATOS_CODIGO});
+  }catch(e){}
   if(!lectorLocal){
     lectorLocal = new Promise((resolver, rechazar) => {
       const script = document.createElement('script');
       script.src = new URL('vendor/barcode-detector.js', document.baseURI);
       script.onload = () => {
-        const api = window.BarcodeDetectionAPI;
-        api.prepareZXingModule({overrides:{locateFile: () => new URL('vendor/zxing_reader.wasm', document.baseURI).href}});
-        resolver(api.BarcodeDetector);
+        try{
+          const api = window.BarcodeDetectionAPI;
+          api.prepareZXingModule({overrides:{locateFile: () => new URL('vendor/zxing_reader.wasm', document.baseURI).href}});
+          resolver(api.BarcodeDetector);
+        }catch(e){ script.remove(); rechazar(e); }
       };
       script.onerror = () => { script.remove(); rechazar(new Error('No se pudo cargar el lector')); };
       document.head.append(script);
@@ -1941,75 +1999,145 @@ async function detectorDeCodigos(){
 }
 function visorCamara(){
   return `
-    <div class="visor-codigo" hidden><video playsinline muted autoplay aria-label="Vista de la cámara"></video></div>
+    <div class="visor-codigo" data-visor-camara hidden>${videoCamara()}</div>
     <button class="btn soft" type="button" data-camara>${IC.escaneo} Abrir cámara</button>
     <p class="ayuda" role="status" data-estado-camara></p>`;
 }
-function prepararCamara(d, campo, alLeer){
-  const video = $('video', d), visor = video.parentElement, boton = $('[data-camara]', d), estado = $('[data-estado-camara]', d);
-  let intento, flujo, espera;
+function videoCamara(){
+  return '<video playsinline muted autoplay aria-label="Vista de la cámara"></video>';
+}
+function avisarLectura(sonido){
+  navigator.vibrate?.(35);
+  if(sonido?.state !== 'running') return;
+  try{
+    const inicio = sonido.currentTime, tono = sonido.createOscillator(), volumen = sonido.createGain();
+    tono.frequency.value = 880;
+    volumen.gain.setValueAtTime(.14, inicio);
+    volumen.gain.exponentialRampToValueAtTime(.001, inicio + .12);
+    tono.connect(volumen).connect(sonido.destination);
+    tono.start(inicio);
+    tono.stop(inicio + .12);
+  }catch(e){}
+}
+function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false} = {}){
+  const video = $('video', d), visor = $('[data-visor-camara]', d), boton = $('[data-camara]', d);
+  const estado = $('[data-estado-camara]', d), linterna = $('[data-linterna]', d);
+  let intento, flujo, espera, sonido;
   function detenerCamara(){
     intento = null;
     clearTimeout(espera);
     flujo?.getTracks().forEach(pista => pista.stop());
     flujo = video.srcObject = null;
     visor.hidden = true;
+    d.classList.remove('camara-activa', 'abriendo-camara');
     boton.disabled = false;
+    if(linterna){
+      linterna.hidden = true;
+      linterna.disabled = false;
+      linterna.setAttribute('aria-pressed', 'false');
+    }
   }
   function pausarCamara(){
-    if(document.hidden && intento){
+    if(intento){
       detenerCamara();
       estado.textContent = 'La cámara se pausó. Puedes abrirla de nuevo.';
     }
   }
+  function alCambiarVisibilidad(){ if(document.hidden) pausarCamara(); }
+  function mostrarFallo(mensaje){
+    detenerCamara();
+    estado.textContent = mensaje + ' Puedes escribir el código a mano.';
+    alFallar?.();
+  }
+  linterna?.addEventListener('click', async () => {
+    const pista = flujo?.getVideoTracks()[0];
+    if(!pista) return;
+    const encender = linterna.getAttribute('aria-pressed') !== 'true';
+    linterna.disabled = true;
+    try{
+      await pista.applyConstraints({advanced:[{torch:encender}]});
+      if(flujo?.getVideoTracks()[0] === pista) linterna.setAttribute('aria-pressed', String(encender));
+    }catch(e){
+      if(flujo?.getVideoTracks()[0] === pista) estado.textContent = 'No pude cambiar la linterna.';
+    }finally{
+      if(flujo?.getVideoTracks()[0] === pista) linterna.disabled = false;
+    }
+  });
+  async function leer(actual){
+    if(intento !== actual) return;
+    try{
+      const codigos = video.readyState >= 2 ? await actual.detector.detect(video) : [];
+      if(intento !== actual) return;
+      const valores = codigos.map(c => c.rawValue?.trim()).filter(Boolean);
+      const codigo = valores.find(valor => valor !== actual.ultimoCodigo);
+      if(!valores.length) actual.ultimoCodigo = '';
+      if(!codigo){ espera = setTimeout(() => leer(actual), 120); return; }
+      actual.ultimoCodigo = codigo;
+      if(!conservarVista) detenerCamara();
+      avisarLectura(sonido);
+      estado.textContent = '';
+      alLeer(codigo, estado);
+    }catch(e){
+      if(intento === actual) mostrarFallo('No pude leer el código.');
+    }
+  }
   async function abrirCamara(){
+    if(boton.disabled) return;
+    alAbrir?.();
+    if(conservarVista && flujo && intento?.detector){
+      estado.textContent = '';
+      leer(intento);
+      return;
+    }
+    detenerCamara();
     const actual = intento = {};
+    d.classList.add('abriendo-camara');
     boton.disabled = true;
     estado.textContent = 'Abriendo la cámara…';
+    try{
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if(Audio){
+        sonido ||= new Audio();
+        sonido.resume().catch(() => {});
+      }
+    }catch(e){}
     try{
       if(!navigator.mediaDevices?.getUserMedia) throw new Error('Cámara no disponible');
       const nueva = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
       if(intento !== actual){ nueva.getTracks().forEach(pista => pista.stop()); return; }
       flujo = video.srcObject = nueva;
+      const pista = flujo.getVideoTracks()[0];
+      pista?.addEventListener('ended', () => {
+        if(intento === actual) mostrarFallo('Se cerró la cámara.');
+      }, {once:true});
       video.muted = true;
       visor.hidden = false;
-      await video.play();
-      const detector = await detectorDeCodigos();
-      if(intento !== actual) return;
-      estado.textContent = 'Pon el código dentro del recuadro.';
-      async function leer(){
-        if(intento !== actual) return;
-        try{
-          const codigos = video.readyState >= 2 ? await detector.detect(video) : [];
-          if(intento !== actual) return;
-          const codigo = codigos.find(c => c.rawValue?.trim())?.rawValue;
-          if(codigo){
-            detenerCamara();
-            estado.textContent = '';
-            alLeer(codigo, estado);
-          } else espera = setTimeout(leer, 120);
-        }catch(e){
-          if(intento !== actual) return;
-          detenerCamara();
-          estado.textContent = 'No pude leer el código. Intenta de nuevo o escríbelo a mano.';
-        }
+      d.classList.add('camara-activa');
+      if(linterna){
+        try{ linterna.hidden = !pista?.getCapabilities?.()?.torch; }
+        catch(e){}
       }
-      leer();
+      await video.play();
+      if(intento !== actual) return;
+      actual.detector = await detectorDeCodigos();
+      if(intento !== actual) return;
+      d.classList.remove('abriendo-camara');
+      boton.disabled = !conservarVista;
+      estado.textContent = conservarVista ? '' : 'Pon el código dentro del recuadro.';
+      leer(actual);
     }catch(e){
       if(intento !== actual) return;
-      detenerCamara();
-      estado.textContent = e.name === 'NotAllowedError' ? 'No se dio permiso para la cámara. Puedes escribir el código a mano.' :
-        'No pude abrir la cámara. Puedes escribir el código a mano.';
+      mostrarFallo(e.name === 'NotAllowedError' ? 'No se dio permiso para la cámara.' : 'No pude abrir la cámara.');
     }
   }
-  document.addEventListener('visibilitychange', pausarCamara);
+  document.addEventListener('visibilitychange', alCambiarVisibilidad);
+  window.addEventListener('pagehide', pausarCamara);
   boton.addEventListener('click', abrirCamara);
-  campo.addEventListener('input', () => {
-    if(intento){ detenerCamara(); estado.textContent = ''; }
-  });
-  return {abrir:abrirCamara, cerrar(){
+  return {abrir:abrirCamara, detener:detenerCamara, cerrar(){
     detenerCamara();
-    document.removeEventListener('visibilitychange', pausarCamara);
+    document.removeEventListener('visibilitychange', alCambiarVisibilidad);
+    window.removeEventListener('pagehide', pausarCamara);
+    sonido?.close().catch(() => {});
   }};
 }
 function asignarCodigo(id){
@@ -2028,30 +2156,28 @@ function asignarCodigo(id){
     error.textContent = '';
     campo.removeAttribute('aria-invalid');
   }
-  const camara = prepararCamara(d, campo, (codigo, estado) => {
+  const camara = prepararCamara(d, (codigo, estado) => {
     campo.value = codigo;
     limpiarError();
     estado.textContent = 'Código leído. Revisa que esté bien y guárdalo.';
     $('[type="submit"]', form).focus();
   });
-  campo.addEventListener('input', limpiarError);
+  campo.addEventListener('input', () => {
+    camara.detener();
+    $('[data-estado-camara]', d).textContent = '';
+    limpiarError();
+  });
   form.addEventListener('submit', async e => {
     e.preventDefault();
     if(cierrePendiente) return;
-    const codigo = campo.value.trim(), q = norm(codigo);
-    const otro = q && productos().find(x => x.id !== id && norm(x.codigo) === q);
-    if(!q || otro){
+    const codigo = campo.value.trim(), duplicado = productoPorCodigo(codigo, id);
+    if(!codigo || duplicado){
       campo.setAttribute('aria-invalid', 'true');
-      error.textContent = otro ? `Ese código ya está asignado a ${otro.nombre}.` : 'Escribe el código del producto.';
+      error.textContent = duplicado ? `Ese código ya está asignado a ${duplicado.nombre}.` : 'Escribe el código del producto.';
       campo.focus();
       return;
     }
-    const actual = prodPorId(id);
-    if(!actual || actual.borrado) return;
-    if(actual.codigo !== codigo){
-      const actualizado = marcar({...actual, codigo});
-      if(!guardar({...E, productos:E.productos.map(x => x === actual ? actualizado : x)})) return;
-    }
+    if(!guardarCodigoProducto(id, codigo)) return;
     await cerrarCapa();
     refrescar();
     toast('Código asignado');
@@ -2059,44 +2185,172 @@ function asignarCodigo(id){
   if(!p.codigo) camara.abrir();
 }
 
-function abrirCodigo(modo){
-  const paraVenta = modo === 'vender';
-  const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
-    <span class="tirador" aria-hidden="true"></span><h3>Escanear</h3>
-    ${paraVenta ? visorCamara() : ''}
-    <div class="campo"><label for="codigoEscrito">Escribir el código a mano</label>
-      <input type="text" id="codigoEscrito" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
-      <span class="ayuda error-codigo" id="errorCodigo" role="status"></span>
-    </div>
-    <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button><button class="btn" type="submit">Buscar código</button></div>
-  </form>`, {cls:'dlg-fondo', tipo:'codigo', alCerrar:() => camara?.cerrar()});
-  const form = $('form', d), campo = $('#codigoEscrito', d), error = $('#errorCodigo', d);
-  campo.setAttribute('aria-describedby', error.id);
-  campo.addEventListener('input', () => { error.textContent = ''; campo.removeAttribute('aria-invalid'); });
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    await aplicarCodigo(campo.value);
-  });
-  async function aplicarCodigo(codigo){
-    if(cierrePendiente) return;
-    const q = norm(codigo);
-    const tipo = paraVenta ? 'venta' : esInventario(modo) ? modo : undefined;
-    const p = q && productos(tipo).find(p => norm(p.codigo) === q);
-    if(!p){
-      campo.setAttribute('aria-invalid', 'true');
-      error.textContent = 'No encontré un producto con ese código.';
+const MODOS_ESCANER = {
+  vender:{nombre:'Vender', tipo:'venta', accion:'Agregar a la venta', icono:'mas', abrir:venderProducto},
+  usar:{nombre:'Usé', tipo:'uso', accion:'Registrar uso', icono:'gota', abrir:usarProducto},
+  entrada:{nombre:'Llegó', accion:'Registrar entrada', icono:'entrada', abrir:formEntrada},
+  ajuste:{nombre:'Contar', accion:'Contar producto', icono:'conteo', abrir:formAjuste},
+};
+function tarjetaEscaner(p, codigo, modo){
+  if(!p) return `<h3 class="resultado-escaner-titulo">No encontré un producto con ese código</h3>
+    <p class="codigo-leido" dir="auto">${esc(codigo)}</p>
+    <div class="acciones-escaner">
+      <button class="btn ghost" type="button" data-escaner="asignar">Asignar a un producto</button>
+      <button class="btn" type="button" data-escaner="crear">Crear producto con este código</button>
+    </div>`;
+  const [nombre, ...presentacion] = p.nombre.split(' · ');
+  const detalle = [p.marca, ...presentacion].filter(Boolean).join(' · ');
+  const stock = stockDe(p.id), bajo = stock <= (p.min || 0);
+  const permitido = !modo.tipo || p.tipo === modo.tipo;
+  return `<h3 class="resultado-escaner-titulo encontrado">${IC.check} Producto encontrado<span class="solo-lectura">: ${esc(p.nombre)}</span></h3>
+    <div class="producto-escaner">${avatar(p)}<div>
+      <strong>${esc(nombre)}</strong>${detalle ? `<p>${esc(detalle)}</p>` : ''}
+      <p>${p.tipo === 'venta' ? `<b class="num">${dinero(p.precio)}</b> · ` : ''}<span class="${bajo ? 'stock-bajo' : 'stock-disponible'}">${textoStock(stock)}</span></p>
+    </div></div>
+    ${permitido ? '' : `<p class="ayuda">${p.tipo === 'uso' ? 'Este producto es de uso en spa. Puedes elegir «Usé».' : 'Este producto es para vender. Puedes elegir «Vender».'}</p>`}
+    <div class="acciones-escaner">
+      <button class="btn ghost" type="button" data-escaner="ver">Ver producto</button>
+      <button class="btn" type="button" data-escaner="accion" ${permitido ? '' : 'disabled'}>${IC[modo.icono]} ${modo.accion}</button>
+    </div>`;
+}
+function elegirProductoParaCodigo(codigo, alAsignar){
+  const d = abrirCapa(cabecera('Asignar a un producto', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <p class="codigo-leido" dir="auto">${esc(codigo)}</p>
+    ${buscador('Buscar producto')}<div class="filas selector-inicio-lista"></div></div></div>`, {tipo:'buscarCodigo'});
+  const campo = $('input', d), lista = $('.filas', d);
+  function pintar(){
+    const q = norm(campo.value);
+    const disponibles = productos().filter(p => !claveCodigo(p.codigo) && coincideProducto(p, q));
+    lista.innerHTML = disponibles.length ? disponibles.map(p => filaProducto(p, 'elegirParaCodigo', true)).join('') :
+      '<p class="vacio">No encontré productos sin código para asignar.</p>';
+    cargarFotos(lista);
+  }
+  campo.addEventListener('input', pintar);
+  lista.addEventListener('click', async e => {
+    const boton = e.target.closest('[data-act="elegirParaCodigo"]');
+    if(!boton || cierrePendiente) return;
+    const p = prodPorId(boton.dataset.id);
+    if(!p || p.borrado || claveCodigo(p.codigo) || productoPorCodigo(codigo)){
+      toast('Los códigos cambiaron. Revisa los productos.');
+      pintar();
       return;
     }
+    if(!guardarCodigoProducto(p.id, codigo)) return;
     await cerrarCapa();
-    if(paraVenta) agregarALaVenta(p.id);
-    else verProd(p.id);
+    refrescar();
+    alAsignar();
+  });
+  pintar();
+}
+function abrirCodigo(origen){
+  let modo = Object.hasOwn(MODOS_ESCANER, origen) ? origen : origen === 'uso' ? 'usar' : 'vender';
+  let codigo = '';
+  const d = abrirCapa(`<div class="vista-escaner" data-visor-camara hidden>${videoCamara()}</div>
+    <div class="escaner-contenido">
+      <header class="escaner-cab">
+        <button class="icon-btn" type="button" data-act="cerrar" aria-label="Cerrar">${IC.x}</button><h2>Escanear</h2>
+        <button class="icon-btn" type="button" data-linterna aria-label="Linterna" aria-pressed="false" hidden>${IC.linterna}</button>
+      </header>
+      <div class="escaner-modos" role="group" aria-label="Modo de escaneo">${Object.entries(MODOS_ESCANER).map(([v, m]) =>
+        `<button type="button" data-modo-escaner="${v}" aria-pressed="${modo === v}">${m.nombre}</button>`).join('')}</div>
+      <div class="guia-escaner">
+        <div class="marco-escaner" aria-hidden="true"><span></span><span></span><span></span><span></span><i></i></div>
+        <p>Apunta al código de barras del producto</p>
+      </div>
+      <section class="escaner-panel" aria-label="Código del producto">
+        <p id="estadoEscaner" role="status" data-estado-camara></p>
+        <div class="resultado-escaner" aria-live="polite" hidden></div>
+        <form class="escaner-manual" hidden>
+          <div class="campo"><label for="codigoEscrito">Escribir el código a mano</label>
+            <input type="text" id="codigoEscrito" aria-describedby="estadoEscaner" autocomplete="off" autocapitalize="off" spellcheck="false" required></div>
+          <button class="btn" type="submit">Buscar código</button>
+        </form>
+        <div class="escaner-controles">
+          <button class="link" type="button" data-escaner="manual">Escribir el código a mano</button>
+          <button class="link" type="button" data-camara>Abrir cámara</button>
+        </div>
+      </section>
+    </div>`, {cls:'hoja escaner', tipo:'codigo', alCerrar:() => camara.cerrar()});
+  const form = $('form', d), campo = $('input', form), resultado = $('.resultado-escaner', d);
+  const estado = $('[data-estado-camara]', d), botonCamara = $('[data-camara]', d);
+  const botonManual = $('[data-escaner="manual"]', d);
+  function mostrarResultado(valor, enfocar = false){
+    codigo = valor.trim();
+    resultado.hidden = !codigo;
+    resultado.innerHTML = codigo ? tarjetaEscaner(productoPorCodigo(codigo), codigo, MODOS_ESCANER[modo]) : '';
+    d.classList.toggle('con-resultado', Boolean(codigo));
+    botonCamara.textContent = codigo ? 'Escanear otro' : 'Abrir cámara';
+    if(codigo){
+      cargarFotos(resultado);
+      if(enfocar){
+        const titulo = $('h3', resultado);
+        titulo.tabIndex = -1;
+        titulo.focus({preventScroll:true});
+      }
+    }
   }
-  const camara = paraVenta ? prepararCamara(d, campo, codigo => {
-    campo.value = codigo;
-    aplicarCodigo(codigo);
-  }) : null;
-  d.addEventListener('click', e => { if(e.target === d) cerrarCapa(); });
-  camara?.abrir();
+  function mostrarManual(visible){
+    form.hidden = !visible;
+    botonManual.hidden = visible;
+    campo.removeAttribute('aria-invalid');
+  }
+  const camara = prepararCamara(d, valor => mostrarResultado(valor), {
+    conservarVista:true,
+    alAbrir(){ mostrarResultado(''); mostrarManual(false); },
+    alFallar(){ mostrarManual(!codigo); },
+  });
+  campo.addEventListener('input', () => {
+    if(campo.hasAttribute('aria-invalid')) estado.textContent = '';
+    campo.removeAttribute('aria-invalid');
+  });
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const valor = campo.value.trim();
+    if(!valor){
+      estado.textContent = 'Escribe el código del producto.';
+      campo.setAttribute('aria-invalid', 'true');
+      campo.focus();
+      return;
+    }
+    estado.textContent = '';
+    mostrarManual(false);
+    mostrarResultado(valor, true);
+  });
+  d.addEventListener('click', async e => {
+    const boton = e.target.closest('button');
+    if(!boton || boton.disabled || cierrePendiente) return;
+    if(boton.dataset.modoEscaner){
+      modo = boton.dataset.modoEscaner;
+      seleccionarOpcion(boton);
+      if(codigo) mostrarResultado(codigo);
+      return;
+    }
+    const accion = boton.dataset.escaner;
+    if(accion === 'manual'){
+      camara.detener();
+      estado.textContent = '';
+      campo.value = codigo;
+      mostrarResultado('');
+      mostrarManual(true);
+      campo.focus();
+      return;
+    }
+    if(!accion || !codigo) return;
+    const p = productoPorCodigo(codigo), m = MODOS_ESCANER[modo];
+    if(accion === 'asignar' && !p){
+      camara.detener();
+      elegirProductoParaCodigo(codigo, () => mostrarResultado(codigo, true));
+    }else if(accion === 'crear' && !p){
+      const valor = codigo;
+      await cerrarCapa();
+      formProd(null, m.tipo || (esInventario(origen) ? origen : 'venta'), valor);
+    }else if(p && (accion === 'ver' || accion === 'accion' && (!m.tipo || m.tipo === p.tipo))){
+      await cerrarCapa();
+      if(accion === 'ver') verProd(p.id);
+      else m.abrir(p.id);
+    }
+  });
+  camara.abrir();
 }
 
 // ---------- Compartir entre los dos celulares ----------
@@ -2352,12 +2606,8 @@ const ACT = {
   },
   escanear(b){ abrirCodigo(b.dataset.modo); },
   asignarCodigo(b){ asignarCodigo(b.dataset.id); },
-  vender(b){ formVenta(null, b.dataset.id); },
-  usar(b){
-    const id = b.dataset.id;
-    if(esPorFrasco(prodPorId(id))) verProd(id);
-    else formUso(id);
-  },
+  vender(b){ venderProducto(b.dataset.id); },
+  usar(b){ usarProducto(b.dataset.id); },
   usarRapido(b){ usarRapido(b.dataset.id); },
   abrirFrasco(b){ registrarFrasco(b.dataset.id, false); },
   terminarFrasco(b){ registrarFrasco(b.dataset.id, true); },

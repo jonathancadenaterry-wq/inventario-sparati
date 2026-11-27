@@ -98,19 +98,29 @@ def datos_guardados(pagina):
     return pagina.evaluate('(clave) => JSON.parse(localStorage.getItem(clave))', CLAVE)
 
 
-def simular_camara(pagina):
+def simular_camara(pagina, *, detector_local=True):
+    if detector_local:
+        pagina.add_init_script("Object.defineProperty(window, 'BarcodeDetector', {value: undefined, configurable: true});")
     pagina.add_init_script("""(() => {
       // Conservar el lector de producción y simular únicamente el video de un EAN-13.
-      Object.defineProperty(window, 'BarcodeDetector', {value: undefined, configurable: true});
-      window.camaraPrueba = {solicitudes: [], pistas: [], modo: 'negada'};
+      window.camaraPrueba = {solicitudes: [], pistas: [], linterna: [], admiteLinterna: false, modo: 'negada'};
       Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async opciones => {
         const camara = window.camaraPrueba;
         camara.solicitudes.push(opciones);
         if(camara.modo === 'negada') throw new DOMException('Permiso denegado', 'NotAllowedError');
+        if(camara.modo === 'pendiente') await new Promise(resolver => { camara.otorgar = resolver; });
         const lienzo = document.createElement('canvas');
         lienzo.width = 480;
         lienzo.height = 240;
         const contexto = lienzo.getContext('2d');
+        let escena;
+        if(camara.modo === 'escena'){
+          escena = new Image();
+          escena.src = '../codex/diseno/fotos/sunscreen.jpg';
+          await escena.decode();
+          lienzo.width = 390;
+          lienzo.height = 844;
+        }
         const codigo = '5901234123457';
         const l = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
         const g = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
@@ -120,12 +130,23 @@ def simular_camara(pagina):
         const barras = '101' + izquierda + '01010' + derecha + '101';
         const flujo = lienzo.captureStream(15), [pista] = flujo.getVideoTracks();
         camara.pistas.push(pista);
+        Object.defineProperty(pista, 'getCapabilities', {value: () => ({torch:camara.admiteLinterna})});
+        Object.defineProperty(pista, 'applyConstraints', {value: async opciones => { camara.linterna.push(opciones.advanced[0].torch); }});
         function cuadro(){
-          contexto.fillStyle = 'white';
-          contexto.fillRect(0, 0, 480, 240);
+          if(escena){
+            const ancho = Math.round(escena.height * lienzo.width / lienzo.height);
+            contexto.drawImage(escena, (escena.width - ancho) / 2, 0, ancho, escena.height, 0, 0, lienzo.width, lienzo.height);
+          }else{
+            contexto.fillStyle = 'white';
+            contexto.fillRect(0, 0, lienzo.width, lienzo.height);
+          }
           if(camara.modo === 'ean'){
+            const paso = escena ? 3 : 4, x = (lienzo.width - barras.length * paso) / 2;
+            const y = escena ? Math.round(lienzo.height * .34) : 55;
+            contexto.fillStyle = 'white';
+            contexto.fillRect(0, y - 10, lienzo.width, 150);
             contexto.fillStyle = 'black';
-            [...barras].forEach((v, i) => { if(v === '1') contexto.fillRect(50 + 4 * i, 55, 4, 130); });
+            [...barras].forEach((v, i) => { if(v === '1') contexto.fillRect(Math.floor(x + paso * i), y, paso, 130); });
           }
         }
         const reloj = setInterval(() => pista.readyState === 'ended' ? clearInterval(reloj) : cuadro(), 80);
@@ -156,6 +177,15 @@ def cerrar_hoja(pagina):
     anterior = capas.count()
     pagina.evaluate('history.back()')
     expect(capas).to_have_count(anterior - 1)
+
+
+def escribir_codigo(escaner, codigo):
+    campo = escaner.get_by_label('Escribir el código a mano')
+    expect(escaner.locator('[data-estado-camara]')).not_to_have_text('Abriendo la cámara…')
+    if not campo.is_visible():
+        escaner.get_by_role('button', name='Escribir el código a mano').click()
+    campo.fill(codigo)
+    escaner.get_by_role('button', name='Buscar código').click()
 
 
 def nueva_paciente_venta(pagina, nombre, telefono=''):
@@ -458,6 +488,13 @@ def prueba_sin_conexion(navegador):
         assert any(p.get('codigo') == '5901234123457' and 'Péptidos Efecto Botox' in p['nombre']
                    for p in datos_guardados(pagina)['productos'])
         cerrar_hoja(pagina)
+        pagina.get_by_role('button', name='Escanear', exact=True).click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Péptidos Efecto Botox')
+        lector.get_by_role('button', name='Ver producto').click()
+        expect(ficha).to_be_visible()
+        assert pagina.evaluate('camaraPrueba.pistas.at(-1).readyState') == 'ended'
+        cerrar_hoja(pagina)
         inventario(pagina, 'uso')
         pagina.locator('#listaProd [data-id=p3]').click()
         cabina = pagina.get_by_role('region', name='Frasco en uso')
@@ -474,6 +511,7 @@ def prueba_sin_conexion(navegador):
         pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender', exact=True).click()
         venta = pagina.get_by_role('dialog', name='Nueva venta')
         venta.get_by_role('button', name='Escanear código de barras').click()
+        lector.get_by_role('button', name='Agregar a la venta').click()
         expect(venta.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
         venta.get_by_role('button', name=re.compile(r'^Cobrar \$')).click()
         expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
@@ -570,15 +608,11 @@ def prueba_buscadores_y_filtros(navegador, perfil=None):
         expect(filas).to_have_count(2)
 
         pagina.get_by_role('button', name='Escanear').click()
-        campo = pagina.get_by_label('Escribir el código a mano')
-        campo.fill('sin código')
-        pagina.get_by_role('button', name='Buscar código').click()
-        expect(pagina.locator('#errorCodigo')).to_contain_text('No encontré')
-        campo.fill(' sp-abcde ')
-        if perfil:
-            pagina.get_by_role('button', name='Buscar código').tap()
-        else:
-            campo.press('Enter')
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, 'sin código')
+        expect(lector.get_by_role('heading', name='No encontré un producto con ese código')).to_be_visible()
+        escribir_codigo(lector, ' sp-abcde ')
+        lector.get_by_role('button', name='Ver producto').click()
         expect(pagina.locator('#capas > *')).to_have_count(1)
         expect(pagina.get_by_role('heading', name='Sun Screen Clear SPF 50+ · 60 g')).to_be_visible()
         cerrar_hoja(pagina)
@@ -600,8 +634,9 @@ def prueba_carrito_y_deshacer(navegador, perfil=None):
         expect(resumen).to_have_attribute('aria-expanded', 'false')
         nueva_paciente_venta(pagina, 'Rosa Cauce')
         venta.get_by_role('button', name='Escanear', exact=True).click()
-        pagina.get_by_label('Escribir el código a mano').fill('12345670')
-        pagina.get_by_role('button', name='Buscar código').click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, '12345670')
+        lector.get_by_role('button', name='Agregar a la venta').click()
         expect(resumen.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
         expect(pagina.locator('#vTotal')).to_have_text('$ 18,00')
         pagina.locator('#selProd [data-id=p2]').click()
@@ -884,8 +919,10 @@ def prueba_camara_venta(navegador, perfil=None):
         dialogo.get_by_role('button', name='Escanear código de barras').click()
         lector = pagina.get_by_role('dialog', name='Escanear')
         expect(lector.get_by_text('No se dio permiso para la cámara', exact=False)).to_be_visible()
-        expect(lector.get_by_label('Escribir el código a mano')).to_be_visible()
-        pagina.evaluate("camaraPrueba.modo = 'blanca'")
+        campo = lector.get_by_label('Escribir el código a mano')
+        expect(campo).to_be_visible()
+        assert campo.evaluate('el => getComputedStyle(el).fontSize') == '16px'
+        pagina.evaluate("Object.assign(camaraPrueba, {modo:'blanca', admiteLinterna:true})")
         lector.get_by_role('button', name='Abrir cámara').click()
         expect(lector.locator('video')).to_be_visible()
         for atributo in ('playsinline', 'muted', 'autoplay'):
@@ -893,12 +930,242 @@ def prueba_camara_venta(navegador, perfil=None):
         assert pagina.evaluate('camaraPrueba.solicitudes.at(-1)') == {
             'video': {'facingMode': {'ideal': 'environment'}}, 'audio': False,
         }
+        linterna = lector.get_by_role('button', name='Linterna')
+        linterna.click()
+        expect(linterna).to_have_attribute('aria-pressed', 'true')
+        linterna.click()
+        expect(linterna).to_have_attribute('aria-pressed', 'false')
+        assert pagina.evaluate('camaraPrueba.linterna') == [True, False]
         pagina.evaluate("camaraPrueba.modo = 'ean'")
+        expect(lector.locator('.resultado-escaner')).to_contain_text('Producto encontrado')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Quedan 5')
+        expect(lector.locator('.producto-escaner')).to_contain_text('$ 18,00')
+        for tema in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=tema)
+            expect(pagina.locator('html')).to_have_attribute('data-theme', tema)
+            razones = contrastes(pagina, [
+                ['.resultado-escaner-titulo', '.escaner-panel'], ['.producto-escaner strong', '.escaner-panel'],
+                ['.producto-escaner p', '.escaner-panel'], ['.stock-disponible', '.escaner-panel'],
+                ['.acciones-escaner .btn:not(.ghost)'], ['.escaner-controles .link', '.escaner-panel'],
+            ])
+            assert min(razones) >= 4.5, razones
+        assert lector.locator('.escaner-contenido').evaluate('el => el.scrollWidth === el.clientWidth')
+        lector.get_by_role('button', name='Escanear otro').click()
+        pagina.clock.run_for(400)
+        expect(lector.locator('.producto-escaner')).to_have_count(0)
+        assert pagina.evaluate('camaraPrueba.solicitudes.length') == 2
+        escribir_codigo(lector, '5901234123457')
+        lector.get_by_role('button', name='Agregar a la venta').click()
         expect(lector).to_have_count(0)
         expect(dialogo.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
         expect(dialogo.locator('.cantidad-tarjeta-venta:visible')).to_have_text('1')
         assert pagina.evaluate('camaraPrueba.pistas[0].readyState') == 'ended'
         assert datos_guardados(pagina) == estado
+    finally:
+        sitio.cerrar()
+
+
+def prueba_escaner_modos(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina)
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': 'SP-VENTA'} if p['id'] == 'p1' else
+            {**p, 'codigo': 'SP-USADO', 'unidad': 'ampollas'} if p['id'] == 'p3' else p
+            for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        inventario(pagina, 'uso')
+        pagina.get_by_role('button', name='Escanear', exact=True).click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        modos = lector.get_by_role('group', name='Modo de escaneo')
+        expect(modos.get_by_role('button', name='Usé')).to_have_attribute('aria-pressed', 'true')
+        escribir_codigo(lector, 'sp-venta')
+        expect(lector.get_by_role('button', name='Registrar uso')).to_be_disabled()
+        expect(lector.get_by_text('Este producto es para vender.', exact=False)).to_be_visible()
+        modos.get_by_role('button', name='Vender').click()
+        expect(lector.get_by_role('button', name='Agregar a la venta')).to_be_enabled()
+        modos.get_by_role('button', name='Usé').click()
+        escribir_codigo(lector, 'SP-USADO')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Queda 1')
+        lector.get_by_role('button', name='Registrar uso').click()
+        uso = pagina.get_by_role('dialog', name=re.compile('^Usar ·'))
+        expect(uso.get_by_label('¿Cuánto usaste? (ampollas)')).to_have_value('1')
+        uso.get_by_role('button', name='Guardar', exact=True).click()
+        expect(uso).to_have_count(0)
+        assert pagina.evaluate("stockDe('p3')") == 0
+
+        inventario(pagina, 'inicio')
+        escanear_inicio = pagina.get_by_role('button', name='Escanear', exact=True)
+        escanear_inicio.click()
+        escribir_codigo(lector, 'SP-VENTA')
+        lector.get_by_role('button', name='Agregar a la venta').click()
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        expect(venta.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
+        venta.get_by_label('Nota (opcional)').fill('Nota de la venta')
+        escanear_venta = venta.get_by_role('button', name='Escanear código de barras')
+        escanear_venta.click()
+        modos.get_by_role('button', name='Llegó').click()
+        escribir_codigo(lector, 'SP-VENTA')
+        lector.get_by_role('button', name='Registrar entrada').click()
+        entrada = pagina.get_by_role('dialog', name=re.compile('^Llegó más ·'))
+        entrada.get_by_label('Nota (opcional)').fill('Mercadería de prueba')
+        entrada.get_by_role('button', name='Guardar', exact=True).click()
+        expect(venta).to_be_visible()
+        expect(venta.get_by_label('Nota (opcional)')).to_have_value('Nota de la venta')
+        expect(venta.locator('[data-id=p1] .stock-tarjeta-venta')).to_have_text('Quedan 6')
+
+        escanear_venta.click()
+        modos.get_by_role('button', name='Contar').click()
+        escribir_codigo(lector, 'SP-VENTA')
+        lector.get_by_role('button', name='Contar producto').click()
+        conteo = pagina.get_by_role('dialog', name=re.compile('^Contar ·'))
+        conteo.get_by_label('¿Cuántos hay de verdad? (unidades)').fill('8')
+        conteo.get_by_role('button', name='Guardar', exact=True).click()
+        expect(venta.locator('[data-id=p1] .stock-tarjeta-venta')).to_have_text('Quedan 8')
+        venta.get_by_role('button', name='Cobrar $ 18,00').click()
+        expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
+        guardado = datos_guardados(pagina)
+        assert guardado['ventas'][-1]['nota'] == 'Nota de la venta'
+        uso, entrada, conteo, cobro = guardado['movs'][-4:]
+        assert [(m['tipo'], m['prod'], m['cant']) for m in (uso, entrada, conteo, cobro)] == [
+            ('uso', 'p3', -1), ('entrada', 'p1', 1), ('ajuste', 'p1', 2), ('venta', 'p1', -1),
+        ]
+        assert entrada['nota'] == 'Mercadería de prueba' and conteo['motivo'] == 'conteo'
+        assert pagina.evaluate("stockDe('p1')") == 7
+
+        for nombre, etiqueta in [('Contar inventario', 'Contar'), ('Llegó mercadería', 'Llegó'), ('Usé en cabina', 'Usé')]:
+            pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name=nombre).click()
+            selector = pagina.get_by_role('dialog', name=nombre)
+            selector.get_by_role('button', name='Escanear').click()
+            expect(modos.get_by_role('button', name=etiqueta)).to_have_attribute('aria-pressed', 'true')
+            cerrar_hoja(pagina)
+            expect(selector.get_by_role('button', name='Escanear')).to_be_focused()
+            cerrar_hoja(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_escaner_codigo_nuevo(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina)
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': '0036000291452'} if p['id'] == 'p2' else
+            {**p, 'codigo': 'Lote:É<42>'} if p.get('borrado') else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        pagina.get_by_role('button', name='Escanear', exact=True).click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, '036000291452')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Azelac Serum')
+        escribir_codigo(lector, ' Lote:É<42> ')
+        expect(lector.locator('.codigo-leido')).to_have_text('Lote:É<42>')
+        assert datos_guardados(pagina) == estado
+        lector.get_by_role('button', name='Asignar a un producto').click()
+        selector = pagina.get_by_role('dialog', name='Asignar a un producto')
+        expect(selector.locator('.fila-lista')).to_have_count(2)
+        buscar = selector.get_by_role('searchbox', name='Buscar producto')
+        buscar.fill('nipro')
+        expect(selector.locator('.vacio')).to_contain_text('No encontré')
+        buscar.fill('sun screen')
+        fila = selector.locator('.fila-lista')
+        expect(fila).to_have_count(1)
+        pagina.evaluate("() => { window.guardarOriginal = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('Memoria llena'); }; }")
+        fila.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == estado
+        pagina.evaluate('() => { Storage.prototype.setItem = window.guardarOriginal; }')
+        fila.click()
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+        guardado = datos_guardados(pagina)
+        assert guardado['productos'][0]['codigo'] == 'Lote:É<42>'
+        assert guardado['productos'][0]['por'] == 'Elba'
+        assert guardado['productos'][0]['mod'] >= int(FECHA.timestamp() * 1000)
+        assert guardado['movs'] == estado['movs'] and guardado['ventas'] == estado['ventas']
+        lector.get_by_role('button', name='Agregar a la venta').click()
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        escanear = venta.get_by_role('button', name='Escanear código de barras')
+        escanear.click()
+        escribir_codigo(lector, 'lote:É<42>')
+        expect(lector.locator('.resultado-escaner')).to_contain_text('No encontré')
+        lector.get_by_role('button', name='Crear producto con este código').click()
+        nuevo = pagina.get_by_role('dialog', name='Nuevo producto')
+        codigo = nuevo.get_by_label('Código de barras')
+        expect(codigo).to_have_value('lote:É<42>')
+        nuevo.get_by_label('Nombre del producto').fill('Protector de prueba')
+        codigo.fill('036000291452')
+        nuevo.get_by_role('button', name='Guardar', exact=True).click()
+        expect(pagina.locator('#toast')).to_contain_text('Ese código ya está asignado a Azelac')
+        assert datos_guardados(pagina) == guardado
+        codigo.fill('0012345678')
+        nuevo.get_by_role('button', name='Guardar', exact=True).click()
+        expect(venta).to_be_visible()
+        expect(venta.locator('#resumenVenta')).to_have_text('Venta · 1 producto')
+        venta.get_by_role('searchbox', name='Buscar producto').fill('protector de prueba')
+        expect(venta.locator('.tarjeta-venta')).to_contain_text('Protector de prueba')
+        escanear.click()
+        escribir_codigo(lector, ' 0012345678 ')
+        expect(lector.locator('.producto-escaner')).to_contain_text('Protector de prueba')
+        assert datos_guardados(pagina)['productos'][-1]['codigo'] == '0012345678'
+    finally:
+        sitio.cerrar()
+
+
+def prueba_escaner_cierre(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina, detector_local=False)
+        sitio.pagina.add_init_script("""(() => {
+          window.detectorPrueba = {formatos: [], pitidos: [], vibraciones: [], codigo: ''};
+          Object.defineProperty(window, 'BarcodeDetector', {value: class {
+            static async getSupportedFormats(){ return ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code']; }
+            constructor({formats}){ detectorPrueba.formatos.push(formats); }
+            async detect(){ return detectorPrueba.codigo ? [{rawValue:detectorPrueba.codigo}] : []; }
+          }, configurable: true});
+          const empezar = OscillatorNode.prototype.start;
+          OscillatorNode.prototype.start = function(...args){
+            detectorPrueba.pitidos.push(this.frequency.value);
+            return empezar.apply(this, args);
+          };
+          Object.defineProperty(navigator, 'vibrate', {value: duracion => { detectorPrueba.vibraciones.push(duracion); }});
+        })();""")
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': 'SP-NATIV'} if p['id'] == 'p1' else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        boton = pagina.get_by_role('button', name='Escanear', exact=True)
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        pagina.evaluate("camaraPrueba.modo = 'pendiente'")
+        boton.click()
+        pagina.wait_for_function("typeof camaraPrueba.otorgar === 'function'")
+        cerrar_hoja(pagina)
+        expect(boton).to_be_focused()
+        pagina.evaluate('camaraPrueba.otorgar()')
+        pagina.wait_for_function("camaraPrueba.pistas[0]?.readyState === 'ended'")
+        assert pagina.evaluate('detectorPrueba.formatos') == []
+
+        pagina.evaluate("camaraPrueba.modo = 'blanca'")
+        boton.click()
+        expect(lector.locator('video')).to_be_visible()
+        expect(lector.get_by_role('button', name='Linterna')).to_have_count(0)
+        pagina.wait_for_function('detectorPrueba.formatos.length === 1')
+        assert pagina.evaluate('detectorPrueba.formatos[0]') == ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code']
+        pagina.evaluate("detectorPrueba.codigo = 'SP-NATIV'")
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+        assert pagina.evaluate('detectorPrueba.vibraciones') == [35]
+        assert pagina.evaluate('detectorPrueba.pitidos') == [880]
+        pagina.clock.run_for(500)
+        assert pagina.evaluate('detectorPrueba.vibraciones') == [35]
+        pagina.evaluate("window.dispatchEvent(new Event('pagehide'))")
+        expect(lector.get_by_text('La cámara se pausó.', exact=False)).to_be_visible()
+        assert pagina.evaluate('camaraPrueba.pistas[1].readyState') == 'ended'
+        lector.get_by_role('button', name='Escanear otro').click()
+        expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear')
+        lector.get_by_role('button', name='Escribir el código a mano').click()
+        expect(lector.get_by_label('Escribir el código a mano')).to_be_focused()
+        assert pagina.evaluate('camaraPrueba.pistas[2].readyState') == 'ended'
     finally:
         sitio.cerrar()
 
@@ -958,8 +1225,9 @@ def prueba_formulario_producto(navegador, perfil=None):
         pagina.get_by_role('searchbox', name='Buscar en el inventario').fill(p['codigo'])
         expect(pagina.locator('#listaProd .fila-lista')).to_have_count(1)
         pagina.get_by_role('button', name='Escanear').click()
-        pagina.get_by_label('Escribir el código a mano').fill(p['codigo'])
-        pagina.get_by_role('button', name='Buscar código').click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, p['codigo'])
+        lector.get_by_role('button', name='Ver producto').click()
         expect(pagina.get_by_role('heading', name=p['nombre'])).to_be_visible()
         pagina.get_by_role('button', name='Editar producto').click()
         expect(pagina.get_by_label('Código de barras')).to_have_value(p['codigo'])
@@ -1462,8 +1730,9 @@ def prueba_asignar_codigo(navegador, perfil=None):
         cerrar_hoja(pagina)
         pagina.reload()
         pagina.get_by_role('button', name='Escanear').click()
-        pagina.get_by_label('Escribir el código a mano').fill('0012345678905')
-        pagina.get_by_role('button', name='Buscar código').click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, '0012345678905')
+        lector.get_by_role('button', name='Ver producto').click()
         expect(asignado).to_be_visible()
     finally:
         sitio.cerrar()
@@ -1592,8 +1861,9 @@ def prueba_inicio_accesos(navegador, perfil=None):
         cerrar_hoja(pagina)
         global_.fill('')
         pagina.get_by_role('button', name='Escanear').click()
-        pagina.get_by_label('Escribir el código a mano').fill('sp-claro')
-        pagina.get_by_role('button', name='Buscar código').click()
+        lector = pagina.get_by_role('dialog', name='Escanear')
+        escribir_codigo(lector, 'sp-claro')
+        lector.get_by_role('button', name='Ver producto').click()
         expect(pagina.get_by_role('dialog', name=ESTADO_V1['productos'][0]['nombre'])).to_be_visible()
         cerrar_hoja(pagina)
 
@@ -1777,7 +2047,7 @@ def capturar(navegador, tarea):
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
-            if tarea in ('T4', 'T6'):
+            if tarea in ('T4', 'T6', 'T7'):
                 simular_camara(sitio.pagina)
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
@@ -1790,6 +2060,51 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T7':
+                pagina.evaluate("""() => {
+                  const productos = E.productos.map(p => p.nombre.startsWith('Sun Screen Clear SPF 50+') ?
+                    {...p, codigo:'5901234123457'} : p);
+                  guardar({...E, productos});
+                  Object.assign(camaraPrueba, {modo:'escena', admiteLinterna:true});
+                }""")
+                escanear = pagina.get_by_role('button', name='Escanear', exact=True)
+                lector = pagina.get_by_role('dialog', name='Escanear')
+                escanear.click()
+                expect(lector.locator('video')).to_be_visible()
+                pagina.wait_for_function("document.querySelector('.vista-escaner video').readyState >= 2")
+                guardar(sitio, 'camara', tema)
+                pagina.evaluate("camaraPrueba.modo = 'ean'")
+                expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear SPF 50+')
+                pagina.evaluate("camaraPrueba.modo = 'escena'")
+                pagina.clock.run_for(200)
+                guardar(sitio, 'encontrado', tema)
+                cerrar_hoja(pagina)
+
+                pagina.evaluate("camaraPrueba.modo = 'negada'")
+                escanear.click()
+                expect(lector.get_by_text('No se dio permiso', exact=False)).to_be_visible()
+                guardar(sitio, 'permiso-manual', tema)
+                escribir_codigo(lector, 'SP-NUEVO')
+                guardar(sitio, 'sin-producto', tema)
+                lector.get_by_role('button', name='Asignar a un producto').click()
+                selector = pagina.get_by_role('dialog', name='Asignar a un producto')
+                selector.get_by_role('searchbox').fill('azelac')
+                expect(selector.locator('.fila-lista').first).to_be_visible()
+                guardar(sitio, 'asignar', tema)
+                cerrar_hoja(pagina)
+                lector.get_by_role('button', name='Crear producto con este código').click()
+                expect(pagina.get_by_label('Código de barras')).to_have_value('SP-NUEVO')
+                guardar(sitio, 'crear', tema)
+                cerrar_hoja(pagina)
+
+                pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Contar inventario').click()
+                selector = pagina.get_by_role('dialog', name='Contar inventario')
+                guardar(sitio, 'selector-conteo', tema)
+                selector.get_by_role('button', name='Escanear').click()
+                escribir_codigo(lector, '5901234123457')
+                expect(lector.get_by_role('button', name='Contar producto')).to_be_visible()
+                guardar(sitio, 'contar', tema)
+                continue
             if tarea == 'T6':
                 pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Vender', exact=True).click()
                 venta = pagina.get_by_role('dialog', name='Nueva venta')
@@ -1981,13 +2296,14 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T6', choices=['T2', 'T3', 'T4', 'T5', 'T6'],
-                        help='guardar capturas en modo claro y oscuro (T6 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T7', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
+                        help='guardar capturas en modo claro y oscuro (T7 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
                         prueba_venta_rapida, prueba_opciones_venta, prueba_camara_venta,
+                        prueba_escaner_modos, prueba_escaner_codigo_nuevo, prueba_escaner_cierre,
                         prueba_formulario_producto, prueba_inventario_resumen_y_orden,
                         prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo,
                         prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,

@@ -128,7 +128,7 @@ Según `Vender.png`:
 - Al cobrar: animación de éxito, toast con deshacer y regreso a Inicio.
 - **Hecha cuando:** una venta de 3 productos se hace en menos de 6 toques desde Inicio (con escáner o tocando las fotos) y la prueba lo comprueba.
 
-## T7 · Escáner  [ ]
+## T7 · Escáner  [x]
 Según `Escaner.png`:
 - Cámara trasera con `getUserMedia`.
   - Usa `BarcodeDetector` si existe. Si no (Safari en iPhone), usa el polyfill `barcode-detector` (ZXing en WebAssembly) guardado en `prueba/vendor/`.

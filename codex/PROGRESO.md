@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T7
-- Última corrida: 27-nov-2026, 12:45 (Ecuador) · T6 completada
+- Tarea actual: T8
+- Última corrida: 27-nov-2026, 13:05 (Ecuador) · T7 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -130,3 +130,23 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé 14 capturas de 390×844 en claro y oscuro. Frente a `Vender.png`, se conservaron la tarjeta de paciente, las tres columnas y la hoja de carrito. En la pantalla corta el carrito plegado deja elegir productos y el detalle abierto se desplaza para alcanzar la fecha, el descuento y la nota.
 - Pasaron 22 pruebas en Chromium a 390×844 y 19 con su perfil iPhone 14 Pro. Se comprobó una venta de tres productos en cinco toques desde Inicio, el cobro sin conexión con un EAN-13, el descuento, el comprobante, la confirmación por falta de existencias, el reintento de guardado, Deshacer y los archivos de la versión 1.
 - Sigue T7 con el escáner general. Queda por comprobar en el iPhone de Elba el calendario, el enfoque de la cámara y la apertura del comprobante de WhatsApp en Safari y desde la pantalla de inicio. Los cambios de la corrida quedaron en `prueba/` y `codex/`.
+
+### 27-nov-2026 · 12:47–13:05 (Ecuador) · T7
+
+**Revisión de las ocho capturas T6 adjuntas**
+
+- **Venta cobrada, claro y oscuro.** «Deshacer» cubre parte de los tres contadores de Inicio. Se alcanza a leer la primera fila de «Necesita atención» por debajo de la barra translúcida, especialmente en oscuro.
+- **Escáner de venta, oscuro.** El mensaje de permiso y la entrada manual son visibles. La hoja sobre el carrito difiere de la vista completa con encuadre, modos y ficha de `Escaner.png`.
+- **Carrito y descuento, oscuro.** Al abrir el carrito, el pie fijo corta las etiquetas «Descuento ($)» y «Fecha». Al bajar al descuento, asoma una franja del selector de pago debajo de la cabecera y el total queda fuera de la zona desplazada. El importe se conserva en el botón de registro.
+- **Cuadrícula, oscuro.** Frente a `Vender.png`, los nombres largos terminan en puntos suspensivos y los precios de la segunda fila quedan detrás del carrito plegado en el primer pantallazo. El chip siguiente aparece parcialmente por el borde derecho.
+- **Elegir paciente y Nueva paciente, oscuro.** «Editar datos» aparece antes de elegir una ficha y no indica en ese punto cuál se editará. En «Nueva paciente», el nombre recibe foco y el campo de teléfono queda visible. Falta ver cuánto queda a la vista con el teclado del iPhone abierto.
+
+**Trabajo completado**
+
+- El escáner se abre a pantalla completa desde Inicio, Inventario, Nueva venta y los selectores de acciones rápidas. Los modos Vender, Usé, Llegó y Contar muestran la ficha encontrada y la acción del modo. Contar abre el ajuste individual hasta el recorrido guiado de T10. El carrito se conserva al consultar una ficha o registrar otro movimiento y volver.
+- Se reutiliza el lector local para EAN-13, EAN-8, UPC-A, UPC-E, Code 128 y QR. La lectura emite un pitido y pide una vibración cuando el dispositivo lo permite. La linterna aparece según las capacidades de la cámara trasera. El video se apaga al salir, pasar a escritura manual o asignación, y al ocultar la app.
+- «Escribir el código a mano» está disponible aunque se deniegue el permiso. Para un código desconocido se puede buscar un producto sin código o abrir un formulario con el código ya escrito. La validación conserva ceros iniciales e impide asignar el mismo código a dos productos vigentes.
+- Revisé 16 capturas de 390×844 en claro y oscuro. El encabezado, los cuatro modos, el encuadre menta y la tarjeta inferior siguen `Escaner.png`. Al escribir a mano, el formulario sube debajo de los modos para quedar más cerca del encabezado al aparecer el teclado.
+- Pasaron 25 pruebas en Chromium a 390×844 y 22 con su perfil iPhone 14 Pro. Se comprobó la lectura de EAN-13 con video simulado y ZXing sin conexión, la asignación y creación de códigos, los cuatro modos, el cierre de la cámara, el contraste y la compatibilidad con los archivos de la versión 1.
+- Queda comprobar en el iPhone de Elba, en Safari y desde la pantalla de inicio, el permiso, el enfoque de la cámara trasera al leer códigos impresos, la linterna si se ofrece, el sonido, el teclado, las zonas seguras y el cierre de la cámara al bloquear el teléfono o volver atrás.
+- Sigue T8 con la lista, la ficha y los recordatorios de pacientes. Los cambios de la corrida quedaron en `prueba/` y `codex/`.
