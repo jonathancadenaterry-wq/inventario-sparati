@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T11
-- Última corrida: 27-nov-2026, 13:50 (Ecuador) · T10 completada
+- Tarea actual: T12
+- Última corrida: 27-nov-2026, 14:05 (Ecuador) · T11 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -205,3 +205,21 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé 12 capturas de 390×844 en claro y oscuro. El acceso de Inventario comparte fila con la lista de compras y el orden. Las filas y las tarjetas del conteo siguen `Inventario.png` y `Producto.png`. La cámara usa el encuadre menta y la ficha inferior de `Escaner.png`. En Inicio e Inventario aún se alcanzan a leer fragmentos de filas bajo la barra fija.
 - Pasaron 32 pruebas en Chromium a 390×844 y 29 con su perfil de iPhone 14 Pro. Se comprobó que las existencias quedan iguales a lo contado, incluida una cantidad decimal y otra en cero. También pasaron la lectura repetida con la cámara simulada, la pausa y reanudación sin conexión, el reintento del guardado y los archivos v1.
 - Sigue T11 con la lista para pedir. Queda probar la lectura repetida con códigos impresos y el teclado de cantidades en Safari del iPhone de Elba, también desde la pantalla de inicio. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.
+
+### 27-nov-2026 · 13:53–14:05 (Ecuador) · T11
+
+**Revisión de las ocho capturas T10 adjuntas**
+
+- **Inicio con conteo pausado, claro y oscuro.** La barra inferior deja ver partes de la primera fila de «Necesita atención» debajo de las pestañas. La bolsa queda encima del comienzo de esa fila y el título de la sección queda pegado a la barra.
+- **Inventario oscuro.** «Lista de compras», «Contar» y «Por nombre» comparten una fila apretada. El siguiente filtro asoma cortado a la derecha y la navegación deja ver fragmentos de la lista que pasa por debajo.
+- **Grupos y producto, oscuro.** Las tarjetas distinguen bien los grupos. En el paso de conteo aparecen juntas las cifras «Producto 3 de 42» y «3 de 42 contados». La franja de avance es pequeña y ambos números se confunden cuando coinciden. El texto «Cantidad contada (frascos)» sí deja clara la unidad.
+- **Escáner oscuro.** El fondo de cámara es una simulación. El texto de ayuda y la confirmación de lectura se leen completos. El rayo aparece solo como ícono y su estado queda poco claro en la captura fija.
+- **Resumen, claro y oscuro.** «Esperado 6» y «Esperado 4» quedan sin unidad, mientras «Contado 8 frascos» y «Contado 1 unidad» sí la muestran. El espacio vacío sobre «Confirmar conteo» es amplio cuando solo hay dos diferencias, aunque deja el botón al alcance al pie.
+
+**Trabajo completado**
+
+- «Lista de compras» sugiere cuánto pedir según la cantidad ideal o el consumo de 30 días con un piso de mínimo más uno. Resta lo que ya está por llegar. Las tarjetas agrupan por proveedor y preparan en WhatsApp el mensaje para su número.
+- «Marcar como pedido» guarda el pedido en ese celular. «Llegó» permite anotar entregas completas o parciales y guarda juntas las cantidades y el costo unitario en el inventario. «Deshacer» revierte la llegada. Las entradas y los costos se incluyen en el archivo de envío entre celulares.
+- Revisé ocho capturas de 390×844, en claro y oscuro. La lista toma de `Inventario.png` el segmentado, las tarjetas redondeadas, las filas con fotos y los separadores rectos. En «Llegó» el pie fijo deja el botón visible mientras se desplaza el formulario.
+- Pasaron 35 pruebas en Chromium a 390×844 y 32 con su perfil iPhone 14 Pro. Se comprobaron el mensaje por proveedor, las cantidades sugeridas, las entregas parciales sin conexión, el reintento de guardado, Deshacer y la prevención de entradas duplicadas desde otra pestaña. También pasaron los archivos de la versión 1.
+- Sigue T12, etiquetas QR propias. Queda comprobar el teclado de recepción y la apertura de WhatsApp en el iPhone de Elba. Los cambios están en `prueba/` y `codex/`.

@@ -39,6 +39,12 @@ function num(v){
   return isFinite(n) ? n : NaN;
 }
 const red = n => Math.round(n * 100) / 100;
+function cantidadEscrita(valor){
+  const texto = String(valor ?? '').trim();
+  if(!/^(?:\d+(?:[.,]\d{0,2})?|[.,]\d{1,2})$/.test(texto)) return null;
+  const cantidad = num(texto);
+  return Number.isSafeInteger(Math.round(cantidad * 100)) ? red(cantidad) : null;
+}
 const fCant = n => (Math.round(n * 100) / 100).toLocaleString('es-EC', {maximumFractionDigits:2, useGrouping:false});
 const SING = {unidades:'unidad', frascos:'frasco', cajas:'caja', ampollas:'ampolla', jeringas:'jeringa', sobres:'sobre', pares:'par', paquetes:'paquete'};
 const singular = u => SING[u] || u || 'unidad';
@@ -74,7 +80,7 @@ function haceTxt(ms){
 
 // ---------- Estado ----------
 function estadoInicial(){
-  return {v:1, productos:[], movs:[], ventas:[], pacientes:[], cats:{venta:[], uso:[]},
+  return {v:1, productos:[], movs:[], ventas:[], pacientes:[], pedidos:[], cats:{venta:[], uso:[]},
     ajustes:{diasVence:60, tema:'auto', plantillaRecordatorio:PLANTILLA_RECORDATORIO},
     sync:{envio:0, recibo:0, de:''}, creado:ahora()};
 }
@@ -86,7 +92,7 @@ function cargar(){
   }catch(e){ E = null; }
   if(!E || !Array.isArray(E.productos)) E = estadoInicial();
   const b = estadoInicial();
-  for(const k of ['movs','ventas','pacientes']) if(!Array.isArray(E[k])) E[k] = [];
+  for(const k of ['movs','ventas','pacientes','pedidos']) if(!Array.isArray(E[k])) E[k] = [];
   E.cats = Object.assign(b.cats, E.cats || {});
   E.ajustes = Object.assign(b.ajustes, E.ajustes || {});
   E.sync = Object.assign(b.sync, E.sync || {});
@@ -177,14 +183,6 @@ function todosLosAvisos(){
   const ord = (a, b) => (a.nivel === b.nivel ? 0 : a.nivel === 'bad' ? -1 : 1) || a.orden - b.orden || a.p.nombre.localeCompare(b.p.nombre, 'es');
   r.stock.sort(ord); r.fecha.sort(ord);
   return r;
-}
-function paraPedir(id){
-  return productos().filter(p => (!id || p.id === id) && avisosDe(p).some(a => a.clase === 'stock')).map(p => {
-    const s = stockDe(p.id), c = CONSUMO.get(p.id);
-    let sug = p.min > 0 ? Math.ceil(p.min * 2 - s) : 0;
-    if(c) sug = Math.max(sug, Math.ceil(c * 30 - s));
-    return {p, s, sug:Math.max(1, sug)};
-  });
 }
 // Pacientes a quienes conviene volver a ofrecer un producto (según cuántos días le dura)
 function recompras(lista = pacientes()){
@@ -1450,10 +1448,13 @@ function fichaCabina(p, s, avisos, consumo, movs){
     ${datosExtra.length ? `<section class="card otros-datos-ficha" aria-label="Otros datos">${datosExtra.map(([etiqueta, valor]) => `<div class="dato"><span>${esc(etiqueta)}</span><span>${esc(valor)}</span></div>`).join('')}</section>` : ''}
     <button class="btn danger full" data-act="borrarProd" data-id="${id}">Eliminar producto</button>`);
 }
+function telefonoWhatsApp(tel){
+  const t = String(tel || '').replace(/\D/g, '');
+  if(t.startsWith('00')) return t.slice(2);
+  return t.startsWith('0') ? '593' + t.slice(1) : t;
+}
 function waLink(tel, texto){
-  let t = String(tel || '').replace(/\D/g, '');
-  if(t.startsWith('0')) t = '593' + t.slice(1);
-  return 'https://wa.me/' + t + '?text=' + encodeURIComponent(texto);
+  return 'https://wa.me/' + telefonoWhatsApp(tel) + '?text=' + encodeURIComponent(texto);
 }
 function refrescar(){
   render();
@@ -1464,6 +1465,13 @@ function refrescar(){
     if(el.dataset.tipo === 'avisosInicio') pintarAvisosInicio(el);
     if(el.dataset.tipo === 'selectorInicio') pintarSelectorInicio(el);
   }
+}
+function recargarEstadoSiCambio(){
+  try{ if(localStorage.getItem(CLAVE) === estadoGuardado) return false; }
+  catch(e){ return false; }
+  cargar();
+  refrescar();
+  return true;
 }
 
 // ---------- Formularios (estado F + campos data-f) ----------
@@ -1772,29 +1780,16 @@ async function guardarAjuste(){
 
 // ---------- Conteo guiado ----------
 const GRUPOS_CONTEO = {todos:'Todo el inventario', venta:'Para vender', uso:'Uso en spa'};
-function cantidadContada(valor){
-  const texto = String(valor ?? '').trim();
-  if(!/^(?:\d+(?:[.,]\d{0,2})?|[.,]\d{1,2})$/.test(texto)) return null;
-  const cantidad = num(texto);
-  return Number.isSafeInteger(Math.round(cantidad * 100)) ? red(cantidad) : null;
-}
 function filasConteo(conteo){
   const porId = new Map(vivos(E.productos).map(p => [p.id, p]));
   return conteo.ids.filter(id => porId.has(id)).map(id => {
     const p = porId.get(id), esperado = stockDe(id);
-    const contado = cantidadContada(conteo.cantidades[id]);
+    const contado = cantidadEscrita(conteo.cantidades[id]);
     return {p, esperado, contado, diferencia:contado === null ? null : red(contado - esperado)};
   });
 }
-function leerEstadoConteo(){
-  try{ if(localStorage.getItem(CLAVE) === estadoGuardado) return false; }
-  catch(e){ return false; }
-  cargar();
-  refrescar();
-  return true;
-}
 function revisarEstadoConteo(d){
-  if(!leerEstadoConteo()) return true;
+  if(!recargarEstadoSiCambio()) return true;
   pintarConteo(d, true);
   toast('El inventario cambió. Revisa el conteo y vuelve a intentar.');
   return false;
@@ -1910,7 +1905,7 @@ function pintarCantidadConteo(d, filas, i, guardado = true){
   const registrados = filas.filter(f => f.contado !== null).length;
   const {contado, diferencia, p} = filas[i];
   const input = $('#cantidadConteo', d), mensaje = $('#estadoCantidadConteo', d);
-  const invalido = Boolean(input.value.trim()) && cantidadContada(input.value) === null;
+  const invalido = Boolean(input.value.trim()) && cantidadEscrita(input.value) === null;
   $('progress', d).value = registrados;
   const avance = $('.conteo-cuantos', d), textoAvance = `${registrados} de ${filas.length} contados`;
   if(avance.textContent !== textoAvance) avance.textContent = textoAvance;
@@ -1927,7 +1922,7 @@ function pintarCantidadConteo(d, filas, i, guardado = true){
   siguiente.textContent = registrados === filas.length ? 'Ver resumen' : i + 1 === filas.length ? 'Ir al pendiente' : 'Siguiente';
 }
 function abrirConteo(p = null){
-  leerEstadoConteo();
+  recargarEstadoSiCambio();
   const d = abrirCapa('', {cls:'hoja hoja-conteo', tipo:'conteo'});
   if(p){
     p = prodPorId(p.id);
@@ -1978,9 +1973,9 @@ function sumarLecturaConteo(p, enfocar = false){
   if(!p) return {texto:'No encontré un producto con ese código.'};
   const conteo = E.conteo;
   if(!conteo?.ids.includes(p.id)) return {texto:`${p.nombre} no pertenece a este conteo.`};
-  const cantidad = red((cantidadContada(conteo.cantidades[p.id]) ?? 0) + 1);
+  const cantidad = red((cantidadEscrita(conteo.cantidades[p.id]) ?? 0) + 1);
   const valor = fCant(cantidad);
-  if(cantidadContada(valor) === null) return {texto:'La cantidad es demasiado grande.'};
+  if(cantidadEscrita(valor) === null) return {texto:'La cantidad es demasiado grande.'};
   const avance = {...conteo, cantidades:{...conteo.cantidades, [p.id]:valor}};
   if(enfocar) Object.assign(avance, {paso:p.id, resumen:false});
   if(!guardarBorradorConteo(avance)) return {texto:'La lectura no se guardó. Intenta de nuevo.'};
@@ -2571,28 +2566,225 @@ function abrirRecordatorio(venta, producto){
 }
 
 // ---------- Lista de compras ----------
+function pedidosPendientes(){
+  const recibidos = new Map(), catalogo = new Map(vivos(E.productos).map(p => [p.id, p]));
+  for(const m of E.movs){
+    if(m.borrado || m.tipo !== 'entrada' || !m.pedido) continue;
+    if(!recibidos.has(m.pedido)) recibidos.set(m.pedido, new Map());
+    const porProducto = recibidos.get(m.pedido);
+    porProducto.set(m.prod, (porProducto.get(m.prod) || 0) + m.cant);
+  }
+  const pendientes = [];
+  for(const pedido of vivos(E.pedidos)){
+    const items = pedido.items.map(it => {
+      const falta = red(it.cant - (recibidos.get(pedido.id)?.get(it.prod) || 0));
+      const p = catalogo.get(it.prod);
+      const vigente = p && (p.unidad || 'unidades') === it.unidad;
+      return {...it, falta, p:vigente ? p : null};
+    }).filter(it => it.falta > 0);
+    if(items.length) pendientes.push({pedido, items});
+  }
+  return pendientes;
+}
+function gruposParaPedir(id, pedidos){
+  const catalogo = productos(), telefonos = new Map(), enCamino = new Map(), grupos = new Map();
+  for(const p of catalogo){
+    const nombre = norm(p.prov), tel = telefonoWhatsApp(p.telProv);
+    if(!nombre || !tel) continue;
+    if(!telefonos.has(nombre)) telefonos.set(nombre, new Map());
+    telefonos.get(nombre).set(tel, p.prov.trim());
+  }
+  for(const {items} of pedidos){
+    for(const it of items){
+      if(it.p) enCamino.set(it.prod, (enCamino.get(it.prod) || 0) + it.falta);
+    }
+  }
+  for(const p of catalogo){
+    if((id && p.id !== id) || !avisosDe(p).some(a => a.clase === 'stock')) continue;
+    const stock = stockDe(p.id), consumo = CONSUMO.get(p.id) || 0;
+    const objetivo = p.max > 0 ? p.max : Math.max((Number(p.min) || 0) + 1, Math.ceil(consumo * 30));
+    const cant = red(objetivo - stock - (enCamino.get(p.id) || 0));
+    if(!(cant > 0)) continue;
+    const nombre = norm(p.prov), contactos = telefonos.get(nombre);
+    const tel = telefonoWhatsApp(p.telProv) || (contactos?.size === 1 ? contactos.keys().next().value : '');
+    const clave = JSON.stringify([nombre, tel]);
+    if(!grupos.has(clave)) grupos.set(clave, {proveedor:contactos?.get(tel) || p.prov?.trim() || 'Sin proveedor', tel, items:[]});
+    grupos.get(clave).items.push({p, stock, prod:p.id, nombre:p.nombre, marca:p.marca, unidad:p.unidad || 'unidades', cant});
+  }
+  return [...grupos.values()].sort((a, b) => a.proveedor.localeCompare(b.proveedor, 'es'));
+}
+const cantidadPedido = (cant, unidad) => `${fCant(cant)} ${uTxt(cant, unidad)}`;
+const nombrePedido = it => it.nombre + (it.marca ? ' (' + it.marca + ')' : '');
+function textoPedido(items){
+  return 'Hola, te escribe SPARATI. Quisiera hacer este pedido:\n' +
+    items.map(it => `• ${cantidadPedido(it.cant, it.unidad)} de ${nombrePedido(it)}`).join('\n') + '\nGracias.';
+}
 function abrirCompras(id){
-  const d = abrirCapa('', {tipo:'compras'});
+  recargarEstadoSiCambio();
+  const d = abrirCapa('', {cls:'hoja hoja-compras', tipo:'compras'});
   d.dataset.id = id || '';
   pintarCompras(d);
 }
-function pintarCompras(d){
-  calcular();
-  const lista = paraPedir(d.dataset.id), grupos = new Map();
-  for(const x of lista){ const k = x.p.prov || ''; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); }
-  let h = '';
-  if(!lista.length) h = `<div class="estado-ok">${IC.check}<div>No hay nada por pedir. Todo tiene suficiente cantidad.</div></div>`;
-  for(const [prov, xs] of grupos){
-    const tel = (xs.find(x => x.p.telProv) || {p:{}}).p.telProv;
-    h += `<section class="card" style="gap:0"><div class="card-cab" style="margin-bottom:6px"><h3>${esc(prov || 'Sin proveedor')}</h3>${tel ? `<a class="btn sm soft" href="${waLink(tel, textoPedido(xs))}" target="_blank" rel="noopener">Pedir</a>` : ''}</div>
-      ${xs.map(x => `<button class="alerta" data-act="verProd" data-id="${esc(x.p.id)}">${avatar(x.p, 'sm')}<div class="tx"><b>${esc(x.p.nombre)}</b><div class="d">${x.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · hay ${fCant(x.s)}</div></div><span class="pill gold">Pedir ${fCant(x.sug)}</span></button>`).join('')}</section>`;
-  }
-  d.innerHTML = cabecera('Lista de compras') + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <div class="peq muted">Productos que se están terminando, con una cantidad sugerida para pedir (para unas semanas, según lo que usas o vendes).</div>${h}
-    ${lista.length ? `<button class="btn full" data-act="compartirCompras" data-id="${esc(d.dataset.id)}">${d.dataset.id ? 'Compartir pedido' : 'Compartir la lista completa'}</button>` : ''}</div></div>`;
-  cargarFotos(d);
+function filaPedido(it, pendiente){
+  const {p, unidad} = it, nombre = esc(p?.nombre || it.nombre);
+  const detalle = pendiente ? 'Por recibir ' + cantidadPedido(it.falta, unidad) : 'Hay ' + cantidadPedido(it.stock, unidad);
+  const contenido = `${p ? avatar(p) : `<span class="pedido-icono">${IC.inventario}</span>`}
+    <span class="tx"><b>${nombre}</b><span class="m">${esc(detalle)}</span></span>
+    ${!pendiente ? `<span class="pill gold">Pedir ${esc(cantidadPedido(it.cant, unidad))}</span>` : ''}`;
+  return p ? `<button class="fila-lista" data-act="verProd" data-id="${esc(p.id)}">${contenido}</button>` :
+    `<div class="fila-lista">${contenido}</div>`;
 }
-function textoPedido(xs){ return 'Hola, quisiera hacer un pedido:\n' + xs.map(x => `• ${fCant(x.sug)} ${x.p.unidad} de ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}`).join('\n') + '\nGracias.'; }
+function grupoParaPedir(grupo, i){
+  const {proveedor, tel, items} = grupo;
+  return `<section class="card pedido-card" aria-label="${esc(proveedor)}">
+    <header class="pedido-cabecera"><h3>${esc(proveedor)}</h3><span class="muted">${tel ? '+' + tel : 'Sin WhatsApp registrado'}</span></header>
+    <div class="pedido-filas">${items.map(it => filaPedido(it, false)).join('')}</div>
+    <div class="pedido-acciones">
+      ${tel ? `<a class="btn soft" href="${esc(waLink(tel, textoPedido(items)))}" target="_blank" rel="noopener">${IC.chat} WhatsApp</a>` : ''}
+      <button class="btn ghost" data-act="marcarPedido" data-grupo="${i}">Marcar como pedido</button>
+    </div>
+  </section>`;
+}
+function tarjetaPedidoPendiente({pedido, items}){
+  const id = esc(pedido.id);
+  return `<section class="card pedido-card" aria-label="${esc(pedido.proveedor)}">
+    <header class="pedido-cabecera"><h3>${esc(pedido.proveedor)}</h3>
+      <span class="muted">Pedido el ${fCorta(pedido.fecha)}</span></header>
+    <div class="pedido-filas">${items.map(it => filaPedido(it, true)).join('')}</div>
+    <div class="pedido-acciones">
+      <button class="btn" data-act="abrirLlegadaPedido" data-id="${id}">${IC.entrada} Llegó</button>
+      <button class="btn ghost" data-act="cerrarPedido" data-id="${id}">Cerrar pedido</button>
+    </div>
+  </section>`;
+}
+function pintarCompras(d){
+  const id = d.dataset.id, pedidos = pedidosPendientes();
+  const grupos = gruposParaPedir(id, pedidos);
+  const visibles = pedidos.filter(({items}) => !id || items.some(it => it.prod === id));
+  d.dataset.vista ||= grupos.length || !visibles.length ? 'sugeridos' : 'pedidos';
+  const mostrandoPedidos = d.dataset.vista === 'pedidos';
+  const activo = d.contains(document.activeElement) ? document.activeElement : null;
+  const desplazamiento = $('.hoja-cuerpo', d)?.scrollTop || 0;
+  const contenido = mostrandoPedidos ?
+    (visibles.map(tarjetaPedidoPendiente).join('') || '<p class="vacio">Todavía no hay pedidos por recibir.</p>') :
+    (grupos.map(grupoParaPedir).join('') || `<div class="estado-ok">${IC.check}<span>No hay nada más por pedir.</span></div>`);
+  d.innerHTML = cabecera('Lista de compras', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <div class="seg" role="group" aria-label="Lista de compras">
+      ${opcion('vistaCompras', 'sugeridos', 'Por pedir', !mostrandoPedidos)}
+      ${opcion('vistaCompras', 'pedidos', 'Pedidos' + (visibles.length ? ' · ' + visibles.length : ''), mostrandoPedidos)}
+    </div>${contenido}
+    ${!mostrandoPedidos && grupos.length ? `<button class="btn ghost full" data-act="compartirCompras" data-id="${esc(id)}">${id ? 'Compartir pedido' : 'Compartir la lista completa'}</button>` : ''}</div></div>`;
+  cargarFotos(d);
+  $('.hoja-cuerpo', d).scrollTop = desplazamiento;
+  if(activo && !enfocarControl(activo, d)) $('.seg .on', d).focus({preventScroll:true});
+}
+function mostrarVistaCompras(d, vista){
+  d.dataset.vista = vista;
+  $('.hoja-cuerpo', d).scrollTop = 0;
+  pintarCompras(d);
+  $('.seg .on', d).focus({preventScroll:true});
+}
+function marcarPedido(b){
+  if(recargarEstadoSiCambio()){ toast('La lista cambió. Revisa las cantidades y vuelve a intentar.'); return; }
+  const d = b.closest('.hoja-compras'), grupo = gruposParaPedir(d.dataset.id, pedidosPendientes())[Number(b.dataset.grupo)];
+  if(!grupo) return;
+  const items = grupo.items.map(({prod, nombre, unidad, cant}) => ({prod, nombre, unidad, cant}));
+  const pedido = marcar({id:uid(), proveedor:grupo.proveedor, fecha:hoyISO(), items}, true);
+  if(!guardar({...E, pedidos:[pedido, ...E.pedidos]})) return;
+  mostrarVistaCompras(d, 'pedidos');
+  toast('Pedido anotado');
+}
+async function cerrarPedido(id){
+  if(!(await confirmar('¿Cerrar este pedido?', 'Las cantidades que faltan quedarán disponibles para volver a pedir. Las entradas que ya registraste se conservan.', 'Cerrar pedido'))) return;
+  recargarEstadoSiCambio();
+  const pendiente = pedidosPendientes().find(x => x.pedido.id === id);
+  if(!pendiente) return;
+  const pedidos = E.pedidos.map(p => p === pendiente.pedido ? marcar({...p, borrado:true}) : p);
+  if(!guardar({...E, pedidos})) return;
+  refrescar();
+  toast('Pedido cerrado');
+}
+function abrirLlegadaPedido(id){
+  recargarEstadoSiCambio();
+  const pendiente = pedidosPendientes().find(x => x.pedido.id === id);
+  if(!pendiente) return;
+  const {pedido, items} = pendiente, vigentes = items.filter(it => it.p);
+  const d = abrirCapa(cabecera('Llegó el pedido', '', true) +
+    `<form class="pedido-llegada" novalidate>
+      <div class="hoja-cuerpo"><div class="hoja-in">
+        <div class="pedido-cabecera"><strong>${esc(pedido.proveedor)}</strong>
+          <p class="muted">Anota cuánto llegó y cuánto costó cada uno. Si algo no llegó, escribe 0.</p></div>
+        ${vigentes.map((it, i) => `<section class="card pedido-recibir" aria-label="${esc(it.p.nombre)}" data-prod="${esc(it.prod)}">
+          <header>${avatar(it.p)}<div><h3>${esc(it.p.nombre)}</h3><span class="muted">Por recibir ${esc(cantidadPedido(it.falta, it.unidad))}</span></div></header>
+          <div class="fila2">
+            <div class="campo"><label for="llegada-cant-${i}">Cantidad recibida</label>
+              <input id="llegada-cant-${i}" data-cant inputmode="decimal" value="${fCant(it.falta)}"></div>
+            <div class="campo"><label for="llegada-costo-${i}">Costo por ${esc(singular(it.unidad))} ($)</label>
+              <input id="llegada-costo-${i}" data-costo inputmode="decimal" value="${esc(dineroIn(it.p.costo ?? 0))}"></div>
+          </div>
+        </section>`).join('')}
+        ${items.filter(it => !it.p).map(it => `<p class="vacio">${esc(it.nombre)} ya no está disponible con la unidad del pedido.</p>`).join('')}
+      </div></div>
+      ${vigentes.length ? '<footer class="hoja-pie"><div class="in"><button class="btn" type="submit">Registrar llegada</button></div></footer>' : ''}
+    </form>`, {cls:'hoja hoja-compras', tipo:'llegadaPedido'});
+  cargarFotos(d);
+  $('form', d).addEventListener('input', e => e.target.removeAttribute('aria-invalid'));
+  $('form', d).addEventListener('submit', e => {
+    e.preventDefault();
+    if(!cierrePendiente) registrarLlegadaPedido(d, id);
+  });
+}
+async function registrarLlegadaPedido(d, id){
+  if(recargarEstadoSiCambio()){
+    await cerrarCapa();
+    toast('El inventario cambió. Abre el pedido para revisar lo que falta.');
+    return;
+  }
+  const pendiente = pedidosPendientes().find(x => x.pedido.id === id);
+  if(!pendiente) return;
+  const entradas = [], costos = new Map(), anteriores = new Map();
+  const porId = new Map(pendiente.items.filter(it => it.p).map(it => [it.prod, it.p]));
+  for(const fila of $$('[data-prod]', d)){
+    const p = porId.get(fila.dataset.prod);
+    const campoCant = $('[data-cant]', fila), campoCosto = $('[data-costo]', fila);
+    const cant = cantidadEscrita(campoCant.value), costo = cantidadEscrita(campoCosto.value);
+    const error = cant === null ? campoCant : cant > 0 && costo === null ? campoCosto : null;
+    if(error){
+      error.setAttribute('aria-invalid', 'true');
+      error.focus();
+      toast(error === campoCant ? 'Escribe una cantidad válida con hasta dos decimales.' : 'Escribe el costo de compra con hasta dos decimales.');
+      return;
+    }
+    if(!p || cant === 0) continue;
+    entradas.push(marcar({id:uid(), prod:p.id, tipo:'entrada', cant, costo, fecha:hoyISO(), pedido:id,
+      nota:'Pedido · ' + pendiente.pedido.proveedor}, true));
+    if(costo !== p.costo){
+      anteriores.set(p.id, p.costo ?? 0);
+      costos.set(p.id, marcar({...p, costo}));
+    }
+  }
+  if(!entradas.length){ toast('Anota cuánto llegó de al menos un producto.'); return; }
+  const productos = E.productos.map(p => costos.get(p.id) || p);
+  if(!guardar({...E, productos, movs:[...E.movs, ...entradas]})) return;
+  await cerrarCapa();
+  refrescar();
+  const falta = pedidosPendientes().some(x => x.pedido.id === id);
+  toast(falta ? 'Llegada guardada · Aún faltan productos' : 'Llegada guardada · Pedido completo', () => {
+    recargarEstadoSiCambio();
+    const ids = new Set(entradas.map(m => m.id));
+    const vigentes = vivos(E.movs), movs = vigentes.filter(m => ids.has(m.id));
+    if(!movs.length) return;
+    const ultimas = new Map(vigentes.filter(m => m.tipo === 'entrada').map(m => [m.prod, m.id]));
+    const restaurados = E.productos.map(p => {
+      const cambio = costos.get(p.id);
+      return !p.borrado && cambio && p.costo === cambio.costo && p.mod === cambio.mod && ids.has(ultimas.get(p.id)) ?
+        marcar({...p, costo:anteriores.get(p.id)}) : p;
+    });
+    if(!guardarBorrado({movs}, true, restaurados)) return;
+    refrescar();
+    toast('Listo, se deshizo');
+  });
+}
 async function compartirTexto(t){
   try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ if(e && e.name === 'AbortError') return; }
   try{ await navigator.clipboard.writeText(t); toast('Lista copiada. Pégala en WhatsApp.'); }catch(e){ toast('No se pudo compartir en este navegador'); }
@@ -3043,7 +3235,7 @@ function escanearConteo(hoja){
   }
   function leer(codigo){
     if(d.inert || cierrePendiente) return false;
-    const cambio = leerEstadoConteo();
+    const cambio = recargarEstadoSiCambio();
     const p = productoPorCodigo(codigo);
     const lectura = cambio ? {texto:'El inventario cambió. Revisa el conteo antes de seguir.'} : sumarLecturaConteo(p);
     if(cambio) camara.detener();
@@ -3400,7 +3592,17 @@ const ACT = {
     avisarConDeshacer('Producto eliminado', borrados, false);
   },
   compras(b){ abrirCompras(b.dataset.id); },
-  compartirCompras(b){ compartirTexto('Lista de compras SPARATI\n' + paraPedir(b.dataset.id).map(x => `• ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}: pedir ${fCant(x.sug)} ${x.p.unidad} (hay ${fCant(x.s)})${x.p.prov ? ' — ' + x.p.prov : ''}`).join('\n')); },
+  vistaCompras(b){ mostrarVistaCompras(b.closest('.hoja-compras'), b.dataset.v); },
+  marcarPedido,
+  abrirLlegadaPedido(b){ abrirLlegadaPedido(b.dataset.id); },
+  cerrarPedido(b){ cerrarPedido(b.dataset.id); },
+  compartirCompras(b){
+    if(recargarEstadoSiCambio()){ toast('La lista cambió. Revísala antes de compartir.'); return; }
+    const grupos = gruposParaPedir(b.dataset.id, pedidosPendientes());
+    compartirTexto('Lista de compras SPARATI\n' + grupos.map(({proveedor, items}) =>
+      proveedor + '\n' + items.map(it => `• ${nombrePedido(it)}: pedir ${cantidadPedido(it.cant, it.unidad)} (hay ${fCant(it.stock)})`).join('\n')
+    ).join('\n\n'));
+  },
   // Formularios
   async guardarF(){
     const form = F;
@@ -3418,7 +3620,7 @@ const ACT = {
   },
   paso(b){
     const inp = $('input', b.closest('.paso'));
-    const v = inp.id === 'cantidadConteo' ? cantidadContada(inp.value) ?? 0 : num(inp.value);
+    const v = inp.id === 'cantidadConteo' ? cantidadEscrita(inp.value) ?? 0 : num(inp.value);
     const d = Number(b.dataset.d);
     const siguiente = Math.max(0, (isFinite(v) ? v : 0) + d);
     if(inp.dataset.item !== undefined && d < 0 && siguiente === 0){

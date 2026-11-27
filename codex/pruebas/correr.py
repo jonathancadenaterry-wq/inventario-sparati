@@ -2035,7 +2035,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
         expect(lista.locator('li')).to_have_count(2)
         lista.locator('li [data-id=p1]').click()
         compras = pagina.get_by_role('dialog', name='Lista de compras')
-        expect(compras.locator('button.alerta')).to_have_count(1)
+        expect(compras.locator('button.fila-lista')).to_have_count(1)
         expect(compras).to_contain_text(ESTADO_V1['productos'][0]['nombre'])
         cerrar_hoja(pagina)
         cerrar_hoja(pagina)
@@ -2649,6 +2649,167 @@ def prueba_conteo_escaner(navegador, perfil=None):
         sitio.cerrar()
 
 
+def estado_pedidos():
+    cambios = {
+        'p1': {'prov': 'Proveedor Sierra', 'telProv': '09 0000 0001', 'min': 5, 'max': 8.25},
+        'p2': {'prov': ' proveedor  SIERRA ', 'min': 1},
+    }
+    salida = {**ESTADO_V1['movs'][4], 'id': 'p2-salida', 'cant': -3, 'fecha': '2026-11-26'}
+    return {**ESTADO_V1, 'productos': [
+        {**p, **cambios.get(p['id'], {})} for p in ESTADO_V1['productos']
+    ], 'movs': [*ESTADO_V1['movs'], salida]}
+
+
+def abrir_compras(pagina):
+    inventario(pagina, 'venta')
+    pagina.get_by_role('button', name='Lista de compras').click()
+    return pagina.get_by_role('dialog', name='Lista de compras')
+
+
+def prueba_pedidos_sugerencias(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=estado_pedidos())
+        pagina.evaluate("""() => {
+          window.textosCompartidos = [];
+          Object.defineProperty(navigator, 'share', {value: async ({text}) => textosCompartidos.push(text)});
+        }""")
+        compras = abrir_compras(pagina)
+        sierra = compras.get_by_role('region', name='Proveedor Sierra', exact=True)
+        expect(sierra.locator('[data-id=p1] .m')).to_have_text('Hay 5 unidades')
+        expect(sierra.locator('[data-id=p1] .pill')).to_have_text('Pedir 3,25 unidades')
+        expect(sierra.locator('[data-id=p2] .m')).to_have_text('Hay 1 unidad')
+        expect(sierra.locator('[data-id=p2] .pill')).to_have_text('Pedir 4 unidades')
+        otro = compras.get_by_role('region', name='Sin proveedor')
+        expect(otro.locator('[data-id=p3]')).to_contain_text('Pedir 1 frasco')
+        expect(otro.get_by_role('link', name='WhatsApp')).to_have_count(0)
+        expect(compras.locator('[data-id=p4]')).to_have_count(0)
+
+        enlace = sierra.get_by_role('link', name='WhatsApp')
+        href = urlsplit(enlace.get_attribute('href'))
+        assert (href.scheme, href.netloc, href.path) == ('https', 'wa.me', '/593900000001')
+        mensaje = parse_qs(href.query)['text'][0]
+        assert '4 unidades de Azelac Serum · 30 ml' in mensaje
+        assert '3,25 unidades de Sun Screen Clear SPF 50+ · 60 g' in mensaje
+        assert 'Pure Radiance' not in mensaje
+        enlace.evaluate("a => a.addEventListener('click', e => { e.preventDefault(); window.abierto = a.href; })")
+        enlace.click()
+        assert pagina.evaluate('window.abierto') == enlace.get_attribute('href')
+        expect(compras.get_by_role('button', name='Pedidos', exact=True)).to_be_visible()
+        compras.get_by_role('button', name='Compartir la lista completa').click()
+        assert 'pedir 1 frasco' in pagina.evaluate('textosCompartidos[0]')
+        assert 'pedir 4 unidades' in pagina.evaluate('textosCompartidos[0]')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_pedidos_llegada(navegador, perfil=None):
+    sin_conexion = navegador.browser_type.name == 'chromium'
+    sitio = Sitio(navegador, trabajador=sin_conexion, perfil=perfil)
+    try:
+        pagina = sitio.abrir(quien='Elba', estado=estado_pedidos())
+        compras = abrir_compras(pagina)
+        compras.get_by_role('region', name='Proveedor Sierra', exact=True).get_by_role('button', name='Marcar como pedido').click()
+        expect(compras.get_by_role('button', name='Pedidos · 1')).to_have_attribute('aria-pressed', 'true')
+        guardado = datos_guardados(pagina)
+        pedido, = guardado['pedidos']
+        assert guardado['movs'] == estado_pedidos()['movs']
+        assert {it['prod']: it['cant'] for it in pedido['items']} == {'p1': 3.25, 'p2': 4}
+        compras.get_by_role('button', name='Por pedir').click()
+        expect(compras.locator('[data-id=p1]')).to_have_count(0)
+        expect(compras.locator('[data-id=p2]')).to_have_count(0)
+
+        if sin_conexion:
+            pagina.wait_for_function('navigator.serviceWorker.controller !== null')
+            sitio.sin_red = True
+            sitio.contexto.set_offline(True)
+        pagina.reload()
+        compras = abrir_compras(pagina)
+        compras.get_by_role('button', name='Pedidos · 1').click()
+        compras.get_by_role('button', name='Llegó', exact=True).click()
+        llegada = pagina.get_by_role('dialog', name='Llegó el pedido')
+        azelac = llegada.get_by_role('region', name=re.compile('^Azelac'))
+        solar = llegada.get_by_role('region', name=re.compile('^Sun Screen'))
+        expect(azelac.get_by_label('Cantidad recibida')).to_have_value('4')
+        expect(solar.get_by_label('Cantidad recibida')).to_have_value('3,25')
+        costo = azelac.get_by_label('Costo por unidad ($)')
+        costo.fill('-2')
+        registrar = llegada.get_by_role('button', name='Registrar llegada')
+        registrar.click()
+        expect(costo).to_have_attribute('aria-invalid', 'true')
+        expect(costo).to_be_focused()
+        assert datos_guardados(pagina) == guardado
+        costo.fill('12,75')
+        azelac.get_by_label('Cantidad recibida').fill('1,5')
+        solar.get_by_label('Cantidad recibida').fill('0')
+        pagina.evaluate("""() => {
+          window.setItemOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        registrar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        expect(llegada).to_be_visible()
+        assert datos_guardados(pagina) == guardado
+        pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
+        registrar.click()
+        expect(compras.locator('[data-id=p2]')).to_contain_text('Por recibir 2,5 unidades')
+        expect(pagina.locator('#toast')).to_contain_text('Aún faltan productos')
+        parcial = datos_guardados(pagina)
+        m = parcial['movs'][-1]
+        assert (m['pedido'], m['prod'], m['tipo'], m['cant'], m['costo'], m['por']) == (pedido['id'], 'p2', 'entrada', 1.5, 12.75, 'Elba')
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), prodPorId('p2').costo]") == [5, 2.5, 12.75]
+
+        compras.get_by_role('button', name='Llegó', exact=True).click()
+        expect(azelac.get_by_label('Cantidad recibida')).to_have_value('2,5')
+        solar.get_by_label('Costo por unidad ($)').fill('0')
+        registrar.click()
+        expect(compras.get_by_text('Todavía no hay pedidos por recibir.')).to_be_visible()
+        expect(pagina.locator('#toast')).to_contain_text('Pedido completo')
+        final = datos_guardados(pagina)
+        assert [(m['prod'], m['cant'], m['costo']) for m in final['movs'][-2:]] == [('p2', 2.5, 12.75), ('p1', 3.25, 0)]
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), prodPorId('p1').costo, prodPorId('p2').costo]") == [8.25, 5, 0, 12.75]
+
+        pagina.get_by_role('button', name='Deshacer', exact=True).click()
+        expect(compras.locator('[data-id=p2]')).to_contain_text('Por recibir 2,5 unidades')
+        assert all(m['borrado'] for m in datos_guardados(pagina)['movs'][-2:])
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), prodPorId('p1').costo]") == [5, 2.5, 10.5]
+        compras.get_by_role('button', name='Cerrar pedido', exact=True).click()
+        pagina.get_by_role('dialog', name='¿Cerrar este pedido?').get_by_role('button', name='Cerrar pedido').click()
+        expect(compras.get_by_text('Todavía no hay pedidos por recibir.')).to_be_visible()
+        compras.get_by_role('button', name='Por pedir').click()
+        expect(compras.locator('[data-id=p1]')).to_contain_text('Pedir 3,25 unidades')
+        assert pagina.evaluate("stockDe('p2')") == 2.5
+    finally:
+        sitio.cerrar()
+
+
+def prueba_pedidos_dos_pestanas(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=estado_pedidos())
+        compras = abrir_compras(pagina)
+        compras.get_by_role('region', name='Proveedor Sierra', exact=True).get_by_role('button', name='Marcar como pedido').click()
+        compras.get_by_role('button', name='Llegó', exact=True).click()
+        otra = sitio.contexto.new_page()
+        try:
+            otra.clock.install(time=FECHA)
+            otra.goto(APP)
+            lista = abrir_compras(otra)
+            lista.get_by_role('button', name='Pedidos · 1').click()
+            lista.get_by_role('button', name='Llegó', exact=True).click()
+            otra.get_by_role('button', name='Registrar llegada').click()
+            expect(otra.locator('#toast')).to_contain_text('Pedido completo')
+            antes = datos_guardados(otra)
+            pagina.get_by_role('button', name='Registrar llegada').click()
+            expect(pagina.locator('#toast')).to_contain_text('El inventario cambió')
+            expect(compras.get_by_text('Todavía no hay pedidos por recibir.')).to_be_visible()
+            assert datos_guardados(pagina) == antes
+        finally:
+            otra.close()
+    finally:
+        sitio.cerrar()
+
+
 def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
@@ -2678,6 +2839,26 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T11':
+                pagina.evaluate("""() => {
+                  const nombres = ['Hydrating Foaming Cleanser · 200 ml', 'Soothing Toner · 250 ml', 'Sun Screen Clear SPF 50+ · 60 g'];
+                  const productos = E.productos.map(p => nombres.includes(p.nombre) ?
+                    {...p, min:stockDe(p.id), max:stockDe(p.id) + 4, prov:'Distribuidora Andina', telProv:'0900000001'} : p);
+                  guardar({...E, productos});
+                }""")
+                compras = abrir_compras(pagina)
+                guardar(sitio, 'por-pedir', tema)
+                compras.get_by_role('region', name='Distribuidora Andina').get_by_role('button', name='Marcar como pedido').click()
+                pagina.clock.fast_forward(4000)
+                guardar(sitio, 'pedido', tema)
+                compras.get_by_role('button', name='Llegó', exact=True).click()
+                llegada = pagina.get_by_role('dialog', name='Llegó el pedido')
+                llegada.get_by_label(re.compile('^Costo por')).first.fill('12,50')
+                guardar(sitio, 'llegada', tema)
+                llegada.get_by_role('button', name='Registrar llegada').click()
+                expect(pagina.locator('#toast')).to_contain_text('Pedido completo')
+                guardar(sitio, 'recibido', tema)
+                continue
             if tarea == 'T10':
                 pagina.evaluate("""() => {
                   const productos = E.productos.map(p => p.nombre.startsWith('Sun Screen Clear SPF 50+') ?
@@ -3043,8 +3224,8 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T10', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10'],
-                        help='guardar capturas en modo claro y oscuro (T10 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T11', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11'],
+                        help='guardar capturas en modo claro y oscuro (T11 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -3057,7 +3238,8 @@ def main():
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos,
                         prueba_ficha_paciente, prueba_recordatorios_paciente,
                         prueba_reporte_ventas, prueba_reporte_cabina_inventario,
-                        prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner]
+                        prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner,
+                        prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

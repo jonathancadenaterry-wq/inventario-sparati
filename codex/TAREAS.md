@@ -39,11 +39,13 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
   - Producto: `codigo` (código de barras o `SP-xxxxx`), `max` (cantidad ideal para pedir), `favorito`.
   - Venta: `descuento` (en dólares) y `pago` con estos valores: `'efectivo'|'transferencia'|'tarjeta'`.
   - Movimiento de tipo `'apertura'` con `cant:0`: registra la fecha en que se abrió un frasco nuevo de cabina. No cambia el stock.
+  - Movimiento de tipo `'entrada'`: el campo opcional `pedido` vincula la llegada con el pedido local.
   - Paciente, en la lista nueva `pacientes:[{id, nombre, tel, notas, creado, mod, por, borrado}]`.
     - Las ventas siguen guardando `pac` y `tel` como texto para seguir siendo compatibles.
     - Al recibir un archivo de la versión 1, la lista de pacientes se arma a partir de los nombres de las ventas.
   - Ajustes: `plantillaRecordatorio` guarda el mensaje base de WhatsApp en este celular.
   - Estado local: `conteo` guarda el borrador del conteo guiado. El archivo de envío solo lleva los movimientos de ajuste después de confirmar el conteo.
+  - Estado local: `pedidos:[{id, proveedor, fecha, items:[{prod, nombre, unidad, cant}], creado, mod, por, borrado}]`. El archivo de envío lleva las entradas registradas y los costos actualizados.
 - Los mismos `id` se mantienen siempre. Todo cambio pone `mod = Date.now()` y `por = quien()`.
 
 **Prueba obligatoria del contrato.**
@@ -177,7 +179,7 @@ Según `Reportes.png`:
 - El conteo se puede pausar y retomar.
 - **Hecha cuando:** un conteo con diferencias deja el stock igual a lo contado.
 
-## T11 · Lista para pedir  [ ]
+## T11 · Lista para pedir  [x]
 - Mejora la lista de compras de la versión 1:
   - sugiere cuánto pedir: hasta `max` si existe; si no, lo que cubre 30 días de consumo, o como mínimo `min + 1`;
   - agrupa por proveedor;

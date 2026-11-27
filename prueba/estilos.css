@@ -566,6 +566,23 @@ textarea{min-height:76px;resize:vertical}
 .conteo-enlaces [data-act="descartarConteo"]{color:var(--tenue)}
 .escaner-conteo .guia-escaner p{max-width:280px;margin-inline:auto;padding:7px 10px;border-radius:12px;background:rgb(0 0 0 / .52);font-size:14px}
 .escaner-conteo .resultado-escaner p{overflow-wrap:anywhere}
+
+/* Lista de compras */
+.pedido-cabecera{display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.pedido-cabecera span,.pedido-recibir header .muted{font-size:13px}
+.pedido-cabecera p{margin:0;font-size:14px}
+.pedido-card .fila-lista:focus-visible{outline-offset:-3px;border-radius:8px}
+.pedido-card .fila-lista .av,.pedido-recibir .av,.pedido-icono{width:48px;height:48px}
+.pedido-card .fila-lista .pill{white-space:normal;max-width:32%;overflow-wrap:anywhere;text-align:center;justify-content:center}
+.pedido-icono{display:grid;place-items:center;flex:none;border-radius:var(--radio-peq);background:var(--menta-suave);color:var(--menta-contraste)}
+.pedido-acciones{display:flex;flex-wrap:wrap;gap:8px}
+.pedido-acciones .btn{flex:1 1 auto;padding-inline:10px}
+.pedido-acciones .ico{width:18px;height:18px}
+.pedido-llegada{display:flex;flex:1;min-height:0;flex-direction:column}
+.pedido-recibir header{display:flex;align-items:center;gap:12px;overflow-wrap:anywhere}
+.pedido-recibir header h3{font:600 15px/1.25 var(--sans);margin-bottom:3px}
+.pedido-recibir input[aria-invalid="true"]{border-color:var(--mal)}
+
 .foto-campo{display:flex;align-items:center;gap:14px}
 .acciones-foto{display:flex;flex-wrap:wrap;gap:8px}
 .form-producto #margen:empty{display:none}
