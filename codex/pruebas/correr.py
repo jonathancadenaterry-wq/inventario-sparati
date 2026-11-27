@@ -462,6 +462,22 @@ def prueba_sin_conexion(navegador):
         archivo = descargar_excel_reporte(pagina, 'sparati-ventas-2026-11.csv')
         assert ['Ventas', 'Vendido', '2026-11', '', '', '42,00'] in archivo
         inventario(pagina, 'inicio')
+        acciones = pagina.get_by_role('group', name='Acciones rápidas')
+        acciones.get_by_role('button', name='Contar inventario').click()
+        conteo = pagina.get_by_role('dialog', name='Contar inventario')
+        conteo.get_by_role('button', name='Uso en spa 1 producto').click()
+        conteo.get_by_label('Cantidad contada (frascos)').fill('2')
+        conteo.get_by_role('button', name='Pausar').click()
+        expect(conteo).to_have_count(0)
+        pagina.reload()
+        acciones.get_by_role('button', name='Retomar conteo').click()
+        expect(conteo.get_by_label('Cantidad contada (frascos)')).to_have_value('2')
+        conteo.get_by_role('button', name='Ver resumen').click()
+        pagina.get_by_role('button', name='Confirmar conteo').click()
+        expect(pagina.locator('#toast .texto-toast')).to_have_text('Conteo guardado · 1 ajuste')
+        assert pagina.evaluate("stockDe('p3')") == 2
+        pagina.get_by_role('button', name='Deshacer', exact=True).click()
+        assert pagina.evaluate("stockDe('p3')") == 1
         ajustar = abrir_ajustes(pagina)
         ajustar.get_by_role('button', name='Cargar datos de ejemplo').click()
         expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
@@ -1050,9 +1066,16 @@ def prueba_escaner_modos(navegador, perfil=None):
         modos.get_by_role('button', name='Contar').click()
         escribir_codigo(lector, 'SP-VENTA')
         lector.get_by_role('button', name='Contar producto').click()
-        conteo = pagina.get_by_role('dialog', name=re.compile('^Contar ·'))
-        conteo.get_by_label('¿Cuántos hay de verdad? (unidades)').fill('8')
-        conteo.get_by_role('button', name='Guardar', exact=True).click()
+        conteo = pagina.get_by_role('dialog', name='Contar inventario')
+        cantidad = conteo.get_by_label('Cantidad contada (unidades)')
+        expect(cantidad).to_have_value('1')
+        expect(conteo.get_by_text('Para vender', exact=True)).to_be_visible()
+        cantidad.fill('8')
+        conteo.get_by_role('button', name='Ir al pendiente').click()
+        expect(conteo.get_by_role('heading', name=re.compile('Azelac Serum'))).to_be_visible()
+        cantidad.fill('4')
+        conteo.get_by_role('button', name='Ver resumen').click()
+        pagina.get_by_role('dialog', name='Resumen del conteo').get_by_role('button', name='Confirmar conteo').click()
         expect(venta.locator('[data-id=p1] .stock-tarjeta-venta')).to_have_text('Quedan 8')
         venta.get_by_role('button', name='Cobrar $ 18,00').click()
         expect(pagina.locator('#toast')).to_contain_text('Venta cobrada')
@@ -1065,7 +1088,7 @@ def prueba_escaner_modos(navegador, perfil=None):
         assert entrada['nota'] == 'Mercadería de prueba' and conteo['motivo'] == 'conteo'
         assert pagina.evaluate("stockDe('p1')") == 7
 
-        for nombre, etiqueta in [('Contar inventario', 'Contar'), ('Llegó mercadería', 'Llegó'), ('Usé en cabina', 'Usé')]:
+        for nombre, etiqueta in [('Llegó mercadería', 'Llegó'), ('Usé en cabina', 'Usé')]:
             pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name=nombre).click()
             selector = pagina.get_by_role('dialog', name=nombre)
             selector.get_by_role('button', name='Escanear').click()
@@ -1926,38 +1949,31 @@ def prueba_inicio_accesos(navegador, perfil=None):
         expect(buscador).to_have_value('mascarilla hidroplastica')
         cerrar_hoja(pagina)
 
-        for titulo, formulario, accion, cantidad in [
-            ('Llegó mercadería', 'Llegó más', 'entrada', 1),
-            ('Contar inventario', 'Contar', 'ajuste', 2),
-        ]:
-            acciones.get_by_role('button', name=titulo).click()
-            selector = pagina.get_by_role('dialog', name=titulo)
-            expect(selector.locator('.fila-lista')).to_have_count(3)
-            selector.get_by_role('searchbox').fill('sun screen')
-            selector.locator('[data-id=p1]').click()
-            expect(pagina.get_by_role('heading', name=formulario + ' · ' + ESTADO_V1['productos'][0]['nombre'])).to_be_visible()
-            if accion == 'ajuste':
-                pagina.locator('#paso-real').fill('8')
-                expect(pagina.locator('#aDif')).to_have_text('Diferencia: +2')
-            antes = datos_guardados(pagina)
-            pagina.evaluate("""() => {
-              window.setItemOriginal = Storage.prototype.setItem;
-              Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
-            }""")
-            guardar = pagina.get_by_role('button', name='Guardar', exact=True)
-            guardar.click()
-            expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
-            assert datos_guardados(pagina) == antes
-            assert pagina.evaluate('E.movs.length') == len(antes['movs'])
-            pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
-            guardar.click()
-            expect(pagina.locator('[data-tipo=form]')).to_have_count(0)
-            despues = datos_guardados(pagina)
-            assert len(despues['movs']) == len(antes['movs']) + 1
-            movimiento = despues['movs'][-1]
-            assert (movimiento['prod'], movimiento['tipo'], movimiento['cant']) == ('p1', accion, cantidad)
-            expect(selector.locator('[data-id=p1] .stock')).to_have_text('6' if accion == 'entrada' else '8')
-            cerrar_hoja(pagina)
+        acciones.get_by_role('button', name='Llegó mercadería').click()
+        selector = pagina.get_by_role('dialog', name='Llegó mercadería')
+        expect(selector.locator('.fila-lista')).to_have_count(3)
+        selector.get_by_role('searchbox').fill('sun screen')
+        selector.locator('[data-id=p1]').click()
+        expect(pagina.get_by_role('heading', name='Llegó más · ' + ESTADO_V1['productos'][0]['nombre'])).to_be_visible()
+        antes = datos_guardados(pagina)
+        pagina.evaluate("""() => {
+          window.setItemOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        guardar = pagina.get_by_role('button', name='Guardar', exact=True)
+        guardar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == antes
+        assert pagina.evaluate('E.movs.length') == len(antes['movs'])
+        pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
+        guardar.click()
+        expect(pagina.locator('[data-tipo=form]')).to_have_count(0)
+        despues = datos_guardados(pagina)
+        assert len(despues['movs']) == len(antes['movs']) + 1
+        movimiento = despues['movs'][-1]
+        assert (movimiento['prod'], movimiento['tipo'], movimiento['cant']) == ('p1', 'entrada', 1)
+        expect(selector.locator('[data-id=p1] .stock')).to_have_text('6')
+        cerrar_hoja(pagina)
     finally:
         sitio.cerrar()
 
@@ -2440,6 +2456,199 @@ def prueba_reporte_cabina_inventario(navegador, perfil=None):
         sitio.cerrar()
 
 
+def prueba_conteo_guiado(navegador, perfil=None):
+    sitio = Sitio(navegador, color='dark', perfil=perfil)
+    try:
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'unidad': 'ml'} if p['id'] == 'p3' else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        acciones = pagina.get_by_role('group', name='Acciones rápidas')
+        acciones.get_by_role('button', name='Contar inventario').click()
+        conteo = pagina.get_by_role('dialog', name='Contar inventario')
+        conteo.get_by_role('button', name='Todo el inventario 3 productos').click()
+        expect(conteo.get_by_role('heading', name=re.compile('Azelac Serum'))).to_be_focused()
+        expect(conteo.get_by_text('Producto 1 de 3')).to_be_visible()
+        expect(conteo.locator('.conteo-esperado b')).to_have_text('4 unidades')
+        campo = conteo.get_by_label(re.compile('^Cantidad contada'))
+        siguiente = conteo.get_by_role('button', name='Siguiente')
+        expect(campo).to_have_value('')
+        expect(siguiente).to_be_disabled()
+        campo.fill('4cosas')
+        expect(campo).to_have_attribute('aria-invalid', 'true')
+        expect(siguiente).to_be_disabled()
+        campo.fill('5')
+        conteo.get_by_role('button', name='Sumar uno', exact=True).click()
+        expect(campo).to_have_value('6')
+        expect(conteo.locator('#estadoCantidadConteo')).to_contain_text('+2 unidades')
+        assert all(c >= 4.5 for c in contrastes(pagina, [
+            ('.conteo-esperado span', '.conteo-esperado'), ('#estadoCantidadConteo', '.conteo-producto'),
+            ('[data-act=siguienteConteo]',),
+        ]))
+        assert set(pagina.evaluate("[stockDe('p1'), stockDe('p2'), stockDe('p3')]")) == {5, 4, 1}
+        siguiente.click()
+        expect(conteo.get_by_text('Producto 2 de 3')).to_be_visible()
+        campo.fill('2,5')
+        conteo.get_by_role('button', name='Pausar').click()
+        expect(acciones.get_by_role('button', name='Retomar conteo')).to_be_focused()
+        pagina.reload()
+        acciones.get_by_role('button', name='Retomar conteo').click()
+        expect(campo).to_have_value('2,5')
+        siguiente.click()
+        expect(conteo.get_by_text('Producto 3 de 3')).to_be_visible()
+        conteo.get_by_role('button', name='No hay').click()
+        expect(campo).to_have_value('0')
+        conteo.get_by_role('button', name='Ver resumen').click()
+        resumen = pagina.get_by_role('dialog', name='Resumen del conteo')
+        expect(resumen.get_by_role('heading', name='Diferencias')).to_be_focused()
+        expect(resumen.locator('.conteo-filas .fila-lista')).to_have_count(3)
+        expect(resumen.locator('.fila-lista[data-id=p2]')).to_contain_text('Esperado 4 · Contado 6 unidades')
+        expect(resumen.locator('.fila-lista[data-id=p3]')).to_contain_text('Esperado 1 · Contado 2,5 ml')
+        expect(resumen.locator('.fila-lista[data-id=p1]')).to_contain_text('Esperado 5 · Contado 0 unidades')
+        assert datos_guardados(pagina)['movs'] == estado['movs']
+        resumen.locator('.fila-lista[data-id=p2]').click()
+        expect(campo).to_have_value('6')
+        conteo.get_by_role('button', name='Ver resumen').click()
+        cerrar_hoja(pagina)
+        acciones.get_by_role('button', name='Retomar conteo').click()
+        expect(resumen).to_be_visible()
+
+        # Una entrada en otra pestaña cambia el valor esperado mientras se revisa el resumen.
+        otra = sitio.contexto.new_page()
+        try:
+            otra.clock.install(time=FECHA)
+            otra.goto(APP)
+            inventario(otra, 'venta')
+            otra.locator('#listaProd [data-id=p2]').click()
+            otra.get_by_role('button', name='Llegó más', exact=True).click()
+            otra.get_by_role('button', name='Guardar', exact=True).click()
+            expect(otra.locator('#toast .texto-toast')).to_contain_text('Llegó mercadería')
+        finally:
+            otra.close()
+        antes = datos_guardados(pagina)
+        confirmar = resumen.get_by_role('button', name='Confirmar conteo')
+        confirmar.click()
+        expect(pagina.locator('#toast .texto-toast')).to_contain_text('El inventario cambió')
+        expect(resumen.locator('.fila-lista[data-id=p2]')).to_contain_text('Esperado 5 · Contado 6 unidades')
+        assert datos_guardados(pagina) == antes
+
+        pagina.evaluate("""() => {
+          window.setItemOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        confirmar.click()
+        expect(pagina.locator('#toast .texto-toast')).to_contain_text('No se pudo guardar')
+        expect(resumen).to_be_visible()
+        assert datos_guardados(pagina) == antes
+        pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
+        confirmar.click()
+        expect(resumen).to_have_count(0)
+        expect(pagina.locator('#toast .texto-toast')).to_have_text('Conteo guardado · 3 ajustes')
+        guardado = datos_guardados(pagina)
+        assert 'conteo' not in guardado
+        assert guardado['movs'][:-3] == antes['movs']
+        ajustes = guardado['movs'][-3:]
+        assert [(m['prod'], m['cant']) for m in ajustes] == [('p2', 1), ('p3', 1.5), ('p1', -5)]
+        assert all((m['tipo'], m['motivo'], m['por'], m['fecha']) == ('ajuste', 'conteo', 'Elba', '2026-11-27') for m in ajustes)
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), stockDe('p3')]") == [0, 6, 2.5]
+        pagina.get_by_role('button', name='Deshacer', exact=True).click()
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), stockDe('p3')]") == [5, 5, 1]
+        assert all(m['borrado'] for m in datos_guardados(pagina)['movs'][-3:])
+    finally:
+        sitio.cerrar()
+
+
+def prueba_conteo_por_marca(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'marca': ' professional  spa '} if p['id'] == 'p3' else p for p in ESTADO_V1['productos']
+        ] + [{**ESTADO_V1['productos'][0], 'id': 'p5', 'marca': 'Marca distinta'}]}
+        pagina = sitio.abrir(estado=estado)
+        inventario(pagina, 'venta')
+        pagina.get_by_role('button', name='Contar', exact=True).click()
+        conteo = pagina.get_by_role('dialog', name='Contar inventario')
+        marca = conteo.get_by_label('Marca', exact=True)
+        expect(marca.locator('option')).to_have_text(['Marca distinta · 1 producto', 'Professional Spa · 3 productos'])
+        marca.select_option(label='Professional Spa · 3 productos')
+        conteo.get_by_role('button', name='Contar esta marca').click()
+        assert datos_guardados(pagina)['conteo']['ids'] == ['p2', 'p3', 'p1']
+        conteo.get_by_role('button', name='No hay').click()
+        conteo.get_by_role('button', name='Siguiente').click()
+        conteo.get_by_role('button', name='Anterior').click()
+        expect(conteo.get_by_label('Cantidad contada (unidades)')).to_have_value('0')
+        conteo.get_by_role('button', name='Descartar conteo').click()
+        descartar = pagina.get_by_role('dialog', name='¿Descartar el conteo?')
+        descartar.get_by_role('button', name='Cancelar').click()
+        expect(conteo.get_by_label('Cantidad contada (unidades)')).to_have_value('0')
+        conteo.get_by_role('button', name='Descartar conteo').click()
+        descartar.get_by_role('button', name='Descartar', exact=True).click()
+        expect(marca).to_be_visible()
+        assert 'conteo' not in datos_guardados(pagina)
+        marca.select_option(label='Marca distinta · 1 producto')
+        conteo.get_by_role('button', name='Contar esta marca').click()
+        conteo.get_by_role('button', name='No hay').click()
+        conteo.get_by_role('button', name='Ver resumen').click()
+        resumen = pagina.get_by_role('dialog', name='Resumen del conteo')
+        expect(resumen.get_by_text('Las cantidades coinciden con el inventario.')).to_be_visible()
+        resumen.get_by_role('button', name='Confirmar conteo').click()
+        expect(pagina.locator('#toast .texto-toast')).to_have_text('Conteo guardado · Sin diferencias')
+        assert datos_guardados(pagina)['movs'] == estado['movs']
+    finally:
+        sitio.cerrar()
+
+
+def prueba_conteo_escaner(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        simular_camara(sitio.pagina)
+        codigos = {'p1': '5901234123457', 'p2': 'SP-AZELA', 'p3': 'SP-CABIN'}
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': codigos[p['id']]} if p['id'] in codigos else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        pagina.get_by_role('button', name='Contar inventario', exact=True).click()
+        conteo = pagina.get_by_role('dialog', name='Contar inventario')
+        conteo.get_by_role('button', name='Para vender 2 productos').click()
+        assert pagina.evaluate('camaraPrueba.solicitudes.length') == 0
+        conteo.get_by_role('button', name='Escanear', exact=True).click()
+        lector = pagina.get_by_role('dialog', name='Escanear para contar')
+        resultado = lector.locator('.resultado-escaner')
+        expect(lector.get_by_text('No se dio permiso', exact=False)).to_be_visible()
+        expect(lector.get_by_label('Escribir el código a mano')).to_be_visible()
+        pagina.evaluate("camaraPrueba.modo = 'ean'")
+        lector.get_by_role('button', name='Abrir cámara').click()
+        expect(resultado).to_contain_text('1 unidad en el conteo')
+        # Mantener el mismo EAN delante de la cámara no vuelve a sumar.
+        pagina.wait_for_timeout(700)
+        assert datos_guardados(pagina)['conteo']['cantidades'] == {'p1': '1'}
+        pagina.evaluate("camaraPrueba.modo = 'blanca'")
+        pagina.wait_for_timeout(900)
+        pagina.evaluate("camaraPrueba.modo = 'ean'")
+        expect(resultado).to_contain_text('2 unidades en el conteo')
+        lector.get_by_role('button', name='Escribir el código a mano').click()
+        assert pagina.evaluate('camaraPrueba.pistas[0].readyState') == 'ended'
+        campo = lector.get_by_label('Escribir el código a mano')
+        sumar = lector.get_by_role('button', name='Sumar uno', exact=True)
+        for codigo, mensaje in [('SP-CABIN', 'no pertenece a este conteo'), ('NO-EXISTE', 'No encontré un producto'),
+                                ('SP-AZELA', '1 unidad en el conteo'), ('SP-AZELA', '2 unidades en el conteo')]:
+            campo.fill(codigo)
+            sumar.click()
+            expect(resultado).to_contain_text(mensaje)
+        assert datos_guardados(pagina)['conteo']['cantidades'] == {'p1': '2', 'p2': '2'}
+        assert datos_guardados(pagina)['movs'] == estado['movs']
+        cerrar_hoja(pagina)
+        expect(conteo.get_by_label('Cantidad contada (unidades)')).to_have_value('2')
+        expect(conteo.get_by_text('2 de 2 contados')).to_be_visible()
+        expect(conteo.get_by_role('button', name='Escanear', exact=True)).to_be_focused()
+        conteo.get_by_role('button', name='Ver resumen').click()
+        pagina.get_by_role('button', name='Confirmar conteo').click()
+        expect(pagina.locator('#toast .texto-toast')).to_have_text('Conteo guardado · 2 ajustes')
+        assert pagina.evaluate("[stockDe('p1'), stockDe('p2'), stockDe('p3')]") == [2, 2, 1]
+    finally:
+        sitio.cerrar()
+
+
 def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
@@ -2456,7 +2665,7 @@ def capturar(navegador, tarea):
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
-            if tarea in ('T4', 'T6', 'T7'):
+            if tarea in ('T4', 'T6', 'T7', 'T10'):
                 simular_camara(sitio.pagina)
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
@@ -2469,7 +2678,60 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
-            if tarea == 'T9':
+            if tarea == 'T10':
+                pagina.evaluate("""() => {
+                  const productos = E.productos.map(p => p.nombre.startsWith('Sun Screen Clear SPF 50+') ?
+                    {...p, codigo:'5901234123457'} : p);
+                  guardar({...E, productos});
+                }""")
+                inventario(pagina, 'venta')
+                guardar(sitio, 'inventario', tema)
+                pagina.get_by_role('button', name='Contar', exact=True).click()
+                conteo = pagina.get_by_role('dialog', name='Contar inventario')
+                marca = conteo.get_by_label('Marca', exact=True)
+                marca.select_option('professional spa')
+                guardar(sitio, 'grupos', tema)
+                conteo.get_by_role('button', name='Contar esta marca').click()
+                cantidad = conteo.get_by_label(re.compile('^Cantidad contada'))
+                siguiente = conteo.get_by_role('button', name='Siguiente', exact=True)
+                for _ in range(2):
+                    cantidad.fill(pagina.evaluate('fCant(stockDe(E.conteo.paso))'))
+                    siguiente.click()
+                expect(conteo.get_by_role('heading', name=re.compile('Azelac Serum'))).to_be_visible()
+                cantidad.fill(pagina.evaluate('fCant(stockDe(E.conteo.paso) + 2)'))
+                pagina.wait_for_function("document.querySelector('.conteo-foto img')?.naturalWidth > 0")
+                guardar(sitio, 'producto', tema)
+
+                pagina.evaluate("Object.assign(camaraPrueba, {modo:'escena', admiteLinterna:true})")
+                conteo.get_by_role('button', name='Escanear', exact=True).click()
+                lector = pagina.get_by_role('dialog', name='Escanear para contar')
+                pagina.wait_for_function("document.querySelector('.escaner-conteo video').readyState >= 2")
+                pagina.evaluate("camaraPrueba.modo = 'ean'")
+                expect(lector.locator('.producto-escaner')).to_contain_text('Sun Screen Clear SPF 50+')
+                pagina.evaluate("camaraPrueba.modo = 'escena'")
+                # Da tiempo al video simulado para mostrar el producto al retirar el código.
+                pagina.wait_for_timeout(500)
+                guardar(sitio, 'escaner', tema)
+                cerrar_hoja(pagina)
+                conteo.get_by_role('button', name='Pausar').click()
+                retomar = pagina.get_by_role('button', name='Retomar conteo')
+                expect(retomar).to_be_visible()
+                inventario(pagina, 'inicio')
+                guardar(sitio, 'pausado', tema)
+
+                # Simula las demás cantidades de la marca para mostrar el resumen completo.
+                pagina.evaluate("""() => {
+                  const conteo = E.conteo;
+                  const cantidades = Object.fromEntries(filasConteo(conteo).map(({p, contado, esperado}) =>
+                    [p.id, fCant(contado ?? Math.max(0, esperado))]));
+                  guardarBorradorConteo({...conteo, cantidades});
+                }""")
+                retomar.click()
+                conteo.get_by_role('button', name='Ver resumen').click()
+                expect(pagina.get_by_role('dialog', name='Resumen del conteo')).to_be_visible()
+                guardar(sitio, 'resumen', tema)
+                continue
+            elif tarea == 'T9':
                 pagina.evaluate("""() => {
                   const inicial = E.movs.find(m => m.tipo === 'inicial' && m.cant > 0 &&
                     !E.movs.some(otro => otro.prod === m.prod && otro.tipo !== 'inicial'));
@@ -2582,9 +2844,10 @@ def capturar(navegador, tarea):
                 cerrar_hoja(pagina)
 
                 pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Contar inventario').click()
-                selector = pagina.get_by_role('dialog', name='Contar inventario')
                 guardar(sitio, 'selector-conteo', tema)
-                selector.get_by_role('button', name='Escanear').click()
+                cerrar_hoja(pagina)
+                escanear.click()
+                lector.get_by_role('button', name='Contar', exact=True).click()
                 escribir_codigo(lector, '5901234123457')
                 expect(lector.get_by_role('button', name='Contar producto')).to_be_visible()
                 guardar(sitio, 'contar', tema)
@@ -2780,8 +3043,8 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T9', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'],
-                        help='guardar capturas en modo claro y oscuro (T9 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T10', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10'],
+                        help='guardar capturas en modo claro y oscuro (T10 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -2793,7 +3056,8 @@ def main():
                         prueba_frascos_cabina, prueba_tratamientos_cabina, prueba_apariencia,
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos,
                         prueba_ficha_paciente, prueba_recordatorios_paciente,
-                        prueba_reporte_ventas, prueba_reporte_cabina_inventario]
+                        prueba_reporte_ventas, prueba_reporte_cabina_inventario,
+                        prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

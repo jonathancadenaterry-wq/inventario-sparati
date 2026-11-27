@@ -78,9 +78,12 @@ function estadoInicial(){
     ajustes:{diasVence:60, tema:'auto', plantillaRecordatorio:PLANTILLA_RECORDATORIO},
     sync:{envio:0, recibo:0, de:''}, creado:ahora()};
 }
-let E, YO;
+let E, YO, estadoGuardado;
 function cargar(){
-  try{ E = JSON.parse(localStorage.getItem(CLAVE)); }catch(e){ E = null; }
+  try{
+    estadoGuardado = localStorage.getItem(CLAVE);
+    E = JSON.parse(estadoGuardado);
+  }catch(e){ E = null; }
   if(!E || !Array.isArray(E.productos)) E = estadoInicial();
   const b = estadoInicial();
   for(const k of ['movs','ventas','pacientes']) if(!Array.isArray(E[k])) E[k] = [];
@@ -90,11 +93,15 @@ function cargar(){
   try{ YO = JSON.parse(localStorage.getItem(CLAVE_YO)); }catch(e){ YO = null; }
   completarPacientes();
 }
-function guardar(estado = E){
-  try{ localStorage.setItem(CLAVE, JSON.stringify(estado)); }
+function guardar(estado = E, soloBorrador = false){
+  try{
+    const texto = JSON.stringify(estado);
+    localStorage.setItem(CLAVE, texto);
+    estadoGuardado = texto;
+  }
   catch(e){ toast('No se pudo guardar: la memoria del navegador está llena.'); return false; }
   E = estado;
-  calcular(); actualizarAvisos();
+  if(!soloBorrador){ calcular(); actualizarAvisos(); }
   return true;
 }
 const quien = () => (YO && YO.quien) || '';
@@ -600,10 +607,10 @@ function pintarBusquedaInicio(){
 }
 
 const ACCIONES_INICIO = {
-  vender:{titulo:'Vender', icono:'bolsa'},
+  vender:{titulo:'Vender', icono:'bolsa', accion:'vender'},
   usar:{titulo:'Usé en cabina', icono:'gota', tipo:'uso'},
   entrada:{titulo:'Llegó mercadería', icono:'entrada'},
-  ajuste:{titulo:'Contar inventario', icono:'conteo'},
+  conteo:{titulo:'Contar inventario', icono:'conteo', accion:'conteo'},
 };
 const CONTADORES_INICIO = {stock:'Por terminarse', fecha:'Vencen pronto', paciente:'Pacientes por recordar'};
 
@@ -761,8 +768,8 @@ function vInicio(){
   <div id="resultadosInicio" class="lista-productos" hidden></div>
   <div class="contenido-inicio" id="contenidoInicio">
     <div class="acciones-inicio" role="group" aria-label="Acciones rápidas">
-      ${Object.entries(ACCIONES_INICIO).map(([accion, {titulo, icono}]) => `<button data-act="${accion === 'vender' ? 'vender' : 'selectorInicio'}" data-accion="${accion}">
-        <span>${IC[icono]}</span>${titulo}</button>`).join('')}
+      ${Object.entries(ACCIONES_INICIO).map(([clave, {titulo, icono, accion}]) => `<button data-act="${accion || 'selectorInicio'}" data-accion="${clave}">
+        <span>${IC[icono]}</span>${clave === 'conteo' && E.conteo ? 'Retomar conteo' : titulo}</button>`).join('')}
     </div>
     ${tarjetaVentasInicio(hoy)}
     <div class="contadores-inicio" role="group" aria-label="Resumen de avisos">
@@ -854,6 +861,7 @@ function vLista(tipo){
     ${resumenInventario(ps, tipo)}
     <div class="controles-inventario">
       <button class="link" data-act="compras">${IC.bolsa} Lista de compras</button>
+      <button class="link" data-act="conteo" ${E.conteo ? 'aria-label="Retomar conteo"' : ''}>${IC.conteo} ${E.conteo ? 'Retomar' : 'Contar'}</button>
       <label class="orden-inventario"><span class="solo-lectura">Ordenar dentro de cada marca</span>
         <select id="ordenProd">
           ${Object.entries(ORDEN_INVENTARIO).map(([v, nombre]) =>
@@ -1492,6 +1500,9 @@ function pasos(label, f, unidad, item){
   const id = item === undefined ? 'paso-' + f : `paso-${f}-${item}`;
   const attrs = item === undefined ? `data-f="${f}"` : `data-item="${item}" data-c="${f}"`;
   const valor = item === undefined ? F[f] : F.items[item][f];
+  return campoCantidad(titulo, id, valor, attrs);
+}
+function campoCantidad(titulo, id, valor, attrs){
   return `<div class="campo"><label for="${id}">${esc(titulo)}</label><div class="paso">
     <button type="button" data-act="paso" data-d="-1" aria-label="Restar uno">${IC.menos}</button>
     <input id="${id}" type="text" inputmode="decimal" ${attrs} value="${esc(valor ?? '')}">
@@ -1757,6 +1768,223 @@ async function guardarAjuste(){
   const quedan = stockDe(p.id);
   const cantidad = quedan > 0 ? `${quedan === 1 ? 'Queda' : 'Quedan'} ${fCant(quedan)}` : 'Agotado';
   avisarConDeshacer(dif ? `Cantidad ajustada · ${cantidad}` : 'Conteo guardado · Sin diferencia', {movs:[ajuste]}, true);
+}
+
+// ---------- Conteo guiado ----------
+const GRUPOS_CONTEO = {todos:'Todo el inventario', venta:'Para vender', uso:'Uso en spa'};
+function cantidadContada(valor){
+  const texto = String(valor ?? '').trim();
+  if(!/^(?:\d+(?:[.,]\d{0,2})?|[.,]\d{1,2})$/.test(texto)) return null;
+  const cantidad = num(texto);
+  return Number.isSafeInteger(Math.round(cantidad * 100)) ? red(cantidad) : null;
+}
+function filasConteo(conteo){
+  const porId = new Map(vivos(E.productos).map(p => [p.id, p]));
+  return conteo.ids.filter(id => porId.has(id)).map(id => {
+    const p = porId.get(id), esperado = stockDe(id);
+    const contado = cantidadContada(conteo.cantidades[id]);
+    return {p, esperado, contado, diferencia:contado === null ? null : red(contado - esperado)};
+  });
+}
+function leerEstadoConteo(){
+  try{ if(localStorage.getItem(CLAVE) === estadoGuardado) return false; }
+  catch(e){ return false; }
+  cargar();
+  refrescar();
+  return true;
+}
+function revisarEstadoConteo(d){
+  if(!leerEstadoConteo()) return true;
+  pintarConteo(d, true);
+  toast('El inventario cambió. Revisa el conteo y vuelve a intentar.');
+  return false;
+}
+function guardarBorradorConteo(conteo){ return guardar({...E, conteo}, true); }
+function nuevoConteo(d, grupo, valor, p = null){
+  const porMarca = grupo === 'marca';
+  const ps = porMarca ? productos().filter(x => norm(x.marca) === valor) : productos(grupo === 'todos' ? null : grupo);
+  if(!ps.length){ toast('Todavía no hay productos en este grupo.'); return; }
+  const nombre = porMarca ? (ps[0].marca?.trim() || 'Sin marca') : GRUPOS_CONTEO[grupo];
+  const conteo = {nombre, ids:ps.map(x => x.id), cantidades:p ? {[p.id]:'1'} : {}, paso:p?.id || ps[0].id};
+  if(!guardarBorradorConteo(conteo)) return;
+  render();
+  pintarConteo(d, true);
+}
+function textoCantidadConteo(cant, p){ return `${fCant(cant)} ${esc(uTxt(cant, p.unidad))}`; }
+function inicioConteoHTML(){
+  const ps = productos();
+  if(!ps.length) return '<div class="vacio">Agrega un producto en Inventario para empezar a contar.</div>';
+  const grupos = {todos:ps.length, venta:0, uso:0};
+  const marcas = new Map();
+  for(const p of ps){
+    grupos[p.tipo]++;
+    const clave = norm(p.marca);
+    if(!marcas.has(clave)) marcas.set(clave, {nombre:p.marca?.trim() || 'Sin marca', cantidad:0});
+    marcas.get(clave).cantidad++;
+  }
+  const cantidad = n => `${n} ${n === 1 ? 'producto' : 'productos'}`;
+  return `<p class="muted">Elige qué quieres contar.</p>
+    <div class="filas alcance-conteo">${Object.entries(GRUPOS_CONTEO).map(([grupo, nombre]) => `<button type="button" class="fila-lista"
+      data-act="iniciarConteo" data-grupo="${grupo}" ${grupos[grupo] ? '' : 'disabled'}>
+      <span class="av" aria-hidden="true">${grupo === 'venta' ? IC.bolsa : grupo === 'uso' ? IC.gota : IC.inventario}</span>
+      <span class="tx"><b>${nombre}</b><span class="m">${cantidad(grupos[grupo])}</span></span>${IC.siguiente}</button>`).join('')}
+    </div>
+    <section class="card"><h3>Por marca</h3>
+      <div class="campo"><label for="marcaConteo">Marca</label><select id="marcaConteo">
+        ${[...marcas].sort(([, a], [, b]) => a.nombre.localeCompare(b.nombre, 'es')).map(([clave, marca]) =>
+          `<option value="${esc(clave)}">${esc(marca.nombre)} · ${cantidad(marca.cantidad)}</option>`).join('')}
+      </select></div><button type="button" class="btn ghost" data-act="iniciarConteo" data-grupo="marca">Contar esta marca</button>
+    </section>`;
+}
+function pasoConteoHTML(conteo, filas, i){
+  const {p, esperado} = filas[i], unidad = p.unidad || 'unidades';
+  const botonEscanear = `<button type="button" class="btn soft" data-act="escanearConteo">${IC.escaneo} Escanear</button>`;
+  return `<div class="conteo-avance"><span class="muted">${esc(conteo.nombre)}</span>
+      <b>Producto ${i + 1} de ${filas.length}</b><progress max="${filas.length}" aria-label="Productos contados"></progress>
+      <span class="muted conteo-cuantos" role="status"></span></div>
+    <section class="card conteo-producto" aria-labelledby="productoConteo">
+      ${avatar(p, 'conteo-foto')}<h3 id="productoConteo" tabindex="-1">${esc(p.nombre)}</h3>
+      ${p.marca && norm(p.marca) !== norm(conteo.nombre) ? `<p class="muted">${esc(p.marca)}</p>` : ''}
+      <div class="conteo-esperado"><span>Stock esperado</span><b class="num">${textoCantidadConteo(esperado, p)}</b></div>
+      ${campoCantidad(`Cantidad contada (${unidad})`, 'cantidadConteo', conteo.cantidades[p.id], 'aria-describedby="estadoCantidadConteo"')}
+      <p id="estadoCantidadConteo" class="conteo-diferencia" role="status"></p>
+      <div class="conteo-metodos"><button type="button" class="btn ghost" data-act="ceroConteo">No hay</button>${botonEscanear}</div>
+    </section>
+    <div class="conteo-enlaces"><button type="button" class="link" data-act="descartarConteo">Descartar conteo</button></div>`;
+}
+function resumenConteoHTML(conteo, filas){
+  const diferencias = filas.filter(f => f.diferencia);
+  const n = diferencias.length;
+  return `<div class="conteo-avance"><span class="muted">${esc(conteo.nombre)}</span>
+      <b>${filas.length} ${filas.length === 1 ? 'producto contado' : 'productos contados'}</b></div>
+    <section class="card conteo-resumen" aria-labelledby="diferenciasConteo"><h3 id="diferenciasConteo" tabindex="-1">Diferencias</h3>
+      ${n ? `<p class="muted">${n} ${n === 1 ? 'producto tiene' : 'productos tienen'} una diferencia. Toca un producto si quieres corregir la cantidad.</p>
+        <div class="conteo-filas">${diferencias.map(({p, esperado, contado, diferencia}) => `<button type="button" class="fila-lista"
+          data-act="irConteo" data-id="${esc(p.id)}">${avatar(p)}<span class="tx"><b>${esc(p.nombre)}</b>
+          <span class="m">Esperado ${fCant(esperado)} · Contado ${textoCantidadConteo(contado, p)}</span></span>
+          <span class="solo-lectura">Ajuste de ${diferencia > 0 ? 'más' : 'menos'} ${textoCantidadConteo(Math.abs(diferencia), p)}</span>
+          <span class="pill ${diferencia > 0 ? 'ok' : 'bad'}" aria-hidden="true">${diferencia > 0 ? '+' : '−'}${fCant(Math.abs(diferencia))}</span>
+        </button>`).join('')}</div>` : '<p class="conteo-correcto">' + IC.check + ' Las cantidades coinciden con el inventario.</p>'}
+    </section>
+    <div class="conteo-enlaces"><button type="button" class="link" data-act="irConteo" data-id="${esc(conteo.paso)}">Volver al conteo</button>
+      <button type="button" class="link" data-act="descartarConteo">Descartar conteo</button></div>`;
+}
+function pintarConteo(d, enfocar = false){
+  const conteo = E.conteo, filas = conteo ? filasConteo(conteo) : [];
+  const i = Math.max(0, filas.findIndex(f => f.p.id === conteo?.paso));
+  const resumen = conteo?.resumen && filas.length && filas.every(f => f.contado !== null);
+  const titulo = resumen ? 'Resumen del conteo' : 'Contar inventario';
+  let cuerpo, pie = '';
+  if(!conteo){
+    cuerpo = inicioConteoHTML();
+  }else if(!filas.length){
+    cuerpo = '<div class="vacio">Los productos de este conteo ya no están en el inventario.</div>' +
+      '<button type="button" class="btn ghost" data-act="descartarConteo">Descartar conteo</button>';
+  }else if(resumen){
+    cuerpo = resumenConteoHTML(conteo, filas);
+    pie = '<button type="button" class="btn" data-act="confirmarConteo">Confirmar conteo</button>';
+  }else{
+    cuerpo = pasoConteoHTML(conteo, filas, i);
+    pie = `<button type="button" class="btn ghost" data-act="irConteo" data-id="${esc(filas[i - 1]?.p.id)}" ${i ? '' : 'disabled'}>${IC.volver} Anterior</button>
+      <button type="button" class="btn" data-act="siguienteConteo"></button>`;
+  }
+  d.setAttribute('aria-label', titulo);
+  d.innerHTML = cabecera(titulo, conteo ? '<button type="button" class="link" data-act="cerrar">Pausar</button>' : '', true) +
+    `<div class="hoja-cuerpo"><div class="hoja-in">${cuerpo}</div></div>` +
+    (pie ? `<footer class="hoja-pie"><div class="in">${pie}</div></footer>` : '');
+  if(conteo && filas.length && !resumen){
+    const input = $('#cantidadConteo', d), p = filas[i].p;
+    input.addEventListener('input', () => {
+      if(!revisarEstadoConteo(d)) return;
+      const actual = E.conteo;
+      const guardado = (actual.cantidades[p.id] ?? '') === input.value ||
+        guardarBorradorConteo({...actual, paso:p.id, resumen:false, cantidades:{...actual.cantidades, [p.id]:input.value}});
+      pintarCantidadConteo(d, filasConteo(E.conteo), i, guardado);
+    });
+    pintarCantidadConteo(d, filas, i);
+  }
+  cargarFotos(d);
+  if(enfocar) ($('[tabindex="-1"]', d) || d).focus({preventScroll:true});
+}
+function pintarCantidadConteo(d, filas, i, guardado = true){
+  const registrados = filas.filter(f => f.contado !== null).length;
+  const {contado, diferencia, p} = filas[i];
+  const input = $('#cantidadConteo', d), mensaje = $('#estadoCantidadConteo', d);
+  const invalido = Boolean(input.value.trim()) && cantidadContada(input.value) === null;
+  $('progress', d).value = registrados;
+  const avance = $('.conteo-cuantos', d), textoAvance = `${registrados} de ${filas.length} contados`;
+  if(avance.textContent !== textoAvance) avance.textContent = textoAvance;
+  mensaje.classList.toggle('bad', invalido || !guardado || diferencia < 0);
+  mensaje.classList.toggle('ok', diferencia > 0 && !invalido && guardado);
+  input.setAttribute('aria-invalid', String(invalido));
+  if(invalido) mensaje.textContent = 'Escribe una cantidad válida con hasta dos decimales.';
+  else if(!guardado) mensaje.textContent = 'La cantidad no se guardó. Vuelve a escribirla para reintentar.';
+  else if(contado === null) mensaje.textContent = 'Escribe la cantidad que encuentres.';
+  else if(!diferencia) mensaje.textContent = 'Sin diferencia';
+  else mensaje.innerHTML = `Diferencia <b>${diferencia > 0 ? '+' : '−'}${textoCantidadConteo(Math.abs(diferencia), p)}</b>`;
+  const siguiente = $('[data-act="siguienteConteo"]', d);
+  siguiente.disabled = !guardado || contado === null;
+  siguiente.textContent = registrados === filas.length ? 'Ver resumen' : i + 1 === filas.length ? 'Ir al pendiente' : 'Siguiente';
+}
+function abrirConteo(p = null){
+  leerEstadoConteo();
+  const d = abrirCapa('', {cls:'hoja hoja-conteo', tipo:'conteo'});
+  if(p){
+    p = prodPorId(p.id);
+    if(!p || p.borrado){ toast('Ese producto ya no está en el inventario.'); p = null; }
+  }
+  if(p && !E.conteo){ nuevoConteo(d, p.tipo, '', p); }
+  else if(p){
+    const lectura = sumarLecturaConteo(p, true);
+    if(!lectura.ok) toast(lectura.texto);
+  }
+  if(!d.hasChildNodes()) pintarConteo(d);
+}
+function irConteo(d, id, resumen = false){
+  const conteo = E.conteo;
+  if(guardarBorradorConteo({...conteo, paso:id, resumen})) pintarConteo(d, true);
+}
+function siguienteConteo(d){
+  if(!revisarEstadoConteo(d)) return;
+  const conteo = E.conteo, filas = filasConteo(conteo);
+  const i = Math.max(0, filas.findIndex(f => f.p.id === conteo.paso));
+  if(filas[i].contado === null) return;
+  const pendiente = filas.find(f => f.contado === null);
+  irConteo(d, pendiente ? (filas[i + 1] || pendiente).p.id : filas[i].p.id, !pendiente);
+}
+async function descartarConteo(d){
+  if(!(await confirmar('¿Descartar el conteo?', 'Se perderán las cantidades que anotaste en este conteo.', 'Descartar', true))) return;
+  if(!revisarEstadoConteo(d)) return;
+  const {conteo, ...estado} = E;
+  if(!guardar(estado, true)) return;
+  render();
+  pintarConteo(d, true);
+}
+async function confirmarConteo(d){
+  if(!revisarEstadoConteo(d)) return;
+  const {conteo, ...estado} = E;
+  const filas = filasConteo(conteo);
+  if(!filas.length || filas.some(f => f.contado === null)){ pintarConteo(d, true); return; }
+  const movs = filas.filter(f => f.diferencia).map(({p, diferencia}) =>
+    marcar({id:uid(), prod:p.id, tipo:'ajuste', cant:diferencia, fecha:hoyISO(), motivo:'conteo'}, true));
+  if(!guardar({...estado, movs:[...estado.movs, ...movs]})) return;
+  await cerrarCapa();
+  refrescar();
+  if(movs.length){
+    avisarConDeshacer(`Conteo guardado · ${movs.length} ${movs.length === 1 ? 'ajuste' : 'ajustes'}`, {movs}, true);
+  }else toast('Conteo guardado · Sin diferencias');
+}
+function sumarLecturaConteo(p, enfocar = false){
+  if(!p) return {texto:'No encontré un producto con ese código.'};
+  const conteo = E.conteo;
+  if(!conteo?.ids.includes(p.id)) return {texto:`${p.nombre} no pertenece a este conteo.`};
+  const cantidad = red((cantidadContada(conteo.cantidades[p.id]) ?? 0) + 1);
+  const valor = fCant(cantidad);
+  if(cantidadContada(valor) === null) return {texto:'La cantidad es demasiado grande.'};
+  const avance = {...conteo, cantidades:{...conteo.cantidades, [p.id]:valor}};
+  if(enfocar) Object.assign(avance, {paso:p.id, resumen:false});
+  if(!guardarBorradorConteo(avance)) return {texto:'La lectura no se guardó. Intenta de nuevo.'};
+  return {ok:true, cantidad};
 }
 
 // ---------- Ventas ----------
@@ -2443,7 +2671,7 @@ function avisarLectura(sonido){
     tono.stop(inicio + .12);
   }catch(e){}
 }
-function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false} = {}){
+function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false, lecturaContinua = false} = {}){
   const video = $('video', d), visor = $('[data-visor-camara]', d), boton = $('[data-camara]', d);
   const estado = $('[data-estado-camara]', d), linterna = $('[data-linterna]', d);
   let intento, flujo, espera, sonido;
@@ -2493,6 +2721,23 @@ function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false} =
       const codigos = video.readyState >= 2 ? await actual.detector.detect(video) : [];
       if(intento !== actual) return;
       const valores = codigos.map(c => c.rawValue?.trim()).filter(Boolean);
+      if(lecturaContinua){
+        const visibles = new Set(valores), tiempo = ahora();
+        // Un código necesita salir del encuadre antes de volver a contar otra unidad.
+        for(const [codigo, visto] of actual.vistos){
+          if(visibles.has(codigo)) actual.vistos.set(codigo, tiempo);
+          else if(tiempo - visto >= 420) actual.vistos.delete(codigo);
+        }
+        if(visibles.size === 1){
+          const [codigo] = visibles;
+          if(!actual.vistos.has(codigo)){
+            actual.vistos.set(codigo, tiempo);
+            if(alLeer(codigo, estado)) avisarLectura(sonido);
+          }
+        }
+        if(intento === actual) espera = setTimeout(() => leer(actual), 120);
+        return;
+      }
       const codigo = valores.find(valor => valor !== actual.ultimoCodigo);
       if(!valores.length) actual.ultimoCodigo = '';
       if(!codigo){ espera = setTimeout(() => leer(actual), 120); return; }
@@ -2514,7 +2759,7 @@ function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false} =
       return;
     }
     detenerCamara();
-    const actual = intento = {};
+    const actual = intento = {vistos:new Map()};
     d.classList.add('abriendo-camara');
     boton.disabled = true;
     estado.textContent = 'Abriendo la cámara…';
@@ -2613,7 +2858,7 @@ const MODOS_ESCANER = {
   vender:{nombre:'Vender', tipo:'venta', accion:'Agregar a la venta', icono:'mas', abrir:venderProducto},
   usar:{nombre:'Usé', tipo:'uso', accion:'Registrar uso', icono:'gota', abrir:usarProducto},
   entrada:{nombre:'Llegó', accion:'Registrar entrada', icono:'entrada', abrir:formEntrada},
-  ajuste:{nombre:'Contar', accion:'Contar producto', icono:'conteo', abrir:formAjuste},
+  ajuste:{nombre:'Contar', accion:'Contar producto', icono:'conteo', abrir:id => abrirConteo(prodPorId(id))},
 };
 function tarjetaEscaner(p, codigo, modo){
   if(!p) return `<h3 class="resultado-escaner-titulo">No encontré un producto con ese código</h3>
@@ -2666,20 +2911,17 @@ function elegirProductoParaCodigo(codigo, alAsignar){
   });
   pintar();
 }
-function abrirCodigo(origen){
-  let modo = Object.hasOwn(MODOS_ESCANER, origen) ? origen : origen === 'uso' ? 'usar' : 'vender';
-  let codigo = '';
-  const d = abrirCapa(`<div class="vista-escaner" data-visor-camara hidden>${videoCamara()}</div>
+function estructuraEscaner(titulo, indicacion, modos, textoBoton){
+  return `<div class="vista-escaner" data-visor-camara hidden>${videoCamara()}</div>
     <div class="escaner-contenido">
       <header class="escaner-cab">
-        <button class="icon-btn" type="button" data-act="cerrar" aria-label="Cerrar">${IC.x}</button><h2>Escanear</h2>
+        <button class="icon-btn" type="button" data-act="cerrar" aria-label="Cerrar">${IC.x}</button><h2>${titulo}</h2>
         <button class="icon-btn" type="button" data-linterna aria-label="Linterna" aria-pressed="false" hidden>${IC.linterna}</button>
       </header>
-      <div class="escaner-modos" role="group" aria-label="Modo de escaneo">${Object.entries(MODOS_ESCANER).map(([v, m]) =>
-        `<button type="button" data-modo-escaner="${v}" aria-pressed="${modo === v}">${m.nombre}</button>`).join('')}</div>
+      ${modos}
       <div class="guia-escaner">
         <div class="marco-escaner" aria-hidden="true"><span></span><span></span><span></span><span></span><i></i></div>
-        <p>Apunta al código de barras del producto</p>
+        <p>${indicacion}</p>
       </div>
       <section class="escaner-panel" aria-label="Código del producto">
         <p id="estadoEscaner" role="status" data-estado-camara></p>
@@ -2687,14 +2929,22 @@ function abrirCodigo(origen){
         <form class="escaner-manual" hidden>
           <div class="campo"><label for="codigoEscrito">Escribir el código a mano</label>
             <input type="text" id="codigoEscrito" aria-describedby="estadoEscaner" autocomplete="off" autocapitalize="off" spellcheck="false" required></div>
-          <button class="btn" type="submit">Buscar código</button>
+          <button class="btn" type="submit">${textoBoton}</button>
         </form>
         <div class="escaner-controles">
           <button class="link" type="button" data-escaner="manual">Escribir el código a mano</button>
           <button class="link" type="button" data-camara>Abrir cámara</button>
         </div>
       </section>
-    </div>`, {cls:'hoja escaner', tipo:'codigo', alCerrar:() => camara.cerrar()});
+    </div>`;
+}
+function abrirCodigo(origen){
+  let modo = Object.hasOwn(MODOS_ESCANER, origen) ? origen : origen === 'uso' ? 'usar' : 'vender';
+  let codigo = '';
+  const modos = `<div class="escaner-modos" role="group" aria-label="Modo de escaneo">${Object.entries(MODOS_ESCANER).map(([v, m]) =>
+    `<button type="button" data-modo-escaner="${v}" aria-pressed="${modo === v}">${m.nombre}</button>`).join('')}</div>`;
+  const d = abrirCapa(estructuraEscaner('Escanear', 'Apunta al código de barras del producto', modos, 'Buscar código'),
+    {cls:'hoja escaner', tipo:'codigo', alCerrar:() => camara.cerrar()});
   const form = $('form', d), campo = $('input', form), resultado = $('.resultado-escaner', d);
   const estado = $('[data-estado-camara]', d), botonCamara = $('[data-camara]', d);
   const botonManual = $('[data-escaner="manual"]', d);
@@ -2773,6 +3023,55 @@ function abrirCodigo(origen){
       if(accion === 'ver') verProd(p.id);
       else m.abrir(p.id);
     }
+  });
+  camara.abrir();
+}
+
+function escanearConteo(hoja){
+  if(!revisarEstadoConteo(hoja)) return;
+  const indicacion = 'Apunta a un código a la vez. Retíralo antes de contar otra unidad.';
+  const d = abrirCapa(estructuraEscaner('Escanear para contar', indicacion, '', 'Sumar uno'),
+    {cls:'hoja escaner escaner-conteo', tipo:'escanerConteo', alCerrar:() => {
+      camara.cerrar();
+      if(hoja.isConnected) pintarConteo(hoja);
+    }});
+  const form = $('form', d), campo = $('input', form), estado = $('[data-estado-camara]', d);
+  const resultado = $('.resultado-escaner', d), botonManual = $('[data-escaner="manual"]', d);
+  function mostrarManual(visible){
+    form.hidden = !visible;
+    botonManual.hidden = visible;
+  }
+  function leer(codigo){
+    if(d.inert || cierrePendiente) return false;
+    const cambio = leerEstadoConteo();
+    const p = productoPorCodigo(codigo);
+    const lectura = cambio ? {texto:'El inventario cambió. Revisa el conteo antes de seguir.'} : sumarLecturaConteo(p);
+    if(cambio) camara.detener();
+    estado.textContent = '';
+    resultado.hidden = false;
+    resultado.innerHTML = lectura.ok ? `<h3 class="resultado-escaner-titulo encontrado">${IC.check} Unidad sumada</h3>
+      <div class="producto-escaner">${avatar(p)}<div><strong>${esc(p.nombre)}</strong>
+        <p>${textoCantidadConteo(lectura.cantidad, p)} en el conteo.</p></div></div>` : `<p>${esc(lectura.texto)}</p>`;
+    if(lectura.ok) cargarFotos(resultado);
+    return lectura.ok;
+  }
+  const camara = prepararCamara(d, leer, {
+    conservarVista:true, lecturaContinua:true,
+    alAbrir(){ mostrarManual(false); },
+    alFallar(){ mostrarManual(true); },
+  });
+  botonManual.addEventListener('click', () => {
+    camara.detener();
+    estado.textContent = '';
+    mostrarManual(true);
+    campo.focus();
+  });
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const codigo = campo.value.trim();
+    if(!codigo){ estado.textContent = 'Escribe el código del producto.'; campo.focus(); return; }
+    if(leer(codigo)) campo.value = '';
+    campo.focus();
   });
   camara.abrir();
 }
@@ -3066,6 +3365,24 @@ const ACT = {
   terminarFrasco(b){ registrarFrasco(b.dataset.id, true); },
   entrada(b){ formEntrada(b.dataset.id); },
   ajuste(b){ formAjuste(b.dataset.id, Boolean(b.closest('.ficha-producto'))); },
+  conteo(){ abrirConteo(); },
+  iniciarConteo(b){
+    const d = b.closest('.hoja-conteo');
+    if(revisarEstadoConteo(d)) nuevoConteo(d, b.dataset.grupo, $('#marcaConteo', d)?.value);
+  },
+  irConteo(b){
+    const d = b.closest('.hoja-conteo');
+    if(revisarEstadoConteo(d)) irConteo(d, b.dataset.id);
+  },
+  siguienteConteo(b){ siguienteConteo(b.closest('.hoja-conteo')); },
+  ceroConteo(b){
+    const input = $('#cantidadConteo', b.closest('.hoja-conteo'));
+    input.value = '0';
+    input.dispatchEvent(new Event('input'));
+  },
+  escanearConteo(b){ escanearConteo(b.closest('.hoja-conteo')); },
+  descartarConteo(b){ descartarConteo(b.closest('.hoja-conteo')); },
+  confirmarConteo(b){ confirmarConteo(b.closest('.hoja-conteo')); },
   abrirHoy(b){
     const p = prodPorId(b.dataset.id), abierto = hoyISO();
     const productos = E.productos.map(x => x === p ? marcar({...p, abierto}) : x);
@@ -3101,7 +3418,8 @@ const ACT = {
   },
   paso(b){
     const inp = $('input', b.closest('.paso'));
-    const v = num(inp.value), d = Number(b.dataset.d);
+    const v = inp.id === 'cantidadConteo' ? cantidadContada(inp.value) ?? 0 : num(inp.value);
+    const d = Number(b.dataset.d);
     const siguiente = Math.max(0, (isFinite(v) ? v : 0) + d);
     if(inp.dataset.item !== undefined && d < 0 && siguiente === 0){
       F.items.splice(+inp.dataset.item, 1);

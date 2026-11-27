@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T10
-- Última corrida: 27-nov-2026, 13:33 (Ecuador) · T9 completada
+- Tarea actual: T11
+- Última corrida: 27-nov-2026, 13:50 (Ecuador) · T10 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -187,3 +187,21 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé 12 capturas de 390×844 en claro y oscuro. Frente a `Reportes.png`, se conservaron el selector, la cuadrícula de cifras y las barras magenta. Los meses de más de 28 días muestran una quinta barra y «Formas de pago» queda antes de las acciones para compartir. En las capturas desplazadas se siguen viendo fragmentos de filas bajo la barra inferior translúcida.
 - Pasaron 29 pruebas en Chromium a 390×844 y 26 con su perfil de iPhone 14 Pro. Las barras y las formas de pago cuadran con el total del mes, incluidos descuentos y ventas pendientes. También pasaron los límites de 60 y 90 días, los archivos de la versión 1 y la recarga sin conexión.
 - Sigue T10 con el conteo guiado. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.
+
+### 27-nov-2026 · 13:35–13:50 (Ecuador) · T10
+
+**Revisión de las ocho capturas T9 adjuntas**
+
+- **Ventas.** Frente a `Reportes.png`, la quinta semana queda como una raya de $ 0,00 y estrecha las otras barras. El nombre del limpiador se parte en dos líneas bajo «Lo más vendido» y los nombres de la segunda y tercera tarjetas también ocupan más espacio al desplazarse.
+- **Productos e historial de ventas.** En la captura de productos, la bolsa fija queda encima del borde inferior de «Descargar PDF». En el historial, la barra deja entrever el encabezado del día siguiente y parte del nombre de otra paciente.
+- **Cabina.** Los nombres de dos insumos ocupan dos líneas y las barras de menor gasto se ven casi iguales. La cantidad y el monto a la derecha permiten leer la diferencia con el producto de mayor gasto.
+- **Inventario en claro y oscuro.** «Vencen en los próximos 90 días» muestra tres filas completas o casi completas. La fecha de la tercera queda contra el borde de la barra y se alcanzan a leer fragmentos del siguiente producto debajo de la navegación.
+- **Impresión en claro y oscuro.** La hoja mantiene el fondo blanco en ambos temas. En la vista de 390 px, el logotipo, los bordes de las tarjetas y las barras quedan pegados a los lados. La captura se corta al empezar el bloque siguiente. La vista A4 se comprobó en T9.
+
+**Trabajo completado**
+
+- Desde Inicio e Inventario se puede contar todo el catálogo, Para vender, Uso en spa o una marca. Cada paso muestra la foto o las iniciales, el stock esperado y la cantidad encontrada. «No hay» anota cero. El avance se guarda en el celular y se puede retomar al volver a abrir la app.
+- El escáner suma una unidad en cada lectura aceptada y permite escribir el código si falta cámara. Sostener el mismo código en el encuadre cuenta una sola vez. El resumen muestra las diferencias y deja corregirlas antes de confirmar. La confirmación registra juntos los ajustes `conteo` y ofrece «Deshacer» durante cinco segundos.
+- Revisé 12 capturas de 390×844 en claro y oscuro. El acceso de Inventario comparte fila con la lista de compras y el orden. Las filas y las tarjetas del conteo siguen `Inventario.png` y `Producto.png`. La cámara usa el encuadre menta y la ficha inferior de `Escaner.png`. En Inicio e Inventario aún se alcanzan a leer fragmentos de filas bajo la barra fija.
+- Pasaron 32 pruebas en Chromium a 390×844 y 29 con su perfil de iPhone 14 Pro. Se comprobó que las existencias quedan iguales a lo contado, incluida una cantidad decimal y otra en cero. También pasaron la lectura repetida con la cámara simulada, la pausa y reanudación sin conexión, el reintento del guardado y los archivos v1.
+- Sigue T11 con la lista para pedir. Queda probar la lectura repetida con códigos impresos y el teclado de cantidades en Safari del iPhone de Elba, también desde la pantalla de inicio. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.

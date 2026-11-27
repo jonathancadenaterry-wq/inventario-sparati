@@ -43,6 +43,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
     - Las ventas siguen guardando `pac` y `tel` como texto para seguir siendo compatibles.
     - Al recibir un archivo de la versión 1, la lista de pacientes se arma a partir de los nombres de las ventas.
   - Ajustes: `plantillaRecordatorio` guarda el mensaje base de WhatsApp en este celular.
+  - Estado local: `conteo` guarda el borrador del conteo guiado. El archivo de envío solo lleva los movimientos de ajuste después de confirmar el conteo.
 - Los mismos `id` se mantienen siempre. Todo cambio pone `mod = Date.now()` y `por = quien()`.
 
 **Prueba obligatoria del contrato.**
@@ -169,7 +170,7 @@ Según `Reportes.png`:
 - **Enviar por WhatsApp**: un resumen en texto.
 - **Hecha cuando:** las cifras de los reportes cuadran con las ventas del mes, con una prueba que lo verifica.
 
-## T10 · Contar inventario  [ ]
+## T10 · Contar inventario  [x]
 - Revisión guiada de uno de estos grupos: todos, una pestaña o una marca.
 - En cada producto: foto, stock esperado y la cantidad contada (stepper o escáner, que suma uno por cada lectura).
 - Al final, un resumen de las diferencias. Al confirmar, se crean ajustes con el motivo `conteo`.

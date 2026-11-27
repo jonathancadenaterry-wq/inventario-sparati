@@ -203,10 +203,10 @@ svg.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;st
 .cantidades-inventario .ico{width:16px;height:16px}
 .cantidades-inventario[open] .ico{transform:rotate(90deg)}
 .cantidades-inventario ul{margin:8px 0 0;padding:8px 0 0;border-top:1px solid var(--linea);list-style:none;font-size:13px}
-.controles-inventario{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-block:-8px}
-.controles-inventario .link{display:inline-flex;align-items:center;gap:6px;font-size:13px;border-radius:8px}
-.controles-inventario .ico{width:18px;height:18px}
-.orden-inventario select{width:auto;max-width:100%;padding:6px 8px;color:var(--tenue)}
+.controles-inventario{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:0 6px;margin-block:-8px}
+.controles-inventario .link{display:inline-flex;align-items:center;gap:4px;padding-inline:0;font-size:13px;border-radius:8px}
+.controles-inventario .ico{width:16px;height:16px}
+.orden-inventario select{width:auto;max-width:100%;padding:6px;color:var(--tenue)}
 #listaProd .fila-lista{content-visibility:auto;contain-intrinsic-block-size:auto 54px}
 #listaProd .fila-lista:focus-visible{outline-offset:-3px}
 
@@ -529,6 +529,43 @@ textarea{min-height:76px;resize:vertical}
 .paso button .ico{width:18px;height:18px}
 .paso input{border:0;border-radius:8px;text-align:center;font-weight:700;font-size:16px;padding:10px 0}
 .paso input:focus-visible{outline-offset:-3px}
+
+/* Conteo guiado */
+.hoja-conteo .hoja-cab>.link{flex:none;border-radius:8px}
+.hoja-conteo .hoja-in>p,.hoja-conteo .card p{margin:0}
+.alcance-conteo .fila-lista .av{width:44px;height:44px}
+.alcance-conteo .fila-lista>.ico{width:18px;color:var(--marca)}
+.alcance-conteo button:disabled{opacity:.6}
+.conteo-avance{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.conteo-avance>span{font-size:13px;overflow-wrap:anywhere}
+.conteo-avance progress{appearance:none;-webkit-appearance:none;width:100%;height:8px;margin:5px 0 2px;border:0;border-radius:999px;background:var(--hundido);overflow:hidden}
+.conteo-avance progress::-webkit-progress-bar{background:var(--hundido)}
+.conteo-avance progress::-webkit-progress-value{background:var(--marca);border-radius:999px}
+.conteo-avance progress::-moz-progress-bar{background:var(--marca);border-radius:999px}
+.conteo-producto{gap:10px;text-align:center}
+.conteo-producto .conteo-foto{align-self:center;width:min(144px, 100%);height:144px;border-radius:var(--radio-tarjeta);font-size:40px}
+.conteo-producto h3{font-size:21px;overflow-wrap:anywhere}
+.conteo-producto h3:focus,.conteo-resumen h3:focus{outline:none}
+.conteo-producto>p{font-size:13px;overflow-wrap:anywhere}
+.conteo-producto>.campo{text-align:start}
+.conteo-producto .paso{gap:6px}
+.conteo-producto .paso input{background:var(--fondo);border:1px solid var(--linea);font-size:20px}
+.conteo-esperado{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 8px;margin-block:4px;padding:10px 12px;border-radius:var(--radio-peq);background:var(--hundido);font-size:13px;color:var(--tenue);text-align:start}
+.conteo-esperado b{font:600 18px var(--serif);color:var(--tinta);overflow-wrap:anywhere}
+.conteo-diferencia{min-height:1.45em;color:var(--tenue)}
+.conteo-diferencia.bad{color:var(--mal)}
+.conteo-diferencia.ok,.conteo-correcto{color:var(--bien-contraste)}
+.conteo-metodos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.conteo-metodos .btn{padding-inline:8px}
+.conteo-resumen>p{font-size:14px}
+.conteo-correcto{display:flex;align-items:center;gap:8px}
+.conteo-filas .fila-lista{gap:10px}
+.conteo-filas .av{width:46px;height:46px}
+.conteo-enlaces{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 16px}
+.conteo-enlaces .link{border-radius:8px}
+.conteo-enlaces [data-act="descartarConteo"]{color:var(--tenue)}
+.escaner-conteo .guia-escaner p{max-width:280px;margin-inline:auto;padding:7px 10px;border-radius:12px;background:rgb(0 0 0 / .52);font-size:14px}
+.escaner-conteo .resultado-escaner p{overflow-wrap:anywhere}
 .foto-campo{display:flex;align-items:center;gap:14px}
 .acciones-foto{display:flex;flex-wrap:wrap;gap:8px}
 .form-producto #margen:empty{display:none}
