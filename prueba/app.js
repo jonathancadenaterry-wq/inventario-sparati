@@ -52,7 +52,11 @@ function fCorta(s){ if(!s) return ''; const d = aFecha(s); return d.getDate() + 
 function fDia(s){ const d = aFecha(s); return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
 function diasHasta(s){ const h = aFecha(hoyISO()); return Math.round((aFecha(s) - h) / 86400000); }
 function diasDesde(s){ return -diasHasta(s); }
-function sumarMeses(s, m){ const d = aFecha(s); d.setMonth(d.getMonth() + m); return iso(d); }
+function sumarMeses(s, m){
+  const d = aFecha(s), mes = d.getMonth() + Number(m);
+  const ultimo = new Date(d.getFullYear(), mes + 1, 0).getDate();
+  return iso(new Date(d.getFullYear(), mes, Math.min(d.getDate(), ultimo)));
+}
 function haceTxt(ms){
   if(!ms) return 'nunca';
   const d = Math.floor((ahora() - ms) / 86400000);
@@ -135,20 +139,22 @@ function avisosDe(p){
   const s = stockDe(p.id), out = [];
   const min = p.min || 0, c = CONSUMO.get(p.id);
   if(s <= 0) out.push({clase:'stock', nivel:'bad', txt:'Agotado', orden:0});
-  else if(min > 0 && s <= min) out.push({clase:'stock', nivel:'bad', txt:`${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)} (avisar con ${fCant(min)})`, orden:1});
+  else if(min > 0 && s <= min) out.push({clase:'stock', nivel:'bad', txt:`${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)}`, detalle:'avisas con ' + fCant(min), orden:1});
   else if(c && s / c <= 14) out.push({clase:'stock', nivel:'warn', txt:`Alcanza para unos ${Math.max(1, Math.round(s / c))} días`, orden:2});
   if(s > 0 && p.vence){
     const d = diasHasta(p.vence);
     if(d < 0) out.push({clase:'fecha', nivel:'bad', txt:'Venció el ' + fCorta(p.vence), orden:0});
-    else if(d <= E.ajustes.diasVence) out.push({clase:'fecha', nivel:'warn', txt:d === 0 ? 'Vence hoy' : `Vence en ${d} ${d===1?'día':'días'} (${fCorta(p.vence)})`, orden:1});
+    else if(d <= E.ajustes.diasVence) out.push({clase:'fecha', nivel:'warn', txt:d === 0 ? 'Vence hoy' : `Vence en ${d} ${d===1?'día':'días'}`, detalle:d > 0 ? fCorta(p.vence) : '', orden:1});
   }
   if(s > 0 && p.abierto && p.pao > 0){
     const lim = sumarMeses(p.abierto, p.pao), d = diasHasta(lim);
-    if(d < 0) out.push({clase:'fecha', nivel:'bad', txt:'Abierto: pasó su tiempo de uso (' + fCorta(lim) + ')', orden:0});
-    else if(d <= 30) out.push({clase:'fecha', nivel:'warn', txt:`Abierto: úsalo antes del ${fCorta(lim)}`, orden:1});
+    if(d < 0) out.push({clase:'fecha', nivel:'bad', txt:'Ya pasó el tiempo de uso después de abierto', detalle:fCorta(lim), orden:0});
+    else if(d === 0) out.push({clase:'fecha', nivel:'warn', txt:'Hoy se cumple el tiempo de uso después de abierto', orden:0});
+    else if(d <= 30) out.push({clase:'fecha', nivel:'warn', txt:'Úsalo antes del ' + fCorta(lim), orden:1});
   }
   return out;
 }
+const textoAviso = a => a.txt + (a.detalle ? ' (' + a.detalle + ')' : '');
 function todosLosAvisos(){
   const r = {stock:[], fecha:[]};
   for(const p of productos()) for(const a of avisosDe(p)) r[a.clase].push(Object.assign({p}, a));
@@ -156,8 +162,8 @@ function todosLosAvisos(){
   r.stock.sort(ord); r.fecha.sort(ord);
   return r;
 }
-function paraPedir(){
-  return productos().filter(p => avisosDe(p).some(a => a.clase === 'stock')).map(p => {
+function paraPedir(id){
+  return productos().filter(p => (!id || p.id === id) && avisosDe(p).some(a => a.clase === 'stock')).map(p => {
     const s = stockDe(p.id), c = CONSUMO.get(p.id);
     let sug = p.min > 0 ? Math.ceil(p.min * 2 - s) : 0;
     if(c) sug = Math.max(sug, Math.ceil(c * 30 - s));
@@ -167,11 +173,12 @@ function paraPedir(){
 // Pacientes a quienes conviene volver a ofrecer un producto (según cuántos días le dura)
 function recompras(){
   const ult = new Map();
-  for(const v of vivos(E.ventas)) for(const it of v.items){
+  const hoy = hoyISO();
+  for(const v of vivos(E.ventas).filter(v => v.fecha <= hoy)) for(const it of v.items){
     const p = prodPorId(it.prod);
     if(!p || p.borrado || !(p.duraPac > 0) || !v.pac) continue;
-    const k = norm(v.pac) + '|' + it.prod, x = ult.get(k);
-    if(!x || v.fecha > x.v.fecha) ult.set(k, {v, p});
+    const k = JSON.stringify([norm(v.pac), it.prod]), x = ult.get(k);
+    if(!x || v.fecha > x.v.fecha || (v.fecha === x.v.fecha && v.creado >= x.v.creado)) ult.set(k, {v, p});
   }
   const r = [];
   for(const {v, p} of ult.values()){
@@ -179,15 +186,24 @@ function recompras(){
     const d = diasDesde(v.fecha);
     if(d >= p.duraPac - 5 && d <= p.duraPac + 60) r.push({v, p, d});
   }
-  return r.sort((a, b) => b.d - a.d);
+  return r.sort((a, b) => (a.p.duraPac - a.d) - (b.p.duraPac - b.d));
 }
 const porCobrar = () => vivos(E.ventas).filter(v => !v.cobrado).sort((a, b) => b.fecha.localeCompare(a.fecha));
-const totalVenta = v => red(v.items.reduce((s, it) => s + it.cant * it.precio, 0));
+const totalVenta = v => red(v.items.reduce((s, it) => s + it.cant * it.precio, 0) - (v.descuento || 0));
 const costoVenta = v => red(v.items.reduce((s, it) => s + it.cant * (it.costo || 0), 0));
+function cifrasVentas(ventas){
+  const total = red(ventas.reduce((s, v) => s + totalVenta(v), 0));
+  return {total, ganancia:red(total - ventas.reduce((s, v) => s + costoVenta(v), 0))};
+}
 function pacientes(){
   const m = new Map();
   for(const v of vivos(E.ventas)) if(v.pac){ const k = norm(v.pac); const x = m.get(k); if(!x || v.fecha >= x.fecha) m.set(k, {nombre:v.pac, tel:v.tel || (x && x.tel) || '', fecha:v.fecha}); else if(!x.tel && v.tel) x.tel = v.tel; }
   for(const mv of vivos(E.movs)) if(mv.pac && !m.has(norm(mv.pac))) m.set(norm(mv.pac), {nombre:mv.pac, tel:'', fecha:mv.fecha});
+  for(const p of vivos(E.pacientes)){
+    const k = norm(p.nombre);
+    const historial = m.get(k);
+    m.set(k, historial ? {...historial, tel:historial.tel || p.tel || ''} : p);
+  }
   return Array.from(m.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
@@ -514,58 +530,194 @@ function pintarBusquedaInicio(){
   cargarFotos(resultados);
 }
 
-function vInicio(){
-  const cab = `<h1 class="solo-lectura">Inicio</h1><div class="top"><div class="marca-inicio"><img src="emblema.png" class="emblema" alt="" width="128" height="115">
-    <div><img src="logo-texto.png" class="logo-texto" alt="SPARATI" width="210" height="33"><div class="sub">${esc(fDia(hoyISO()))}</div></div></div>
-    <button class="icon-btn" data-act="ajustes" aria-label="Ajustes">${IC.ajustes}</button></div>
-    ${buscador('Buscar producto o paciente', {id:'qInicio', valor:U.qInicio, escaneo:'global'})}
-    <div id="resultadosInicio" class="lista-productos" hidden></div>`;
-  let h = '';
-  const n = productos().length;
-  // Compartir entre los dos celulares
-  const envio = E.sync.envio, recibo = E.sync.recibo;
-  if(quien()){
-    const cambios = ultimoCambio() > envio;
-    if(cambios && n && (!envio || ahora() - envio > 3 * 86400000))
-      h += `<div class="aviso"><div>Hay cambios que ${esc(otro())} todavía no tiene${envio ? ' (último envío: ' + haceTxt(envio) + ')' : ''}.</div>
-        <div class="fila"><button class="btn sm" data-act="enviar">Enviar a ${esc(otro())}</button></div></div>`;
-    if(recibo) h += `<div class="peq muted" style="padding:0 4px">Último archivo recibido de ${esc(E.sync.de || otro())}: ${haceTxt(recibo)}. <button class="link" data-act="recibir">Recibir otro</button></div>`;
-  }
-  if(!n){
-    h += `<section class="card"><h3>Bienvenida</h3>
-      <div class="peq">Empieza agregando tus productos. Para cada uno pones cuántos hay y desde cuántos quieres que la app te avise.</div>
-      <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">${IC.mas} Para vender</button><button class="btn gold" data-act="nuevoProd" data-tipo="uso">${IC.mas} Uso en spa</button></div>
-      ${quien() === 'Jonathan' ? `<button class="btn ghost" data-act="recibir">Recibir el inventario de Elba</button>` : ''}</section>`;
-    return cab + `<div class="contenido-inicio" id="contenidoInicio">${h}</div>`;
-  }
-  const av = todosLosAvisos(), rc = recompras(), pc = porCobrar();
-  if(!av.stock.length && !av.fecha.length && !rc.length && !pc.length)
-    h += `<div class="estado-ok">${IC.check}<div>Todo en orden. No hay productos por terminarse ni por vencer.</div></div>`;
-  if(av.stock.length) h += `<section class="card"><div class="card-cab"><h3>Se están terminando (${av.stock.length})</h3><button class="btn sm gold" data-act="compras">Qué pedir</button></div>${av.stock.map(filaAviso).join('')}</section>`;
-  if(av.fecha.length) h += `<section class="card"><h3>Fechas de vencimiento (${av.fecha.length})</h3>${av.fecha.map(filaAviso).join('')}</section>`;
-  if(rc.length) h += `<section class="card"><h3>Volver a ofrecer (${rc.length})</h3><div class="peq muted">Pacientes que ya deberían estar terminando el producto que compraron.</div>${rc.map(r =>
-    `<div class="alerta">${avatar({nombre:r.v.pac}, 'persona sm')}<div class="tx"><b>${esc(r.v.pac)}</b><div class="d">${esc(r.p.nombre)} · compró ${haceTxtDias(r.d)}</div></div>
-      <button class="btn sm soft" data-act="recompra" data-v="${esc(r.v.id)}" data-p="${esc(r.p.id)}">Escribir</button></div>`).join('')}</section>`;
-  if(pc.length) h += `<section class="card"><div class="card-cab"><h3>Por cobrar</h3><b class="num">${dinero(pc.reduce((s, v) => s + totalVenta(v), 0))}</b></div>${pc.slice(0, 6).map(v =>
-    `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.pac || 'Sin nombre')}</b><div class="d">${esc(fCorta(v.fecha))} · ${esc(v.items.map(i => i.nombre).join(', '))}</div></div><span class="pill warn num">${dinero(totalVenta(v))}</span></button>`).join('')}</section>`;
+const ACCIONES_INICIO = {
+  vender:{titulo:'Vender', icono:'bolsa'},
+  usar:{titulo:'Usé en cabina', icono:'gota', tipo:'uso'},
+  entrada:{titulo:'Llegó mercadería', icono:'entrada'},
+  ajuste:{titulo:'Contar inventario', icono:'conteo'},
+};
+const CONTADORES_INICIO = {stock:'Por terminarse', fecha:'Vencen pronto', paciente:'Pacientes por recordar'};
 
-  // Cifras
-  const mes = hoyISO().slice(0, 7), vm = vivos(E.ventas).filter(v => v.fecha.startsWith(mes));
-  const totMes = vm.reduce((s, v) => s + totalVenta(v), 0), ganMes = totMes - vm.reduce((s, v) => s + costoVenta(v), 0);
-  const valor = productos().reduce((s, p) => s + Math.max(0, stockDe(p.id)) * (p.costo || 0), 0);
-  const usoMes = vivos(E.movs).filter(m => m.tipo === 'uso' && m.fecha.startsWith(mes)).reduce((s, m) => { const p = prodPorId(m.prod); return s + (-m.cant) * ((p && p.costo) || 0); }, 0);
-  h += `<div class="sec-tit">Este mes</div><div class="cifras">
-    <button class="cifra" data-act="tab" data-tab="ventas"><span class="v num">${dinero(totMes)}</span><span class="l">Vendido en ${MESES[new Date().getMonth()]} · ${vm.length} ${vm.length===1?'venta':'ventas'}</span></button>
-    <div class="cifra"><span class="v num">${dinero(ganMes)}</span><span class="l">Ganancia en ventas</span></div>
-    <div class="cifra"><span class="v num">${dinero(usoMes)}</span><span class="l">Insumos usados en el spa</span></div>
-    <div class="cifra"><span class="v num">${dinero(valor)}</span><span class="l">Valor del inventario (a costo)</span></div></div>`;
-  return cab + `<div class="contenido-inicio" id="contenidoInicio">${h}</div>`;
+function saludoInicio(fecha){
+  const h = fecha.getHours();
+  return h < 5 || h >= 19 ? 'Buenas noches' : h < 12 ? 'Buenos días' : 'Buenas tardes';
 }
-function haceTxtDias(d){ return d === 0 ? 'hoy' : d === 1 ? 'ayer' : 'hace ' + d + ' días'; }
-function filaAviso(a){
-  return `<button class="alerta" data-act="verProd" data-id="${esc(a.p.id)}">${avatar(a.p, 'sm')}<div class="tx"><b>${esc(a.p.nombre)}</b><div class="d">${a.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · <span class="${a.nivel}">${esc(a.txt)}</span></div></div><span class="chev">${IC.siguiente}</span></button>`;
+function resumenInicio(fecha){
+  const mes = fecha.getMonth(), anio = fecha.getFullYear();
+  const anterior = new Date(anio, mes - 1, 1);
+  const claveMes = iso(fecha).slice(0, 7), claveAnterior = iso(anterior).slice(0, 7);
+  const ventas = vivos(E.ventas);
+  const actuales = ventas.filter(v => v.fecha.startsWith(claveMes));
+  const anteriores = ventas.filter(v => v.fecha.startsWith(claveAnterior));
+  const previo = cifrasVentas(anteriores).total;
+  const {total, ganancia} = cifrasVentas(actuales);
+  const diarios = new Map();
+  for(const v of ventas) diarios.set(v.fecha, (diarios.get(v.fecha) || 0) + totalVenta(v));
+  const semana = Array.from({length:7}, (_, i) => {
+    const dia = new Date(anio, mes, fecha.getDate() - 6 + i);
+    return {dia:iso(dia), inicial:DIAS[dia.getDay()][0].toUpperCase(), total:red(diarios.get(iso(dia)) || 0)};
+  });
+  const variacion = previo > 0 ? Math.round((total - previo) / previo * 100) : null;
+  return {mes:MESES[mes], anterior:MESES[anterior.getMonth()], total, ganancia, previo,
+    ventas:actuales.length, ventasPrevias:anteriores.length, semana, variacion};
 }
-function ultimoCambio(){ let m = 0; for(const k of ['productos','movs','ventas']) for(const x of E[k]) if(x.por === quien() && x.mod > m) m = x.mod; return m; }
+function tarjetaVentasInicio(fecha){
+  const r = resumenInicio(fecha);
+  const comparacion = r.variacion === null ? (r.ventasPrevias ? dinero(r.previo) : 'Sin ventas') + ' en ' + r.anterior :
+    `${r.variacion > 0 ? '+' : ''}${r.variacion} % vs ${r.anterior}`;
+  const mayor = Math.max(0, ...r.semana.map(d => d.total)) || 1;
+  return `<section class="ventas-inicio" aria-labelledby="ventasInicio">
+    <div class="ventas-inicio-cab"><h2 id="ventasInicio">Ventas de ${r.mes}</h2>
+      <span class="comparacion${r.variacion < 0 ? ' baja' : ''}">${comparacion}</span></div>
+    <button class="ventas-inicio-total num" data-act="ventasInicio" aria-label="Ver ventas de ${r.mes}, ${dinero(r.total)}">${dinero(r.total)}</button>
+    <p>${r.ventas} ${r.ventas === 1 ? 'venta' : 'ventas'} · <b>${dinero(r.ganancia)}</b> de ganancia</p>
+    <ul class="ventas-inicio-grafico" role="list" aria-label="Ventas de los últimos 7 días">
+      ${r.semana.map(d => `<li><span class="barra" style="--alto-barra:${Math.max(2, Math.round(d.total / mayor * 80))}px" aria-hidden="true"></span>
+        <span aria-hidden="true">${d.inicial}</span><span class="solo-lectura">${cap(fDia(d.dia))} · ${dinero(d.total)}</span></li>`).join('')}
+    </ul>
+  </section>`;
+}
+
+function avisosInicio(){
+  const {stock, fecha} = todosLosAvisos();
+  const porProducto = new Map(), porPaciente = new Map();
+  for(const a of fecha){
+    if(!porProducto.has(a.p.id)) porProducto.set(a.p.id, []);
+    porProducto.get(a.p.id).push(a);
+  }
+  for(const r of recompras()){
+    const nombre = norm(r.v.pac);
+    if(!porPaciente.has(nombre)) porPaciente.set(nombre, []);
+    porPaciente.get(nombre).push(r);
+  }
+  const envio = E.sync.envio;
+  const pendiente = quien() && ultimoCambio() > envio && ahora() - (envio || E.creado) > 7 * 86400000;
+  return {stock, fecha:[...porProducto.values()], paciente:[...porPaciente.values()], envio:pendiente ? [envio] : []};
+}
+function ultimoCambio(){
+  let ultimo = 0;
+  for(const k of ['productos','movs','ventas','pacientes'])
+    for(const x of E[k]) if(x.por === quien() && x.mod > ultimo) ultimo = x.mod;
+  return ultimo;
+}
+function filaAtencion({imagen, titulo, detalle, accion, atributos = '', etiqueta, icono = '', contexto = titulo}){
+  return `<li class="alerta atencion-fila">
+    ${imagen}<div class="tx"><b>${esc(titulo)}</b><div class="d">${detalle}</div></div>
+    <button class="btn sm soft" data-act="${accion}" ${atributos} aria-label="${esc(etiqueta + ' · ' + contexto)}">${icono}${etiqueta}</button>
+  </li>`;
+}
+function filasAtencion(avisos, filtro, muestra = false){
+  let h = '';
+  const deClase = clase => muestra ? avisos[clase].slice(0, 1) : avisos[clase];
+  const estado = a => `<span class="${a.nivel}">${esc(a.txt)}</span>${a.detalle ? ' · ' + esc(a.detalle) : ''}`;
+  if(!filtro || filtro === 'stock') h += deClase('stock').map(a =>
+    filaAtencion({
+      imagen:avatar(a.p), titulo:a.p.nombre, detalle:estado(a),
+      accion:'compras', atributos:`data-id="${esc(a.p.id)}"`, etiqueta:'Pedir',
+    })).join('');
+  if(!filtro || filtro === 'fecha') h += deClase('fecha').map(avisosFecha =>
+    filaAtencion({
+      imagen:`<span class="atencion-icono fecha">${IC.calendario}</span>`,
+      titulo:avisosFecha[0].p.nombre, detalle:avisosFecha.map(estado).join('<br>'),
+      accion:'verProd', atributos:`data-id="${esc(avisosFecha[0].p.id)}"`, etiqueta:'Ver',
+    })).join('');
+  if(!filtro || filtro === 'paciente') h += deClase('paciente').flatMap(rs => muestra ? rs.slice(0, 1) : rs).map(({v, p, d}) => {
+    const tiempo = p.duraPac - d;
+    const detalle = tiempo > 0 ? 'Se acabaría esta semana' : tiempo === 0 ? 'Se acabaría hoy' : 'Ya se le habría terminado';
+    return filaAtencion({
+      imagen:avatar({nombre:v.pac}, 'persona'), titulo:v.pac, detalle:`${esc(p.nombre)} · ${detalle}`,
+      accion:'recompra', atributos:`data-v="${esc(v.id)}" data-p="${esc(p.id)}"`,
+      etiqueta:'Escribir', icono:IC.chat, contexto:v.pac + ' · ' + p.nombre,
+    });
+  }).join('');
+  if(!filtro && avisos.envio.length){
+    const [envio] = avisos.envio;
+    const detalle = envio ? 'Último envío ' + haceTxt(envio) : 'Todavía no has enviado el inventario';
+    h += filaAtencion({
+      imagen:`<span class="atencion-icono">${IC.sync}</span>`, titulo:otro() + ' no tiene tus cambios', detalle,
+      accion:'enviar', etiqueta:'Enviar',
+    });
+  }
+  return h ? `<ul class="atencion-lista" role="list">${h}</ul>` :
+    `<div class="estado-ok">${IC.check}<span>${filtro ? 'Todo en orden por aquí.' : 'Todo en orden. No hay avisos pendientes.'}</span></div>`;
+}
+function abrirAvisosInicio(filtro){
+  const d = abrirCapa('', {tipo:'avisosInicio'});
+  d.dataset.filtro = filtro || '';
+  pintarAvisosInicio(d);
+}
+function pintarAvisosInicio(d){
+  const titulo = CONTADORES_INICIO[d.dataset.filtro] || 'Necesita atención';
+  const scroll = $('.hoja-cuerpo', d)?.scrollTop || 0;
+  const activo = d.contains(document.activeElement) ? document.activeElement : null;
+  d.innerHTML = cabecera(titulo, '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    ${filasAtencion(avisosInicio(), d.dataset.filtro)}</div></div>`;
+  $('.hoja-cuerpo', d).scrollTop = scroll;
+  cargarFotos(d);
+  if(activo && !activo.isConnected && !enfocarControl(activo, d)) $('button[data-act="cerrar"]', d).focus({preventScroll:true});
+}
+function abrirSelectorInicio(accion){
+  const {titulo} = ACCIONES_INICIO[accion];
+  const d = abrirCapa(cabecera(titulo, '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    ${buscador('Buscar producto')}<div class="filas selector-inicio-lista"></div></div></div>`, {tipo:'selectorInicio'});
+  d.dataset.accion = accion;
+  $('input', d).addEventListener('input', () => pintarSelectorInicio(d));
+  pintarSelectorInicio(d);
+}
+function pintarSelectorInicio(d){
+  const accion = d.dataset.accion, q = norm($('input', d).value);
+  const ps = productos(ACCIONES_INICIO[accion].tipo).filter(p => coincideProducto(p, q));
+  const lista = $('.selector-inicio-lista', d);
+  const activo = document.activeElement;
+  lista.innerHTML = ps.length ? ps.map(p => filaProducto(p, accion, true)).join('') :
+    `<div class="vacio">${q ? 'No encontré productos con esa búsqueda.' : 'Todavía no hay productos para elegir.'}</div>`;
+  cargarFotos(lista);
+  if(!activo.isConnected) enfocarControl(activo, lista);
+}
+
+function vInicio(){
+  const hoy = new Date(), nombre = quien();
+  const avisos = avisosInicio(), pc = porCobrar();
+  const cantidad = Object.values(avisos).reduce((n, lista) => n + lista.length, 0);
+  const tieneAvisos = cantidad > 0;
+  return `<header class="top cab-inicio">
+    <div class="marca-inicio"><img src="emblema.png" class="emblema" alt="" width="128" height="115">
+      <div><img src="logo-texto.png" class="logo-texto" alt="SPARATI" width="210" height="33">
+        <h1>${saludoInicio(hoy)}${nombre ? ', ' + esc(nombre) : ''}</h1><div class="sub">${cap(fDia(iso(hoy)))}</div></div>
+    </div>
+    <button class="icon-btn avisos-inicio" data-act="avisosInicio" aria-label="Avisos${tieneAvisos ? ', ' + cantidad + ' pendientes' : ''}">${IC.campana}
+      ${tieneAvisos ? `<span aria-hidden="true">${cantidad > 99 ? '99+' : cantidad}</span>` : ''}</button>
+  </header>
+  ${buscador('Buscar producto o paciente', {id:'qInicio', valor:U.qInicio, escaneo:'global'})}
+  <div id="resultadosInicio" class="lista-productos" hidden></div>
+  <div class="contenido-inicio" id="contenidoInicio">
+    <div class="acciones-inicio" role="group" aria-label="Acciones rápidas">
+      ${Object.entries(ACCIONES_INICIO).map(([accion, {titulo, icono}]) => `<button data-act="${accion === 'vender' ? 'vender' : 'selectorInicio'}" data-accion="${accion}">
+        <span>${IC[icono]}</span>${titulo}</button>`).join('')}
+    </div>
+    ${tarjetaVentasInicio(hoy)}
+    <div class="contadores-inicio" role="group" aria-label="Resumen de avisos">
+      ${Object.entries(CONTADORES_INICIO).map(([clase, titulo]) => `<button class="contador-inicio ${clase}" data-act="avisosInicio" data-filtro="${clase}">
+        <b>${avisos[clase].length}</b><span>${titulo}</span></button>`).join('')}
+    </div>
+    <section class="atencion-inicio" aria-labelledby="tituloAtencion">
+      <div class="card-cab"><h2 class="titulo-seccion" id="tituloAtencion">Necesita atención</h2>
+        ${tieneAvisos ? '<button class="link" data-act="avisosInicio">Ver todo</button>' : ''}</div>
+      ${filasAtencion(avisos, '', true)}
+    </section>
+    ${pc.length ? `<section class="card pendiente-inicio"><div class="card-cab"><h2 class="titulo-seccion">Por cobrar</h2>
+      <b class="num">${dinero(pc.reduce((s, v) => s + totalVenta(v), 0))}</b></div>
+      ${pc.slice(0, 6).map(v => `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.pac || 'Sin nombre')}</b>
+        <div class="d">${esc(fCorta(v.fecha))} · ${esc(v.items.map(i => i.nombre).join(', '))}</div></div>
+        <span class="pill warn num">${dinero(totalVenta(v))}</span></button>`).join('')}
+    </section>` : ''}
+    ${!productos().length ? `<section class="card"><h2 class="titulo-seccion">Agrega tus primeros productos</h2>
+      <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">${IC.mas} Para vender</button>
+        <button class="btn gold" data-act="nuevoProd" data-tipo="uso">${IC.mas} Uso en spa</button></div>
+      ${nombre === 'Jonathan' ? '<button class="btn ghost" data-act="recibir">Recibir el inventario de Elba</button>' : ''}</section>` : ''}
+    <button class="link ajustes-inicio" data-act="ajustes">${IC.ajustes} Ajustes</button>
+  </div>`;
+}
 
 function vLista(tipo){
   const ps = productos(tipo);
@@ -632,7 +784,7 @@ function filaProducto(p, accion = 'verProd', mostrarMarca = false){
   const aviso = avs.find(a => a.clase === 'fecha') || avs.find(a => a.clase === 'stock' && a.nivel === 'warn');
   const precio = p.tipo === 'venta' && p.precio ? `<span class="sin-salto">${dinero(p.precio)}</span>` : '';
   const sub = [mostrarMarca ? esc(p.marca) : '', ...presentacion.map(esc), precio,
-    esc(aviso?.txt || (!presentacion.length && p.tipo === 'uso' ? singular(p.unidad) : ''))].filter(Boolean).join(' · ');
+    esc(aviso ? textoAviso(aviso) : !presentacion.length && p.tipo === 'uso' ? singular(p.unidad) : '')].filter(Boolean).join(' · ');
   const cantidadEnVenta = accion === 'vAgregar' ? F.items.find(i => i.prod === p.id)?.cant : '';
   return `<button class="fila-lista" data-act="${accion}" data-id="${esc(p.id)}">${avatar(p)}
     <span class="tx"><b>${esc(nombre)}</b>${sub ? `<span class="m">${sub}</span>` : ''}${accion === 'vAgregar' ? `<span class="m en-venta"${cantidadEnVenta ? '' : ' hidden'}>${cantidadEnVenta ? esc(cantidadEnVenta) + ' en la venta' : ''}</span>` : ''}</span>
@@ -642,7 +794,7 @@ function filaProducto(p, accion = 'verProd', mostrarMarca = false){
 function vVentas(){
   const [y, m] = U.mes.split('-').map(Number);
   const vm = vivos(E.ventas).filter(v => v.fecha.startsWith(U.mes));
-  const tot = vm.reduce((s, v) => s + totalVenta(v), 0), gan = tot - vm.reduce((s, v) => s + costoVenta(v), 0);
+  const {total:tot, ganancia:gan} = cifrasVentas(vm);
   const cobrar = vm.filter(v => !v.cobrado).reduce((s, v) => s + totalVenta(v), 0);
   const top = new Map();
   for(const v of vm) for(const it of v.items){ const x = top.get(it.prod) || {n:it.nombre, c:0, t:0}; x.c += it.cant; x.t += it.cant * it.precio; top.set(it.prod, x); }
@@ -711,7 +863,7 @@ function pintarProd(d){
     <div class="det-cab">${avatar(p, 'xl')}<div><div class="muted">${esc([p.marca, ...presentacion, p.cat].filter(Boolean).join(' · '))}</div>
       <div class="chips" style="margin-top:6px"><span class="pill ${p.tipo === 'venta' ? 'acc' : 'gold'}">${p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'}</span></div></div></div>
     <section class="card"><div class="det-stock"><span class="q num" style="color:${avs.some(a => a.clase==='stock' && a.nivel==='bad') ? 'var(--mal)' : avs.some(a => a.clase==='stock') ? 'var(--atencion)' : 'inherit'}">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))}</span></div>
-      ${avs.length ? `<div class="chips" style="justify-content:center">${avs.map(a => `<span class="pill ${a.nivel}">${esc(a.txt)}</span>`).join('')}</div>` : `<div class="chips" style="justify-content:center"><span class="pill ok">${IC.check} Sin avisos</span></div>`}
+      ${avs.length ? `<div class="chips avisos-producto">${avs.map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : `<div class="chips" style="justify-content:center"><span class="pill ok">${IC.check} Sin avisos</span></div>`}
       <div class="acc-grid">${p.tipo === 'venta' ? `<button class="btn" data-act="vender" data-id="${esc(p.id)}">${IC.bolsa} Vender</button>` : `<button class="btn" data-act="usarRapido" data-id="${esc(p.id)}">${IC.gota} Usar ${fCant(p.gasto > 0 ? p.gasto : 1)} ${esc(uTxt(p.gasto > 0 ? p.gasto : 1, p.unidad))}</button>`}
         <button class="btn gold" data-act="entrada" data-id="${esc(p.id)}">${IC.entrada} Llegó más</button>
         <button class="btn ghost" data-act="ajuste" data-id="${esc(p.id)}">Contar / corregir</button>
@@ -735,7 +887,13 @@ function waLink(tel, texto){
 }
 function refrescar(){
   render();
-  for(const c of pila){ if(c.el.dataset.tipo === 'prod') pintarProd(c.el); if(c.el.dataset.tipo === 'paciente') pintarPaciente(c.el); if(c.el.dataset.tipo === 'compras') pintarCompras(c.el); }
+  for(const {el} of pila){
+    if(el.dataset.tipo === 'prod') pintarProd(el);
+    if(el.dataset.tipo === 'paciente') pintarPaciente(el);
+    if(el.dataset.tipo === 'compras') pintarCompras(el);
+    if(el.dataset.tipo === 'avisosInicio') pintarAvisosInicio(el);
+    if(el.dataset.tipo === 'selectorInicio') pintarSelectorInicio(el);
+  }
 }
 
 // ---------- Formularios (estado F + campos data-f) ----------
@@ -873,18 +1031,20 @@ function formEntrada(id){
       ${campo('Nota (opcional)', 'nota', {ph:'Ej.: factura 123, pedido a…'})}`;
   });
 }
-function guardarEntrada(){
+async function guardarEntrada(){
   const p = prodPorId(F.prod), c = num(F.cant), costo = num(F.costo);
   if(!(c > 0)){ toast('Escribe cuántos llegaron'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
-  E.movs.push(marcar({id:uid(), prod:p.id, tipo:'entrada', cant:red(c), fecha:F.fecha, costo:costo > 0 ? red(costo) : 0, nota:F.nota.trim()}, true));
-  if(costo > 0) p.costo = red(costo);
+  const entrada = marcar({id:uid(), prod:p.id, tipo:'entrada', cant:red(c), fecha:F.fecha, costo:costo > 0 ? red(costo) : 0, nota:F.nota.trim()}, true);
+  const actualizado = {...p};
+  if(costo > 0) actualizado.costo = red(costo);
   // Se guarda la fecha de vencimiento más próxima de lo que hay
-  if(F.vence){ if(!p.vence || stockDe(p.id) <= 0 || F.vence < p.vence) p.vence = F.vence; }
-  if(F.lote.trim()) p.lote = F.lote.trim();
-  marcar(p);
-  if(!guardar()) return;
-  cerrarCapa(); refrescar();
+  if(F.vence && (!p.vence || stockDe(p.id) <= 0 || F.vence < p.vence)) actualizado.vence = F.vence;
+  if(F.lote.trim()) actualizado.lote = F.lote.trim();
+  const nuevosProductos = E.productos.map(x => x === p ? marcar(actualizado) : x);
+  if(!guardar({...E, productos:nuevosProductos, movs:[...E.movs, entrada]})) return;
+  await cerrarCapa();
+  refrescar();
   toast(`+${fCant(c)} ${p.unidad} de ${p.nombre}`);
 }
 
@@ -932,14 +1092,15 @@ function formAjuste(id){
   });
   F.alCambiar = f => { if(f === 'real'){ const dif = red(num(F.real) - stockDe(id)); const e = $('#aDif'); if(e) e.innerHTML = isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'; } };
 }
-function guardarAjuste(){
+async function guardarAjuste(){
   const p = prodPorId(F.prod), real = num(F.real);
   if(!(real >= 0)){ toast('Escribe la cantidad que hay'); return; }
   const dif = red(real - stockDe(p.id));
   if(!dif){ cerrarCapa(); toast('La cantidad ya estaba bien'); return; }
-  E.movs.push(marcar({id:uid(), prod:p.id, tipo:'ajuste', cant:dif, fecha:hoyISO(), motivo:F.motivo, nota:F.nota.trim()}, true));
-  if(!guardar()) return;
-  cerrarCapa(); refrescar();
+  const ajuste = marcar({id:uid(), prod:p.id, tipo:'ajuste', cant:dif, fecha:hoyISO(), motivo:F.motivo, nota:F.nota.trim()}, true);
+  if(!guardar({...E, movs:[...E.movs, ajuste]})) return;
+  await cerrarCapa();
+  refrescar();
   toast(`${p.nombre}: ahora hay ${fCant(real)}`);
 }
 
@@ -1102,7 +1263,7 @@ function pintarPaciente(d){
   const n = d.dataset.n, k = norm(n);
   const vs = vivos(E.ventas).filter(v => norm(v.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const usos = vivos(E.movs).filter(m => m.tipo === 'uso' && norm(m.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const tel = (vs.find(v => v.tel) || {}).tel || '';
+  const tel = pacientes().find(p => norm(p.nombre) === k)?.tel || '';
   d.innerHTML = cabecera(esc(n), '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
     <div class="cifras"><div class="cifra"><span class="v num">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span><span class="l">${vs.length} ${vs.length===1?'compra':'compras'}</span></div>
       <div class="cifra"><span class="v num">${usos.length}</span><span class="l">Productos usados en tratamientos</span></div></div>
@@ -1113,10 +1274,14 @@ function pintarPaciente(d){
 }
 
 // ---------- Lista de compras ----------
-function abrirCompras(){ const d = abrirCapa('', {tipo:'compras'}); pintarCompras(d); }
+function abrirCompras(id){
+  const d = abrirCapa('', {tipo:'compras'});
+  d.dataset.id = id || '';
+  pintarCompras(d);
+}
 function pintarCompras(d){
   calcular();
-  const lista = paraPedir(), grupos = new Map();
+  const lista = paraPedir(d.dataset.id), grupos = new Map();
   for(const x of lista){ const k = x.p.prov || ''; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); }
   let h = '';
   if(!lista.length) h = `<div class="estado-ok">${IC.check}<div>No hay nada por pedir. Todo tiene suficiente cantidad.</div></div>`;
@@ -1127,7 +1292,7 @@ function pintarCompras(d){
   }
   d.innerHTML = cabecera('Lista de compras') + `<div class="hoja-cuerpo"><div class="hoja-in">
     <div class="peq muted">Productos que se están terminando, con una cantidad sugerida para pedir (para unas semanas, según lo que usas o vendes).</div>${h}
-    ${lista.length ? '<button class="btn full" data-act="compartirCompras">Compartir la lista completa</button>' : ''}</div></div>`;
+    ${lista.length ? `<button class="btn full" data-act="compartirCompras" data-id="${esc(d.dataset.id)}">${d.dataset.id ? 'Compartir pedido' : 'Compartir la lista completa'}</button>` : ''}</div></div>`;
   cargarFotos(d);
 }
 function textoPedido(xs){ return 'Hola, quisiera hacer un pedido:\n' + xs.map(x => `• ${fCant(x.sug)} ${x.p.unidad} de ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}`).join('\n') + '\nGracias.'; }
@@ -1268,8 +1433,9 @@ function prepararEjemplo(catalogo){
 
   const destacados = productos.filter(p => p.tipo === 'venta' && p.foto).slice(0, 9);
   const pagos = ['efectivo', 'transferencia', 'tarjeta'];
-  for(let i = 0; i < 25; i++){
-    const diasAtras = 58 - Math.floor(i * 58 / 24);
+  const diasVentas = Array.from({length:18}, (_, i) => 58 - Math.floor(i * 50 / 17))
+    .concat([6, 5, 4, 3, 2, 1, 0]);
+  for(const [i, diasAtras] of diasVentas.entries()){
     const elegidos = [destacados[i % destacados.length]];
     if(i % 3 === 0) elegidos.push(destacados[(i + 4) % destacados.length]);
     const items = elegidos.map(p => ({prod:p.id, nombre:p.nombre, cant:1, precio:p.precio, costo:p.costo}));
@@ -1396,6 +1562,14 @@ const ACT = {
   tab(b){ irPantalla(b.dataset.tab); },
   cerrar(){ cerrarCapa(); },
   ajustes(){ abrirAjustes(); },
+  avisosInicio(b){ abrirAvisosInicio(b.dataset.filtro); },
+  selectorInicio(b){ abrirSelectorInicio(b.dataset.accion); },
+  ventasInicio(){
+    U.mes = hoyISO().slice(0, 7);
+    U.qVentas = '';
+    desplazamientos.delete('ventas');
+    irPantalla('ventas');
+  },
   nuevoProd(b){ formProd(null, b.dataset.tipo); },
   verProd(b){ verProd(b.dataset.id); },
   editarProd(b){ formProd(b.dataset.id); },
@@ -1420,8 +1594,8 @@ const ACT = {
     refrescar();
     avisarConDeshacer('Producto eliminado', borrados, false);
   },
-  compras(){ abrirCompras(); },
-  compartirCompras(){ compartirTexto('🛒 Lista de compras SPARATI\n' + paraPedir().map(x => `• ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}: pedir ${fCant(x.sug)} ${x.p.unidad} (hay ${fCant(x.s)})${x.p.prov ? ' — ' + x.p.prov : ''}`).join('\n')); },
+  compras(b){ abrirCompras(b.dataset.id); },
+  compartirCompras(b){ compartirTexto('Lista de compras SPARATI\n' + paraPedir(b.dataset.id).map(x => `• ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}: pedir ${fCant(x.sug)} ${x.p.unidad} (hay ${fCant(x.s)})${x.p.prov ? ' — ' + x.p.prov : ''}`).join('\n')); },
   // Formularios
   async guardarF(){
     const form = F;
@@ -1477,10 +1651,22 @@ const ACT = {
   verPaciente(b){ verPaciente(b.dataset.n); },
   recompra(b){
     const v = E.ventas.find(x => x.id === b.dataset.v), p = prodPorId(b.dataset.p);
-    const tel = v.tel || ((pacientes().find(x => norm(x.nombre) === norm(v.pac)) || {}).tel);
-    const msg = `Hola ${v.pac.split(' ')[0]}, ¿cómo te ha ido con ${p.nombre}? Ya debe estar por terminarse. Si quieres, te separo uno. 🌿 SPARATI`;
-    if(tel) window.open(waLink(tel, msg), '_blank', 'noopener'); else compartirTexto(msg);
-    v.recordados = v.recordados || {}; v.recordados[p.id] = true; marcar(v); guardar(); refrescar();
+    if(!v || v.borrado || !p || p.borrado) return;
+    const tel = pacientes().find(x => norm(x.nombre) === norm(v.pac))?.tel || v.tel;
+    const msg = `Hola ${v.pac.trim().split(/\s+/)[0]}, ¿cómo te ha ido con ${p.nombre}? Si ya se te está terminando, te puedo separar otro. SPARATI`;
+    abrirCapa(cabecera('Recordatorio', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+      <section class="card"><h3>${esc(v.pac)}</h3><p class="mensaje-recordatorio">${esc(msg)}</p>
+        <a class="btn" href="${waLink(tel, msg)}" target="_blank" rel="noopener">${IC.chat} Abrir WhatsApp</a>
+        <button class="btn ghost" data-act="recordado" data-v="${esc(v.id)}" data-p="${esc(p.id)}">Ya le escribí</button>
+      </section></div></div>`, {tipo:'recordatorio'});
+  },
+  async recordado(b){
+    const ventas = E.ventas.map(v => v.id === b.dataset.v ?
+      marcar({...v, recordados:{...v.recordados, [b.dataset.p]:true}}) : v);
+    if(!guardar({...E, ventas})) return;
+    await cerrarCapa();
+    refrescar();
+    toast('Recordatorio anotado');
   },
   // Compartir y ajustes
   enviar(){ enviar(); },
@@ -1491,7 +1677,10 @@ const ACT = {
     if(b.dataset.cerrar){ pila[pila.length-1].fija = false; cerrarCapa(); }
     pintarAjustes(); render();
   },
-  diasVence(b){ E.ajustes.diasVence = Number(b.dataset.v); guardar(); pintarAjustes(); },
+  diasVence(b){
+    if(guardar({...E, ajustes:{...E.ajustes, diasVence:Number(b.dataset.v)}})) refrescar();
+    pintarAjustes();
+  },
   async permisoBadge(){ try{ await Notification.requestPermission(); }catch(e){} actualizarAvisos(); pintarAjustes(); },
   aTema(b){ E.ajustes.tema = b.dataset.v; guardar(); aplicarTema(); pintarAjustes(); },
   async actualizar(){

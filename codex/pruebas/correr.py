@@ -4,7 +4,8 @@
 import argparse
 import json
 import mimetypes
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -118,6 +119,27 @@ def cerrar_hoja(pagina):
     anterior = capas.count()
     pagina.evaluate('history.back()')
     expect(capas).to_have_count(anterior - 1)
+
+
+def contrastes(pagina, pares):
+    return pagina.evaluate("""pares => {
+      const contexto = document.createElement('canvas').getContext('2d');
+      const luminancia = color => {
+        contexto.fillStyle = color;
+        contexto.fillRect(0, 0, 1, 1);
+        const canales = [...contexto.getImageData(0, 0, 1, 1).data].slice(0, 3).map(n => {
+          const c = n / 255;
+          return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+        });
+        return canales[0] * .2126 + canales[1] * .7152 + canales[2] * .0722;
+      };
+      return pares.map(([texto, fondo = texto]) => {
+        const color = getComputedStyle(document.querySelector(texto)).color;
+        const background = getComputedStyle(document.querySelector(fondo)).backgroundColor;
+        const [a, b] = [luminancia(color), luminancia(background)].sort((a, b) => a - b);
+        return (b + .05) / (a + .05);
+      });
+    }""", pares)
 
 
 def prueba_estado_v1(navegador, perfil=None):
@@ -341,6 +363,8 @@ def prueba_sin_conexion(navegador):
         sitio.contexto.set_offline(True)
         pagina.reload()
         expect(pagina.get_by_role('img', name='SPARATI')).to_be_visible()
+        expect(pagina.get_by_role('group', name='Acciones rápidas')).to_be_visible()
+        expect(pagina.get_by_role('list', name='Ventas de los últimos 7 días').locator('.barra')).to_have_count(7)
         ajustar = abrir_ajustes(pagina)
         ajustar.get_by_role('button', name='Cargar datos de ejemplo').click()
         expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
@@ -594,24 +618,8 @@ def prueba_apariencia(navegador, perfil=None):
         for esquema in ('light', 'dark'):
             pagina.emulate_media(color_scheme=esquema)
             expect(pagina.locator('html')).to_have_attribute('data-theme', esquema)
-            contrastes = pagina.evaluate("""() => {
-              const contexto = document.createElement('canvas').getContext('2d');
-              const luminancia = color => {
-                contexto.fillStyle = color;
-                contexto.fillRect(0, 0, 1, 1);
-                const canales = [...contexto.getImageData(0, 0, 1, 1).data].slice(0, 3).map(n => {
-                  const c = n / 255;
-                  return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-                });
-                return canales[0] * .2126 + canales[1] * .7152 + canales[2] * .0722;
-              };
-              return ['.pill.ok', '.cifra', '.seg .on', '.boton-escanear', '.av'].map(selector => {
-                const {color, backgroundColor} = getComputedStyle(document.querySelector(selector));
-                const [a, b] = [luminancia(color), luminancia(backgroundColor)].sort((a, b) => a - b);
-                return (b + .05) / (a + .05);
-              });
-            }""")
-            assert min(contrastes) >= 4.5, contrastes
+            razones = contrastes(pagina, [[s] for s in ['.pill.ok', '.cifra', '.seg .on', '.boton-escanear', '.av']])
+            assert min(razones) >= 4.5, razones
         ajustes = abrir_ajustes(pagina)
         tema = ajustes.get_by_role('group', name='Tema')
         tema.get_by_role('button', name='Claro').click()
@@ -625,61 +633,303 @@ def prueba_apariencia(navegador, perfil=None):
         sitio.cerrar()
 
 
+def prueba_inicio_resumen(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        fecha = datetime.fromisoformat('2027-01-03T15:30:00-05:00')
+        sitio.pagina.clock.set_fixed_time(fecha)
+        base = ESTADO_V1['ventas'][0]
+        ventas = [
+            {**base, 'id': 'd1', 'fecha': '2026-12-15', 'items': [{**base['items'][0], 'precio': 30, 'costo': 10}]},
+            {**base, 'id': 'd2', 'fecha': '2026-12-31', 'items': [{**base['items'][0], 'precio': 20, 'costo': 10}]},
+            {**base, 'id': 'e1', 'fecha': '2027-01-01', 'descuento': 5,
+             'items': [{**base['items'][0], 'cant': 2, 'precio': 20, 'costo': 5}]},
+            {**base, 'id': 'e2', 'fecha': '2027-01-03', 'cobrado': False,
+             'items': [{**base['items'][1], 'cant': 1, 'precio': 50, 'costo': 10}]},
+            {**base, 'id': 'e3', 'fecha': '2027-01-03', 'borrado': True},
+        ]
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'ventas': ventas}, quien='Elba')
+        expect(pagina.get_by_role('heading', name='Buenas tardes, Elba')).to_be_visible()
+        expect(pagina.locator('.cab-inicio .sub')).to_have_text('Domingo 3 de enero')
+        tarjeta = pagina.get_by_role('region', name='Ventas de enero')
+        expect(tarjeta.get_by_role('button')).to_have_text('$ 85,00')
+        expect(tarjeta.locator('.comparacion')).to_have_text('+70 % vs diciembre')
+        expect(tarjeta.locator('p')).to_have_text('2 ventas · $ 65,00 de ganancia')
+        expect(tarjeta.get_by_role('list', name='Ventas de los últimos 7 días').locator('.solo-lectura')).to_have_text([
+            'Lunes 28 de diciembre · $ 0,00', 'Martes 29 de diciembre · $ 0,00',
+            'Miércoles 30 de diciembre · $ 0,00', 'Jueves 31 de diciembre · $ 20,00',
+            'Viernes 1 de enero · $ 35,00', 'Sábado 2 de enero · $ 0,00', 'Domingo 3 de enero · $ 50,00',
+        ])
+        assert tarjeta.locator('.barra').evaluate_all('(barras) => barras.map(b => b.offsetHeight)') == [2, 2, 2, 32, 56, 2, 80]
+        expect(pagina.locator('.pendiente-inicio')).to_contain_text('$ 50,00')
+        assert pagina.evaluate('document.documentElement.scrollWidth === innerWidth')
+        for esquema in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=esquema)
+            expect(pagina.locator('html')).to_have_attribute('data-theme', esquema)
+            razones = contrastes(pagina, [
+                ['.ventas-inicio h2', '.ventas-inicio'], ['.ventas-inicio p', '.ventas-inicio'],
+                ['.ventas-inicio-total', '.ventas-inicio'], ['.comparacion'],
+                ['.contador-inicio.stock b', '.contador-inicio.stock'],
+                ['.contador-inicio.fecha b', '.contador-inicio.fecha'],
+                ['.contador-inicio.paciente b', '.contador-inicio.paciente'], ['.atencion-fila .btn'],
+            ])
+            assert min(razones) >= 4.5, razones
+
+        inventario(pagina, 'ventas')
+        pagina.get_by_role('button', name='Mes anterior').click()
+        expect(pagina.locator('.mes b')).to_have_text('Diciembre 2026')
+        inventario(pagina, 'inicio')
+        tarjeta.get_by_role('button').click()
+        expect(pagina.locator('.mes b')).to_have_text('Enero 2027')
+        expect(pagina.locator('.cifra .v').nth(0)).to_have_text('$ 85,00')
+        expect(pagina.locator('.cifra .v').nth(1)).to_have_text('$ 65,00')
+        pagina.clock.set_fixed_time(fecha.replace(hour=20))
+        pagina.evaluate('history.back()')
+        expect(pagina.get_by_role('heading', name='Buenas noches, Elba')).to_be_visible()
+        pagina.clock.set_fixed_time(fecha.replace(hour=8))
+        pagina.reload()
+        expect(pagina.get_by_role('heading', name='Buenos días, Elba')).to_be_visible()
+        pagina.clock.set_fixed_time(fecha.replace(month=2))
+        pagina.reload()
+        expect(pagina.locator('.comparacion')).to_have_text('-100 % vs enero')
+        pagina.clock.set_fixed_time(fecha.replace(month=3))
+        pagina.reload()
+        expect(pagina.locator('.comparacion')).to_have_text('Sin ventas en febrero')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_inicio_accesos(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado={**ESTADO_V1,
+            'pacientes': [{'id': 'paciente:ines cauce', 'nombre': 'Inés Cauce', 'tel': '', 'notas': ''}],
+            'productos': [{**p, 'codigo': 'SP-CLARO'} if p['id'] == 'p1' else p for p in ESTADO_V1['productos']],
+        })
+        global_ = pagina.get_by_role('searchbox', name='Buscar producto o paciente')
+        global_.fill('Ines Cauce')
+        pagina.locator('#resultadosInicio [data-act=verPaciente]').click()
+        expect(pagina.get_by_role('dialog', name='Inés Cauce')).to_be_visible()
+        cerrar_hoja(pagina)
+        global_.fill('')
+        pagina.get_by_role('button', name='Escanear').click()
+        pagina.get_by_label('Escribir el código a mano').fill('sp-claro')
+        pagina.get_by_role('button', name='Buscar código').click()
+        expect(pagina.get_by_role('dialog', name=ESTADO_V1['productos'][0]['nombre'])).to_be_visible()
+        cerrar_hoja(pagina)
+
+        acciones = pagina.get_by_role('group', name='Acciones rápidas')
+        acciones.get_by_role('button', name='Vender').click()
+        expect(pagina.get_by_role('dialog', name='Nueva venta')).to_be_visible()
+        cerrar_hoja(pagina)
+
+        usar = acciones.get_by_role('button', name='Usé en cabina')
+        if perfil:
+            usar.tap()
+        else:
+            usar.click()
+        selector = pagina.get_by_role('dialog', name='Usé en cabina')
+        buscador = selector.get_by_role('searchbox', name='Buscar producto')
+        buscador.fill('sun screen')
+        expect(selector.locator('.vacio')).to_contain_text('No encontré')
+        buscador.fill('mascarilla hidroplastica')
+        selector.locator('[data-id=p3]').click()
+        expect(pagina.get_by_role('heading', name='Usar · ' + ESTADO_V1['productos'][2]['nombre'])).to_be_visible()
+        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        expect(selector.locator('[data-id=p3] .stock')).to_have_text('Agotado')
+        expect(buscador).to_have_value('mascarilla hidroplastica')
+        assert datos_guardados(pagina)['movs'][-1]['tipo'] == 'uso'
+        pagina.get_by_role('button', name='Deshacer').click()
+        expect(selector.locator('[data-id=p3] .stock')).to_have_text('Queda 1')
+        cerrar_hoja(pagina)
+
+        for titulo, formulario, accion, cantidad in [
+            ('Llegó mercadería', 'Llegó más', 'entrada', 1),
+            ('Contar inventario', 'Contar', 'ajuste', 2),
+        ]:
+            acciones.get_by_role('button', name=titulo).click()
+            selector = pagina.get_by_role('dialog', name=titulo)
+            expect(selector.locator('.fila-lista')).to_have_count(3)
+            selector.get_by_role('searchbox').fill('sun screen')
+            selector.locator('[data-id=p1]').click()
+            expect(pagina.get_by_role('heading', name=formulario + ' · ' + ESTADO_V1['productos'][0]['nombre'])).to_be_visible()
+            if accion == 'ajuste':
+                pagina.locator('#paso-real').fill('8')
+                expect(pagina.locator('#aDif')).to_have_text('Diferencia: +2')
+            antes = datos_guardados(pagina)
+            pagina.evaluate("""() => {
+              window.setItemOriginal = Storage.prototype.setItem;
+              Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+            }""")
+            guardar = pagina.get_by_role('button', name='Guardar', exact=True)
+            guardar.click()
+            expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+            assert datos_guardados(pagina) == antes
+            assert pagina.evaluate('E.movs.length') == len(antes['movs'])
+            pagina.evaluate('() => { Storage.prototype.setItem = window.setItemOriginal; }')
+            guardar.click()
+            expect(pagina.locator('[data-tipo=form]')).to_have_count(0)
+            despues = datos_guardados(pagina)
+            assert len(despues['movs']) == len(antes['movs']) + 1
+            movimiento = despues['movs'][-1]
+            assert (movimiento['prod'], movimiento['tipo'], movimiento['cant']) == ('p1', accion, cantidad)
+            expect(selector.locator('[data-id=p1] .stock')).to_have_text('6' if accion == 'entrada' else '8')
+            cerrar_hoja(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_inicio_avisos(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        sitio.pagina.clock.set_fixed_time(FECHA)
+        hoy = int(FECHA.timestamp() * 1000)
+        cambios = {
+            'p1': {'min': 5, 'duraPac': 10, 'vence': '2027-01-11', 'mod': hoy},
+            'p2': {'duraPac': 7, 'vence': '2026-11-26'},
+            'p3': {'vence': '2026-11-30', 'abierto': '2026-10-27', 'pao': 1},
+        }
+        v = ESTADO_V1['ventas'][0]
+        previa = {**v, 'id': 'anterior', 'pac': 'Maria Jose Andrade', 'creado': v['creado'] - 1}
+        pagina = sitio.abrir(estado={
+            **ESTADO_V1, 'productos': [{**p, **cambios.get(p['id'], {})} for p in ESTADO_V1['productos']],
+            'ventas': [v, previa], 'sync': {**ESTADO_V1['sync'], 'envio': hoy - 9 * 86400000},
+        }, quien='Elba')
+        assert pagina.evaluate("sumarMeses('2027-01-31', 1)") == '2027-02-28'
+        assert pagina.evaluate("""() => {
+          const envio = E.sync.envio, creado = E.creado, sieteDias = 7 * 86400000;
+          E.sync.envio = Date.now() - sieteDias;
+          const alCumplirSiete = avisosInicio().envio.length;
+          E.sync.envio--;
+          const despuesDeSiete = avisosInicio().envio.length;
+          E.sync.envio = 0;
+          E.creado = Date.now() - 86400000;
+          const nuevoSinEnvio = avisosInicio().envio.length;
+          E.creado = Date.now() - 8 * 86400000;
+          const antiguoSinEnvio = avisosInicio().envio.length;
+          E.sync.envio = envio;
+          E.creado = creado;
+          return [alCumplirSiete, despuesDeSiete, nuevoSinEnvio, antiguoSinEnvio];
+        }""") == [0, 1, 0, 1]
+        contadores = pagina.get_by_role('group', name='Resumen de avisos')
+        expect(contadores.locator('b')).to_have_text(['2', '3', '1'])
+        previa = pagina.locator('.atencion-inicio')
+        expect(previa.locator('li')).to_have_count(4)
+        expect(previa).to_contain_text('Jonathan no tiene tus cambios')
+        expect(previa).to_contain_text('Último envío hace 9 días')
+
+        campana = pagina.get_by_role('button', name='Avisos, 7 pendientes')
+        campana.click()
+        hoja = pagina.get_by_role('dialog', name='Necesita atención')
+        expect(hoja.locator('li')).to_have_count(8)
+        expect(hoja.locator('li').filter(has_text='Hoy se cumple')).to_contain_text('Vence en 3 días · 30 nov')
+        expect(hoja).to_contain_text('Venció el 26 nov')
+        cerrar_hoja(pagina)
+        expect(campana).to_be_focused()
+        previa.get_by_role('button', name='Ver todo').click()
+        expect(hoja.locator('li')).to_have_count(8)
+        cerrar_hoja(pagina)
+
+        contadores.get_by_role('button', name='2 Por terminarse').click()
+        lista = pagina.get_by_role('dialog', name='Por terminarse')
+        expect(lista.locator('li')).to_have_count(2)
+        lista.locator('li [data-id=p1]').click()
+        compras = pagina.get_by_role('dialog', name='Lista de compras')
+        expect(compras.locator('button.alerta')).to_have_count(1)
+        expect(compras).to_contain_text(ESTADO_V1['productos'][0]['nombre'])
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+
+        contadores.get_by_role('button', name='3 Vencen pronto').click()
+        lista = pagina.get_by_role('dialog', name='Vencen pronto')
+        expect(lista.locator('li')).to_have_count(3)
+        lista.locator('li [data-id=p2]').click()
+        expect(pagina.get_by_role('dialog', name=ESTADO_V1['productos'][1]['nombre'])).to_be_visible()
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+
+        contadores.get_by_role('button', name='1 Pacientes por recordar').click()
+        lista = pagina.get_by_role('dialog', name='Pacientes por recordar')
+        expect(lista.locator('li')).to_have_count(2)
+        for producto, restantes in [('p2', 1), ('p1', 0)]:
+            lista.locator(f'[data-p={producto}]').click()
+            aviso = pagina.get_by_role('dialog', name='Recordatorio')
+            expect(aviso.get_by_role('link', name='Abrir WhatsApp')).to_have_attribute(
+                'href', re.compile(r'^https://wa\.me/593991234567\?text='))
+            expect(aviso).to_contain_text('Hola María')
+            aviso.get_by_role('button', name='Ya le escribí').click()
+            expect(lista.locator('li')).to_have_count(restantes)
+        assert datos_guardados(pagina)['ventas'][0]['recordados'] == {'p2': True, 'p1': True}
+        cerrar_hoja(pagina)
+        expect(contadores.locator('.paciente b')).to_have_text('0')
+
+        # Descargar el envío de prueba quita el aviso sin abrir ninguna aplicación externa.
+        pagina.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
+        with pagina.expect_download() as descarga:
+            previa.get_by_role('button', name='Enviar · Jonathan no tiene tus cambios').click()
+        archivo = descarga.value
+        assert archivo.suggested_filename == 'inventario-sparati-prueba-elba-2026-11-27.txt'
+        assert json.loads(archivo.path().read_text(encoding='utf-8'))['app'] == 'sparati-inventario'
+        expect(previa.get_by_text('Jonathan no tiene tus cambios')).to_have_count(0)
+        assert datos_guardados(pagina)['sync']['envio'] >= hoy
+
+        ajustes = abrir_ajustes(pagina)
+        ajustes.get_by_role('button', name='30 días').click()
+        cerrar_hoja(pagina)
+        expect(contadores.locator('.fecha b')).to_have_text('2')
+    finally:
+        sitio.cerrar()
+
+
 def capturar(navegador):
     carpeta = RAIZ / 'codex/capturas'
+    fecha = FECHA.replace(hour=20)
+    envio = int((fecha - timedelta(days=9)).timestamp() * 1000)
 
-    def guardar(sitio, pantalla, sufijo):
+    def guardar(sitio, pantalla, tema):
         pagina = sitio.pagina
         pagina.evaluate('document.fonts.ready')
         pagina.evaluate("""async () => {
           await Promise.all(Array.from(document.images).filter(i => i.src).map(i => i.decode().catch(() => {})));
         }""")
-        pagina.screenshot(path=carpeta / f'T1-{pantalla}-{sufijo}.png', animations='disabled')
+        pagina.screenshot(path=carpeta / f'T2-{pantalla}-{tema}.png', animations='disabled')
 
-    for color, sufijo in [('light', 'claro'), ('dark', 'oscuro')]:
+    for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
-            pagina = sitio.abrir(quien=None)
-            expect(pagina.get_by_role('heading', name='¿Quién usa este celular?')).to_be_visible()
-            guardar(sitio, 'bienvenida', sufijo)
-            pagina.get_by_role('button', name='Jonathan', exact=True).click()
-            pagina.wait_for_function('!history.state?.capa')
+            sitio.pagina.clock.set_system_time(fecha)
+            pagina = sitio.abrir(quien='Elba', estado={
+                'v': 1, 'productos': [], 'movs': [], 'ventas': [],
+                'sync': {'envio': envio, 'recibo': 0, 'de': ''}, 'creado': envio,
+            })
             ajustes = abrir_ajustes(pagina)
-            guardar(sitio, 'ajustes', sufijo)
             ajustes.get_by_role('button', name='Cargar datos de ejemplo').click()
             expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
-            guardar(sitio, 'inicio', sufijo)
-            inventario(pagina, 'venta')
-            guardar(sitio, 'inventario', sufijo)
-            pagina.get_by_role('button', name='Escanear').click()
-            guardar(sitio, 'codigo-manual', sufijo)
+            pagina.evaluate('window.scrollTo(0, 0)')
+            guardar(sitio, 'inicio', tema)
+
+            pagina.evaluate("window.scrollTo(0, document.querySelector('.contadores-inicio').offsetTop - 48)")
+            atencion = pagina.locator('.atencion-inicio')
+            expect(atencion.locator('li')).to_have_count(4)
+            guardar(sitio, 'atencion', tema)
+            atencion.get_by_role('button', name='Ver todo').click()
+            guardar(sitio, 'avisos', tema)
             cerrar_hoja(pagina)
-            inventario(pagina, 'uso')
-            pagina.locator('#qProd').fill("AHA's Peel")
-            pagina.locator('#listaProd [data-act=verProd]').first.click()
-            guardar(sitio, 'cabina', sufijo)
-            pagina.get_by_role('button', name='Usar 1 frasco', exact=True).click()
-            guardar(sitio, 'deshacer', sufijo)
-            pagina.get_by_role('button', name='Deshacer', exact=True).click()
-            pagina.clock.fast_forward(5000)
+
+            atencion.locator('[data-act=recompra]').click()
+            guardar(sitio, 'recordatorio', tema)
             cerrar_hoja(pagina)
-            pagina.get_by_role('navigation').get_by_role('button', name='Pacientes').click()
-            guardar(sitio, 'pacientes', sufijo)
-            inventario(pagina, 'ventas')
-            guardar(sitio, 'reportes', sufijo)
-            pagina.locator('.venta').first.click()
-            guardar(sitio, 'venta', sufijo)
-            cerrar_hoja(pagina)
-            pagina.get_by_role('navigation').get_by_role('button', name='Vender').click()
-            pagina.get_by_label('Paciente', exact=True).fill('Clara Niebla')
-            buscador = pagina.get_by_role('searchbox', name='Buscar producto')
-            buscador.fill('azela')
-            pagina.locator('#selProd .fila-lista').first.click()
-            buscador.fill('hydrating')
-            pagina.locator('#selProd .fila-lista').filter(has_text='200 ml').click()
-            guardar(sitio, 'venta-nueva', sufijo)
+
+            acciones = pagina.get_by_role('group', name='Acciones rápidas')
+            for accion, pantalla in [('Usé en cabina', 'elegir-cabina'),
+                                     ('Llegó mercadería', 'elegir-entrada'),
+                                     ('Contar inventario', 'elegir-conteo')]:
+                pagina.evaluate('window.scrollTo(0, 0)')
+                acciones.get_by_role('button', name=accion).click()
+                guardar(sitio, pantalla, tema)
+                cerrar_hoja(pagina)
         finally:
             sitio.cerrar()
 
@@ -691,7 +941,8 @@ def main():
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
-                        prueba_formulario_producto, prueba_apariencia]
+                        prueba_formulario_producto, prueba_apariencia,
+                        prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue

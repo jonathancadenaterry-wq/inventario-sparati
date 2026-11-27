@@ -18,3 +18,11 @@ _Codex: anota aquí cada decisión pequeña (qué, por qué, fecha)._
 - El botón de escanear abre una hoja para escribir códigos guardados. En inventario abre la ficha y en una venta agrega el producto. La cámara se incorpora en T7.
 - La venta conserva la edición de fecha, cantidad, precio y forma de pago. El resumen y el total quedan visibles mientras se eligen productos. Una venta nueva empieza con el detalle del carrito plegado. Al editar una venta se abre para revisar las cantidades.
 - Deshacer revierte el uso de cabina y la eliminación de productos o ventas durante cinco segundos. Para revertir una eliminación de venta se restauran juntos el registro y sus movimientos, con el mismo identificador y una nueva fecha de modificación.
+
+## 27-nov-2026 · T2
+
+- El saludo y el gráfico usan la hora y la fecha locales del celular. El gráfico incluye hoy y los seis días anteriores, aunque crucen de mes o de año. Inicio y Reportes usan los mismos totales netos de descuentos y costos. La comparación usa el mes calendario anterior. Se mantuvo el magenta de `Main.png` en claro y se usó el tono ciruela de la marca en oscuro.
+- El resumen de avisos cuenta cada producto con vencimientos una sola vez, aunque tenga fecha impresa y plazo después de abierto. Las recompras se cuentan por paciente y la lista completa tiene una acción por producto. La campana y «Ver todo» abren esa lista. El botón «Ya le escribí» registra el recordatorio cuando la usuaria lo confirma.
+- El aviso de envío aparece cuando existen cambios locales pendientes y han pasado más de siete días desde el último envío. Para un inventario que aún no se ha enviado, el plazo se cuenta desde su creación. El aviso usa el flujo de archivo existente, que también registra la descarga como un envío.
+- Cabina, entrada y conteo abren un selector de producto y usan los formularios actuales. «Usé en cabina» muestra los insumos de spa. «Contar inventario» registra el conteo de un producto. El recorrido guiado corresponde a T10. Ajustes quedó al pie de Inicio para dar a la campana el lugar de la cabecera.
+- Las nuevas cargas de ejemplo reparten siete ventas en los últimos siete días para mostrar las barras. Las capturas simulan un último envío de hace nueve días y conservan las cantidades del catálogo.

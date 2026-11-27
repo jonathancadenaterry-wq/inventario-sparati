@@ -71,7 +71,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
 - Arma una navegación por pantallas (hash o estado) que mantenga el botón «atrás» de Android funcionando como en la versión 1.
 - **Hecha cuando:** las capturas de los componentes se ven como el diseño en claro y en oscuro.
 
-## T2 · Inicio  [ ]
+## T2 · Inicio  [x]
 Según `Main.png`:
 - saludo según la hora y fecha en español;
 - buscador global de productos y pacientes;
