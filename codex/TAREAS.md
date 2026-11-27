@@ -53,7 +53,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
 
 ---
 
-## T0 · Preparar la carpeta de prueba  [ ]
+## T0 · Preparar la carpeta de prueba  [x]
 - Copia la versión 1 a `prueba/` y cambia lo siguiente:
   - clave `sparati_prueba_v2`, quién `sparati_prueba_yo` y base de fotos `sparati_prueba_fotos`;
   - caché del service worker con prefijo `spp-`;
