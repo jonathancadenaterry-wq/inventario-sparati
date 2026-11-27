@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T12
-- Última corrida: 27-nov-2026, 14:05 (Ecuador) · T11 completada
+- Tarea actual: T13
+- Última corrida: 27-nov-2026, 18:49 (Ecuador) · T12 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -236,3 +236,20 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 **En curso**
 
 - T12, códigos propios y hoja de etiquetas QR.
+
+### 27-nov-2026 · 18:40–18:49 (Ecuador) · T12
+
+**Revisión de las ocho capturas T11 adjuntas**
+
+- **Por pedir, claro y oscuro.** Las píldoras de cantidad para cuatro unidades o frascos saltan a dos líneas y dejan estrecha la columna de nombres. «Pedir 1 frasco» sí cabe en una línea.
+- **Pedidos, claro y oscuro.** «Cerrar pedido» ocupa más ancho que «Llegó». La consecuencia para las cantidades pendientes queda para la pantalla de confirmación.
+- **Llegó el pedido, claro y oscuro.** El anillo magenta del costo domina la primera tarjeta al abrir. «Cantidad recibida» se repite y la unidad de cada producto queda en la línea «Por recibir», encima de los campos.
+- **Pedido recibido, claro y oscuro.** El aviso de éxito queda separado del pie y «Pedido completo» se parte en dos líneas. Después de cinco segundos solo queda el mensaje de que no hay pedidos por recibir.
+
+**Trabajo completado**
+
+- Desde Inventario, «Etiquetas QR» permite buscar y elegir productos de venta y cabina. Los que carecen de código reciben uno propio `SP-xxxxx` y los que ya tienen un QR propio se pueden reimprimir con el mismo código. La selección distingue Para vender y Uso en spa, y el botón «Preparar etiquetas» recupera el foco al volver de la vista previa.
+- La impresión usa 24 etiquetas por hoja A4, en tres columnas y ocho filas. Cada etiqueta contiene el emblema, el nombre, el QR y el código escrito. Si otra pestaña cambió el nombre o el código, la app pide volver a preparar la hoja.
+- Pasaron 38 pruebas en Chromium a 390×844 y 35 con su perfil iPhone 14 Pro. Se verificó una página A4 para 24 etiquetas y dos para 25, el reintento de guardado, la lectura sin conexión y la compatibilidad con los archivos v1. El lector local también reconoció un QR extraído del PDF.
+- Revisé ocho capturas T12 de 390×844 en claro y oscuro. Inventario conserva las tarjetas de cifras, los grupos y las filas de `Inventario.png`, con dos filas de acciones y orden antes del catálogo. El escáner conserva el encuadre menta y la tarjeta inferior de `Escaner.png`. La vista previa queda en blanco en ambos temas para representar el papel. En Inventario todavía se alcanzan a ver fragmentos de filas bajo la barra translúcida.
+- Sigue T13, Ajustes, envío y respaldo. Queda comprobar la impresión y la lectura de una etiqueta física en Safari del iPhone de Elba, también desde la pantalla de inicio.

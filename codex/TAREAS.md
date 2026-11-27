@@ -187,7 +187,7 @@ Según `Reportes.png`:
   - permite marcar «Pedido» y luego «Llegó», que crea las entradas con el costo.
 - **Hecha cuando:** se puede hacer el ciclo pedir → llegó, que actualiza el stock y el costo.
 
-## T12 · Etiquetas QR propias  [ ]
+## T12 · Etiquetas QR propias  [x]
 - Para los productos sin código: genera un código `SP-` + 5 caracteres, guardado en `codigo`, y una hoja A4 para imprimir con 24 etiquetas de 3×8, cada una con su QR, el nombre y el emblema pequeño.
   - Usa una biblioteca de QR guardada en `prueba/vendor/`.
 - El escáner reconoce estos códigos.

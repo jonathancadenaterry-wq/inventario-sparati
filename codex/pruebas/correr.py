@@ -131,7 +131,7 @@ def simular_camara(pagina, *, detector_local=True):
           qr.src = camara.qr;
           await qr.decode();
         }
-        if(camara.modo === 'escena'){
+        if(camara.modo === 'escena' || (qr && camara.escenaQR)){
           escena = new Image();
           escena.src = '../codex/diseno/fotos/sunscreen.jpg';
           await escena.decode();
@@ -158,7 +158,9 @@ def simular_camara(pagina, *, detector_local=True):
             contexto.fillRect(0, 0, lienzo.width, lienzo.height);
           }
           if(qr){
-            contexto.drawImage(qr, (lienzo.width - 174) / 2, (lienzo.height - 174) / 2, 174, 174);
+            const lado = escena ? 116 : 174;
+            const y = escena ? 230 : (lienzo.height - lado) / 2;
+            contexto.drawImage(qr, (lienzo.width - lado) / 2, y, lado, lado);
           }else if(camara.modo === 'ean'){
             const paso = escena ? 3 : 4, x = (lienzo.width - barras.length * paso) / 2;
             const y = escena ? Math.round(lienzo.height * .34) : 55;
@@ -2835,14 +2837,15 @@ def abrir_etiquetas(pagina):
     return pagina.get_by_role('dialog', name='Etiquetas QR')
 
 
-def preparar_camara_qr(etiqueta):
-    etiqueta.locator('svg').evaluate("""svg => {
+def preparar_camara_qr(etiqueta, *, con_foto=False):
+    etiqueta.locator('svg').evaluate("""(svg, conFoto) => {
       const qr = svg.cloneNode(true);
       qr.setAttribute('width', '174');
       qr.setAttribute('height', '174');
       camaraPrueba.qr = 'data:image/svg+xml,' + encodeURIComponent(qr.outerHTML);
       camaraPrueba.modo = 'qr';
-    }""")
+      camaraPrueba.escenaQR = conFoto;
+    }""", con_foto)
 
 
 def prueba_etiquetas_qr(navegador, perfil=None):
@@ -2861,8 +2864,12 @@ def prueba_etiquetas_qr(navegador, perfil=None):
         buscar = etiquetas.get_by_role('searchbox', name='Buscar productos para etiquetar')
         buscar.fill('hidroplastica')
         expect(etiquetas.get_by_role('checkbox')).to_have_count(1)
-        etiquetas.get_by_role('button', name='Elegir los visibles').click()
+        etiquetas.get_by_role('button', name='Elegir los resultados').click()
         expect(etiquetas.get_by_role('checkbox')).to_be_checked()
+        expect(etiquetas.get_by_text('Professional Spa · Uso en spa')).to_be_visible()
+        etiquetas.get_by_role('button', name='Quitar los resultados').click()
+        expect(etiquetas.get_by_role('checkbox')).not_to_be_checked()
+        etiquetas.get_by_role('button', name='Elegir los resultados').click()
         buscar.fill('Azelac')
         expect(etiquetas.get_by_text('No encontramos productos con esa búsqueda.')).to_be_visible()
         buscar.fill('Sun Screen')
@@ -2899,6 +2906,7 @@ def prueba_etiquetas_qr(navegador, perfil=None):
         cerrar_hoja(pagina)
         expect(etiquetas.get_by_role('checkbox')).to_be_checked()
         expect(etiquetas.get_by_text('Con QR')).to_be_visible()
+        expect(preparar).to_be_focused()
         preparar.click()
         expect(vista.get_by_text(codigo)).to_be_visible()
         assert datos_guardados(pagina) == guardado
@@ -2932,7 +2940,7 @@ def prueba_impresion_etiquetas(navegador, perfil=None):
         ]}
         pagina = sitio.abrir(estado=estado)
         etiquetas = abrir_etiquetas(pagina)
-        etiquetas.get_by_role('button', name='Elegir los visibles').click()
+        etiquetas.get_by_role('button', name='Elegir todos').click()
         etiquetas.get_by_role('button', name='Preparar etiquetas').click()
         vista = pagina.get_by_role('dialog', name='Vista previa')
         expect(vista.get_by_text('25 etiquetas · 2 hojas A4')).to_be_visible()
@@ -2957,6 +2965,14 @@ def prueba_impresion_etiquetas(navegador, perfil=None):
             assert len(re.findall(rb'/Type\s*/Page\b', pdf)) == 2
             cajas = re.findall(rb'/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]', pdf)
             assert len(cajas) == 2 and all(abs(float(x) - 595.28) < 1 and abs(float(y) - 841.89) < 1 for x, y in cajas)
+            pagina.emulate_media(media='screen')
+            cerrar_hoja(pagina)
+            etiquetas.get_by_role('checkbox', name=re.compile(r'^Producto 24\b')).uncheck()
+            etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+            expect(vista.get_by_text('24 etiquetas · 1 hoja A4')).to_be_visible()
+            pagina.emulate_media(media='print')
+            pdf = pagina.pdf(prefer_css_page_size=True)
+            assert len(re.findall(rb'/Type\s*/Page\b', pdf)) == 1
     finally:
         sitio.cerrar()
 
@@ -2984,9 +3000,18 @@ def prueba_etiquetas_dos_pestanas(navegador, perfil=None):
             assert guardado['productos'][0]['codigo'] == codigo
             assert re.fullmatch(r'SP-[A-Z0-9]{5}', guardado['productos'][2]['codigo'])
             assert guardado['productos'][2]['codigo'] != codigo
+            imprimir = pagina.get_by_role('button', name='Imprimir etiquetas')
+            otra.evaluate("""guardar({...E, productos:E.productos.map(p =>
+              p.id === 'p1' ? marcar({...p, nombre:'Protector solar'}) : p)})""")
+            imprimir.click()
+            expect(pagina.locator('#toast')).to_contain_text('El inventario cambió')
+            assert pagina.evaluate('impresionesPrueba') == 0
+            cerrar_hoja(pagina)
+            etiquetas.get_by_role('button', name='Preparar etiquetas').click()
+            expect(pagina.locator('.etiqueta-qr')).to_contain_text('Protector solar')
             otra.evaluate("guardarCodigoProducto('p1', '5901234123457')")
-            pagina.get_by_role('button', name='Imprimir etiquetas').click()
-            expect(pagina.locator('#toast')).to_contain_text('Los códigos cambiaron')
+            imprimir.click()
+            expect(pagina.locator('#toast')).to_contain_text('El inventario cambió')
             assert pagina.evaluate('impresionesPrueba') == 0
         finally:
             otra.close()
@@ -3041,7 +3066,8 @@ def capturar(navegador, tarea):
                 vista = pagina.get_by_role('dialog', name='Vista previa')
                 expect(vista.get_by_text('24 etiquetas · 1 hoja A4')).to_be_visible()
                 guardar(sitio, 'vista-previa', tema)
-                preparar_camara_qr(vista.locator('.etiqueta-qr').filter(has_text='Sun Screen'))
+                preparar_camara_qr(vista.locator('.etiqueta-qr').filter(has_text='Sun Screen'), con_foto=True)
+                pagina.evaluate('camaraPrueba.admiteLinterna = true')
                 cerrar_hoja(pagina)
                 cerrar_hoja(pagina)
                 pagina.get_by_role('button', name='Escanear', exact=True).click()

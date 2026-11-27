@@ -2851,7 +2851,7 @@ function abrirEtiquetasQR(){
   recargarEstadoSiCambio();
   const d = abrirCapa(cabecera('Etiquetas QR', '', true) + `<form class="form-etiquetas">
     <div class="hoja-cuerpo"><div class="hoja-in">
-      <p class="ayuda">Elige los productos que quieres etiquetar o cuyos QR quieres volver a imprimir.</p>
+      <p class="ayuda">Elige los productos que vas a etiquetar. Puedes reimprimir los QR que ya tienen.</p>
       ${buscador('Buscar productos para etiquetar', {id:'buscarEtiquetas'})}
       <div class="cab-lista-etiquetas">
         <p class="ayuda" data-total-etiquetas role="status"></p>
@@ -2868,17 +2868,20 @@ function abrirEtiquetasQR(){
 
   function actualizarControles(){
     const todos = visibles.every(p => seleccion.has(p.id));
-    seleccionar.textContent = todos ? 'Quitar los visibles' : 'Elegir los visibles';
+    const grupo = norm(buscar.value) ? ' los resultados' : ' todos';
+    seleccionar.textContent = (todos ? 'Quitar' : 'Elegir') + grupo;
     seleccionar.hidden = visibles.length === 0;
     $('[data-total-etiquetas]', d).textContent = seleccion.size === 1 ? '1 producto elegido' : `${seleccion.size} productos elegidos`;
     preparar.disabled = preparando || !seleccion.size;
   }
   function pintarLista(){
-    visibles = disponibles.filter(p => coincideProducto(p, norm(buscar.value)));
+    const consulta = norm(buscar.value);
+    visibles = disponibles.filter(p => coincideProducto(p, consulta));
     lista.classList.toggle('card', Boolean(visibles.length));
     lista.innerHTML = visibles.length ? visibles.map(p => `<label class="fila-etiqueta">
       <input type="checkbox" value="${esc(p.id)}"${seleccion.has(p.id) ? ' checked' : ''}>
-      <span><strong>${esc(p.nombre)}</strong>${p.marca ? `<small>${esc(p.marca)}</small>` : ''}</span>
+      <span><strong>${esc(p.nombre)}</strong>
+        <small>${esc([p.marca, p.tipo === 'uso' ? 'Uso en spa' : 'Para vender'].filter(Boolean).join(' · '))}</small></span>
       <span class="estado-etiqueta">${codigoDeEtiqueta(p) ? 'Con QR' : 'Sin código'}</span>
     </label>`).join('') : `<p class="vacio">${disponibles.length ? 'No encontramos productos con esa búsqueda.' : 'No hay productos disponibles para etiquetar.'}</p>`;
     actualizarControles();
@@ -2932,7 +2935,9 @@ function abrirEtiquetasQR(){
           refrescar();
           disponibles = disponibles.map(p => nuevos.get(p.id) || p);
         }
+        preparando = false;
         pintarLista();
+        preparar.focus({preventScroll:true});
         abrirVistaEtiquetas(etiquetas, qrcode);
       };
       if(navigator.locks) await navigator.locks.request(CLAVE + '_etiquetas', prepararVista);
@@ -2974,8 +2979,12 @@ function abrirVistaEtiquetas(etiquetas, crearQR){
   {cls:'hoja hoja-vista-etiquetas'});
   $('.hoja-pie button', d).addEventListener('click', () => {
     recargarEstadoSiCambio();
-    if(etiquetas.some(p => productoPorCodigo(p.codigo)?.id !== p.id || productoPorCodigo(p.codigo, p.id))){
-      toast('Los códigos cambiaron. Vuelve a preparar las etiquetas.');
+    const cambio = etiquetas.some(p => {
+      const actual = productoPorCodigo(p.codigo);
+      return actual?.id !== p.id || actual.nombre !== p.nombre || productoPorCodigo(p.codigo, p.id);
+    });
+    if(cambio){
+      toast('El inventario cambió. Vuelve a preparar las etiquetas.');
       return;
     }
     window.print();
