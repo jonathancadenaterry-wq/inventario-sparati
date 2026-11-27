@@ -81,7 +81,7 @@ Según `Main.png`:
 - lista «Necesita atención», que junta el stock bajo, los vencimientos o el tiempo después de abierto (PAO) que se cumple, las pacientes por recordar y «Jonathan no tiene tus cambios» si pasaron más de 7 días sin enviar. Cada fila lleva su botón de acción.
 - **Hecha cuando:** con los datos de ejemplo se ve como el diseño, con el logo en la cabecera, y cada acción lleva a su pantalla.
 
-## T3 · Inventario  [ ]
+## T3 · Inventario  [x]
 Según `Inventario.png`:
 - segmentado Para vender / Uso en spa, con cuántos hay en cada uno;
 - buscador que no distingue tildes ni mayúsculas, y botón de escanear;

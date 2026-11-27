@@ -378,6 +378,12 @@ def prueba_sin_conexion(navegador):
         expect(pagina.get_by_role('button', name='Inventario', exact=True)).to_have_attribute('aria-current', 'page')
         expect(pagina.locator('.boton-escanear')).to_be_visible()
         assert pagina.locator('.boton-escanear').bounding_box()['width'] == 50
+        pagina.get_by_label('Ordenar dentro de cada marca').select_option('venta')
+        pagina.get_by_role('searchbox', name='Buscar en el inventario').fill('PEPTIDOS EFECTO BOTOX')
+        expect(pagina.locator('#listaProd .fila-lista')).to_have_count(1)
+        pagina.wait_for_function("document.querySelector('#listaProd img')?.naturalWidth > 0")
+        pagina.get_by_role('button', name='Producto', exact=True).click()
+        expect(pagina.get_by_label('Código de barras')).to_be_visible()
     finally:
         sitio.cerrar()
 
@@ -571,7 +577,9 @@ def prueba_formulario_producto(navegador, perfil=None):
         pagina = sitio.abrir(estado=ESTADO_V1)
         inventario(pagina, 'venta')
         pagina.get_by_role('button', name='Producto', exact=True).click()
+        pagina.get_by_label('Código de barras').fill(' 0012345678905 ')
         pagina.get_by_role('group', name='Tipo de producto').get_by_role('button', name='Uso en spa').click()
+        expect(pagina.get_by_label('Código de barras')).to_have_value(' 0012345678905 ')
         pagina.get_by_label('Nombre del producto').fill('Mascarilla de prueba')
         campo = pagina.get_by_label('¿Cuántos tienes ahora? (unidades)')
         campo.fill('2,5')
@@ -579,13 +587,197 @@ def prueba_formulario_producto(navegador, perfil=None):
         expect(campo).to_have_value('3,5')
         campo.locator('..').get_by_role('button', name='Restar uno').click()
         expect(campo).to_have_value('2,5')
-        pagina.get_by_role('button', name='Guardar', exact=True).click()
+        ideal = pagina.get_by_label('Cantidad ideal para pedir (unidades)')
+        guardar = pagina.get_by_role('button', name='Guardar', exact=True)
+        ideal.fill('2 cajas')
+        guardar.click()
+        expect(pagina.locator('#toast')).to_contain_text('cantidad ideal para pedir')
+        assert datos_guardados(pagina) == ESTADO_V1
+        ideal.fill('6,5')
+        ideal.locator('..').get_by_role('button', name='Sumar uno').click()
+        expect(ideal).to_have_value('7,5')
+        pagina.locator('#inFoto').set_input_files(RAIZ / CATALOGO[0]['foto'])
+        pagina.wait_for_function("document.querySelector('.foto-campo img')?.naturalWidth > 0")
+        fotos = pagina.evaluate('FDB.claves()')
+        assert len(fotos) == 1
+        pagina.evaluate("""() => {
+          window.guardarOriginal = Storage.prototype.setItem;
+          Storage.prototype.setItem = () => { throw new Error('Memoria llena'); };
+        }""")
+        guardar.click()
+        expect(pagina.locator('#toast')).to_contain_text('No se pudo guardar')
+        assert datos_guardados(pagina) == ESTADO_V1
+        assert pagina.evaluate('[E.productos.length, E.movs.length]') == [4, 9]
+        assert pagina.evaluate('FDB.claves()') == fotos
+        pagina.evaluate('() => { Storage.prototype.setItem = window.guardarOriginal; }')
+        guardar.click()
         expect(pagina).to_have_url(APP + '#uso-en-spa')
         fila = pagina.locator('#listaProd .fila-lista').filter(has_text='Mascarilla de prueba')
         expect(fila.locator('.stock')).to_have_text('2,5')
-        p = datos_guardados(pagina)['productos'][-1]
+        estado = datos_guardados(pagina)
+        p = estado['productos'][-1]
         assert p['tipo'] == 'uso' and p['nombre'] == 'Mascarilla de prueba'
+        assert p['codigo'] == '0012345678905' and p['max'] == 7.5
+        assert p['creado'] == p['mod'] and p['por'] == 'Jonathan'
+        assert p['foto'] == fotos[0]
+        assert len(estado['productos']) == 5 and len(estado['movs']) == 10
         assert pagina.evaluate('(id) => stockDe(id)', p['id']) == 2.5
+
+        pagina.get_by_role('searchbox', name='Buscar en el inventario').fill(p['codigo'])
+        expect(pagina.locator('#listaProd .fila-lista')).to_have_count(1)
+        pagina.get_by_role('button', name='Escanear').click()
+        pagina.get_by_label('Escribir el código a mano').fill(p['codigo'])
+        pagina.get_by_role('button', name='Buscar código').click()
+        expect(pagina.get_by_role('heading', name=p['nombre'])).to_be_visible()
+        pagina.get_by_role('button', name='Editar producto').click()
+        expect(pagina.get_by_label('Código de barras')).to_have_value(p['codigo'])
+        expect(ideal).to_have_value('7,5')
+        expect(pagina.get_by_label('¿Cuántos tienes ahora? (unidades)')).to_have_count(0)
+        pagina.get_by_label('Código de barras').clear()
+        ideal.clear()
+        pagina.clock.set_fixed_time(FECHA + timedelta(minutes=5))
+        guardar.click()
+        expect(pagina.locator('#capas > *')).to_have_count(1)
+        p_editado = datos_guardados(pagina)['productos'][-1]
+        assert p_editado == {**p, 'codigo': '', 'max': 0, 'mod': int((FECHA + timedelta(minutes=5)).timestamp() * 1000)}
+        assert datos_guardados(pagina)['movs'] == estado['movs']
+    finally:
+        sitio.cerrar()
+
+
+def prueba_inventario_resumen_y_orden(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        venta, _, uso, _ = ESTADO_V1['productos']
+        estado = {**ESTADO_V1, 'productos': [*ESTADO_V1['productos'],
+            {**venta, 'id': 'p5', 'nombre': 'Aceite para el cuerpo', 'cat': 'Corporal', 'precio': 12, 'min': 6},
+            {**venta, 'id': 'p6', 'nombre': 'Aceite cítrico', 'marca': 'Otra marca', 'precio': 50},
+            {**uso, 'id': 'p7', 'nombre': 'Loción de prueba', 'cat': 'Limpieza', 'unidad': 'ml', 'costo': 1.2},
+        ]}
+        estado['movs'] = [*ESTADO_V1['movs'], *[
+            {'id': 'm-' + p, 'prod': p, 'tipo': 'inicial', 'cant': cantidad, 'fecha': '2026-11-01'}
+            for p, cantidad in [('p5', 6), ('p6', -2), ('p7', 12.5)]
+        ]]
+        anterior = ESTADO_V1['ventas'][0]
+        estado['ventas'] = [anterior,
+            {**anterior, 'id': 'v2', 'fecha': '2026-11-25', 'items': [anterior['items'][0]]},
+            {**anterior, 'id': 'v3', 'fecha': '2026-11-26', 'items': [anterior['items'][1]], 'borrado': True},
+        ]
+        pagina = sitio.abrir(estado=estado)
+        inventario(pagina, 'venta')
+        tipos = pagina.get_by_role('group', name='Tipo de inventario')
+        expect(tipos.get_by_role('button', name='Para vender · 4')).to_have_attribute('aria-pressed', 'true')
+        expect(tipos.get_by_role('button', name='Uso en spa · 2')).to_have_attribute('aria-pressed', 'false')
+        cifras = pagina.locator('.estadisticas-inventario .cifra')
+        expect(cifras.locator('.v')).to_have_text(['15', '$ 258,00'])
+        expect(pagina.locator('#listaProd h2')).to_have_text(['Professional Spa', 'Otra marca'])
+        expect(pagina.locator('#listaProd [data-id=p6] .stock')).to_have_text('Agotado')
+
+        def ids():
+            return pagina.locator('#listaProd .fila-lista').evaluate_all('filas => filas.map(f => f.dataset.id)')
+
+        orden = pagina.get_by_label('Ordenar dentro de cada marca')
+        assert ids() == ['p5', 'p2', 'p1', 'p6']
+        orden.select_option('stock')
+        assert ids() == ['p2', 'p1', 'p5', 'p6']
+        orden.select_option('venta')
+        assert ids() == ['p1', 'p2', 'p5', 'p6']
+        pagina.get_by_role('button', name='Por terminarse').click()
+        assert ids() == ['p6', 'p5']
+        expect(cifras.locator('.v')).to_have_text(['15', '$ 258,00'])
+
+        inventario(pagina, 'uso')
+        expect(orden).to_have_value('nombre')
+        expect(cifras.last).to_contain_text('Valor a costo')
+        expect(cifras.last.locator('.v')).to_have_text('$ 39,00')
+        detalle = cifras.first.locator('ul')
+        expect(detalle).to_be_hidden()
+        cifras.first.locator('summary').click()
+        expect(detalle.locator('li')).to_have_text(['1 frasco', '12,5 ml'])
+        expect(cifras.first).to_have_attribute('open', '')
+        orden.select_option('stock')
+        assert ids() == ['p3', 'p7']
+
+        # La última categoría requiere desplazar horizontalmente la tira.
+        filtros = pagina.get_by_role('group', name='Filtrar productos')
+        limpieza = filtros.get_by_role('button', name='Limpieza')
+        assert limpieza.evaluate('(b) => b.getBoundingClientRect().left >= innerWidth')
+        if perfil:
+            caja = filtros.bounding_box()
+            sesion = pagina.context.new_cdp_session(pagina)
+            x, y = caja['x'] + caja['width'] - 30, caja['y'] + caja['height'] / 2
+            sesion.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
+            for avance in range(40, 321, 40):
+                sesion.send('Input.dispatchTouchEvent', {
+                    'type': 'touchMove', 'touchPoints': [{'x': x - avance, 'y': y}],
+                })
+            sesion.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+            pagina.wait_for_function("""() => {
+              const tira = document.querySelector('.filtros-inventario');
+              return tira.scrollLeft > 0 && tira.lastElementChild.getBoundingClientRect().right <= innerWidth;
+            }""")
+            sesion.detach()
+            limpieza.tap()
+        else:
+            limpieza.click()
+        assert filtros.evaluate('(f) => f.scrollLeft') > 0
+        expect(limpieza).to_have_attribute('aria-pressed', 'true')
+        assert ids() == ['p7']
+        buscador = pagina.get_by_role('searchbox', name='Buscar en el inventario')
+        buscador.fill('LOCION')
+        assert ids() == ['p7']
+        buscador.fill('Mascarilla')
+        expect(pagina.locator('#listaProd .vacio')).to_have_text('No hay productos con ese filtro.')
+        inventario(pagina, 'venta')
+        expect(orden).to_have_value('venta')
+        expect(pagina.get_by_role('button', name='Por terminarse')).to_have_attribute('aria-pressed', 'true')
+        assert ids() == ['p6', 'p5']
+
+        pagina.get_by_role('button', name='Lista de compras').click()
+        expect(pagina.get_by_role('heading', name='Lista de compras')).to_be_visible()
+        cerrar_hoja(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_inventario_300_productos(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        base = ESTADO_V1['productos'][0]
+        estado = {**ESTADO_V1, 'productos': [
+            {**base, 'id': f'p{i:03d}', 'nombre': f'Artículo {i:03d}', 'foto': 'foto-prueba',
+             'cat': 'Facial' if i % 2 else 'Corporal'}
+            for i in range(1, 301)
+        ], 'ventas': [], 'movs': [
+            {'id': f'm{i:03d}', 'prod': f'p{i:03d}', 'tipo': 'inicial', 'cant': 4, 'fecha': '2026-11-01'}
+            for i in range(1, 301)
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        pagina.evaluate("""async (ruta) => {
+          await FDB.put('foto-prueba', await (await fetch(ruta)).blob());
+        }""", '../' + CATALOGO[0]['foto'])
+        inventario(pagina, 'venta')
+        filas = pagina.locator('#listaProd .fila-lista')
+        expect(pagina.get_by_role('button', name='Para vender · 300')).to_be_visible()
+        expect(filas).to_have_count(300)
+        expect(pagina.locator('#listaProd h2')).to_have_text('Professional Spa')
+        assert filas.first.evaluate('(f) => getComputedStyle(f).contentVisibility') == 'auto'
+        pagina.wait_for_function("document.querySelector('[data-id=p001] img')?.naturalWidth > 0")
+        assert filas.last.locator('img').get_attribute('src') is None
+        pagina.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)')
+        pagina.wait_for_function("document.querySelector('[data-id=p300] img')?.naturalWidth > 0")
+        ultima = filas.last
+        assert ultima.bounding_box()['y'] + ultima.bounding_box()['height'] < pagina.locator('.nav-vender .circulo').bounding_box()['y']
+        ultima.click()
+        expect(pagina.get_by_role('heading', name='Artículo 300')).to_be_visible()
+        cerrar_hoja(pagina)
+        pagina.locator('#qProd').fill('ARTICULO 300')
+        expect(filas).to_have_count(1)
+        expect(filas.first).to_contain_text('Artículo 300')
+        pagina.get_by_role('button', name='Facial', exact=True).click()
+        expect(filas).to_have_count(0)
+        pagina.locator('#qProd').fill('')
+        expect(filas).to_have_count(150)
     finally:
         sitio.cerrar()
 
@@ -881,7 +1073,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
         sitio.cerrar()
 
 
-def capturar(navegador):
+def capturar(navegador, tarea):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20)
     envio = int((fecha - timedelta(days=9)).timestamp() * 1000)
@@ -892,7 +1084,7 @@ def capturar(navegador):
         pagina.evaluate("""async () => {
           await Promise.all(Array.from(document.images).filter(i => i.src).map(i => i.decode().catch(() => {})));
         }""")
-        pagina.screenshot(path=carpeta / f'T2-{pantalla}-{tema}.png', animations='disabled')
+        pagina.screenshot(path=carpeta / f'{tarea}-{pantalla}-{tema}.png', animations='disabled')
 
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
@@ -908,6 +1100,27 @@ def capturar(navegador):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T3':
+                inventario(pagina, 'venta')
+                pagina.wait_for_function("document.querySelector('#listaProd img')?.naturalWidth > 0")
+                guardar(sitio, 'inventario-venta', tema)
+                pagina.get_by_role('button', name='Producto', exact=True).click()
+                guardar(sitio, 'producto-nuevo', tema)
+                cerrar_hoja(pagina)
+                pagina.locator('#listaProd .fila-lista').first.click()
+                pagina.get_by_role('button', name='Editar producto').click()
+                pagina.get_by_label('Cantidad ideal para pedir').fill('8')
+                existencias = pagina.get_by_role('heading', name='Existencias')
+                existencias.locator('..').evaluate("(el) => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'editar-existencias', tema)
+                cerrar_hoja(pagina)
+                cerrar_hoja(pagina)
+                inventario(pagina, 'uso')
+                pagina.locator('#ordenProd').select_option('stock')
+                guardar(sitio, 'inventario-uso', tema)
+                pagina.locator('.cantidades-inventario summary').click()
+                guardar(sitio, 'inventario-cantidades', tema)
+                continue
             guardar(sitio, 'inicio', tema)
 
             pagina.evaluate("window.scrollTo(0, document.querySelector('.contadores-inicio').offsetTop - 48)")
@@ -936,12 +1149,14 @@ def capturar(navegador):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', action='store_true', help='guardar capturas en modo claro y oscuro')
+    parser.add_argument('--capturas', nargs='?', const='T3', choices=['T2', 'T3'],
+                        help='guardar capturas en modo claro y oscuro (T3 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
-                        prueba_formulario_producto, prueba_apariencia,
+                        prueba_formulario_producto, prueba_inventario_resumen_y_orden,
+                        prueba_inventario_300_productos, prueba_apariencia,
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
@@ -959,7 +1174,7 @@ def main():
                         prueba(navegador, perfil=p.devices[modelo])
                         print(f'{motor.name} con {modelo}: {prueba.__name__} pasó')
                 if args.capturas and motor.name == 'chromium':
-                    capturar(navegador)
+                    capturar(navegador, args.capturas)
                     print('Capturas en codex/capturas/')
 
 

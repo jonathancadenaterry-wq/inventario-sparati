@@ -253,13 +253,15 @@ async function urlFoto(id){
   if(!b) return null;
   return (URLS[id] = URL.createObjectURL(b));
 }
+async function cargarFoto(img){
+  const u = await urlFoto(img.dataset.foto);
+  if(!img.isConnected) return;
+  if(!u){ img.remove(); return; }
+  img.addEventListener('error', () => img.remove(), {once:true});
+  img.src = u;
+}
 function cargarFotos(raiz){
-  $$('img[data-foto]', raiz).forEach(async img => {
-    const u = await urlFoto(img.dataset.foto);
-    if(!u){ img.remove(); return; }
-    img.addEventListener('error', () => img.remove(), {once:true});
-    img.src = u;
-  });
+  $$('img[data-foto]', raiz).forEach(cargarFoto);
 }
 async function cargarImagen(file){
   try{ return await createImageBitmap(file, {imageOrientation:'from-image'}); }
@@ -444,7 +446,8 @@ const IC = Object.fromEntries(Object.entries(trazosIconos).map(([nombre, dibujo]
 
 // ---------- Vistas principales ----------
 const RUTAS = {inicio:'', venta:'#inventario', uso:'#uso-en-spa', pacientes:'#pacientes', ventas:'#reportes'};
-const U = {tab:'inicio', tipo:'venta', qInicio:'', qPac:'', q:{venta:'', uso:''}, filtro:{venta:'todos', uso:'todos'}, mes:hoyISO().slice(0, 7), qVentas:''};
+const U = {tab:'inicio', tipo:'venta', qInicio:'', qPac:'', q:{venta:'', uso:''}, filtro:{venta:'todos', uso:'todos'},
+  orden:{venta:'nombre', uso:'nombre'}, mes:hoyISO().slice(0, 7), qVentas:''};
 const esInventario = tab => tab === 'venta' || tab === 'uso';
 const urlPantalla = tab => location.pathname + location.search + RUTAS[tab];
 const pantallaDeURL = () => Object.keys(RUTAS).find(tab => RUTAS[tab] === location.hash) || 'inicio';
@@ -490,16 +493,32 @@ function opcion(act, valor, texto, activa, clase = '', attrs = ''){
 function render(){
   calcular();
   const app = $('#app');
+  const tira = $('.filtros-inventario', app);
+  const posicionFiltros = tira?.scrollLeft;
   app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vVentas() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
   const principal = esInventario(U.tab) ? 'inventario' : U.tab;
   for(const b of $$('.nav [data-tab]')){
     if(b.dataset.tab === principal) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   }
-  cargarFotos(app);
+  const lista = $('#listaProd', app);
+  prepararFotosInventario(lista);
+  if(!lista) cargarFotos(app);
+  const filtros = $('.filtros-inventario', app);
+  if(filtros){
+    if(tira?.dataset.tipo === U.tab) filtros.scrollLeft = posicionFiltros;
+    else if(U.filtro[U.tab] !== 'todos'){
+      const chip = $('.chip.on', filtros);
+      if(chip) filtros.scrollLeft = chip.offsetLeft - parseFloat(getComputedStyle(filtros).paddingLeft);
+    }
+  }
   actualizarAvisos();
   $('#qProd')?.addEventListener('input', e => {
     U.q[U.tab] = e.target.value;
+    pintarListaProductos();
+  });
+  $('#ordenProd')?.addEventListener('change', e => {
+    U.orden[U.tab] = e.target.value;
     pintarListaProductos();
   });
   $('#qVentas')?.addEventListener('input', e => {
@@ -719,30 +738,79 @@ function vInicio(){
   </div>`;
 }
 
+const ORDEN_INVENTARIO = {nombre:'Por nombre', stock:'Menor stock', venta:'Última venta'};
+const observadorFotosInventario = typeof IntersectionObserver === 'function'
+  ? new IntersectionObserver(entradas => {
+    for(const {target, isIntersecting} of entradas){
+      if(!isIntersecting) continue;
+      observadorFotosInventario.unobserve(target);
+      cargarFoto($('img[data-foto]', target));
+    }
+  }, {rootMargin:'240px 0px'})
+  : null;
+
+function prepararFotosInventario(lista){
+  observadorFotosInventario?.disconnect();
+  if(!lista) return;
+  if(!observadorFotosInventario){ cargarFotos(lista); return; }
+  for(const img of $$('img[data-foto]', lista)){
+    // Observamos la fila aunque el navegador todavía omita pintar su contenido.
+    const fila = img.closest('.fila-lista');
+    observadorFotosInventario.observe(fila);
+  }
+}
+
+function resumenInventario(ps, tipo){
+  const porUnidad = new Map();
+  let total = 0, valor = 0;
+  for(const p of ps){
+    const s = Math.max(0, stockDe(p.id));
+    const unidad = p.unidad || 'unidades';
+    if(s > 0) porUnidad.set(unidad, (porUnidad.get(unidad) || 0) + s);
+    total += s;
+    valor += s * ((tipo === 'venta' ? p.precio : p.costo) || 0);
+  }
+  const medidas = porUnidad.has('ml') || porUnidad.has('g');
+  const porSeparado = porUnidad.size > 1 && (tipo === 'uso' || medidas);
+  const unidad = porUnidad.size === 1 && (tipo === 'uso' || medidas) ? porUnidad.keys().next().value : 'unidades';
+  const cantidades = porSeparado
+    ? `<details class="cifra cantidades-inventario">
+      <summary><span class="l">Cantidades</span><span class="ver-unidades">Ver por unidad ${IC.siguiente}</span></summary>
+      <ul>${[...porUnidad].sort(([a], [b]) => a.localeCompare(b, 'es')).map(([u, n]) =>
+        `<li>${fCant(n)} ${esc(uTxt(n, u))}</li>`).join('')}</ul>
+    </details>`
+    : `<div class="cifra"><span class="l">${esc(unidad === 'ml' || unidad === 'g' ? unidad : cap(unidad))}</span><span class="v num">${fCant(total)}</span></div>`;
+  return `<div class="cifras estadisticas-inventario">
+    ${cantidades}
+    <div class="cifra"><span class="l">${tipo === 'uso' ? 'Valor a costo' : 'Valor a precio de venta'}</span><span class="v num">${dinero(valor)}</span></div>
+  </div>`;
+}
+
 function vLista(tipo){
   const ps = productos(tipo);
   const cats = [...new Set(ps.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const filtros = [['todos', 'Todos'], ['stock', '<span class="indicador" aria-hidden="true"></span>Por terminarse'],
     ['fecha', '<span class="indicador vence" aria-hidden="true"></span>Vencen pronto'], ...cats.map(c => ['cat:' + c, esc(c)])];
-  const costo = tipo === 'uso';
-  const cantidad = costo ? ps.length : ps.reduce((s, p) => s + Math.max(0, stockDe(p.id)), 0);
-  const valor = ps.reduce((s, p) => s + Math.max(0, stockDe(p.id)) * ((costo ? p.costo : p.precio) || 0), 0);
-  return `<header class="top"><h1>Inventario</h1><div class="top-acciones">
-      <button class="icon-btn" data-act="compras" aria-label="Lista de compras">${IC.bolsa}</button>
-      <button class="btn sm" data-act="nuevoProd" data-tipo="${tipo}">${IC.mas} Producto</button></div></header>
+  return `<header class="top inventario-cab"><h1>Inventario</h1>
+      <button class="btn sm" data-act="nuevoProd" data-tipo="${tipo}">${IC.mas} Producto</button></header>
     <div class="seg" role="group" aria-label="Tipo de inventario">
       ${[['venta','Para vender'], ['uso', 'Uso en spa']].map(([t, texto]) =>
         opcion('tab', t, texto + ' · ' + (tipo === t ? ps.length : productos(t).length), tipo === t, '', `data-tab="${t}"`)).join('')}
     </div>
     ${buscador('Buscar en el inventario', {id:'qProd', valor:U.q[tipo], escaneo:tipo})}
-    <div class="chips scroll" role="group" aria-label="Filtrar productos">
+    <div class="chips scroll filtros-inventario" data-tipo="${tipo}" role="group" aria-label="Filtrar productos">
       ${filtros.map(([f, texto]) => opcion('filtro', f, texto, U.filtro[tipo] === f, 'chip')).join('')}
     </div>
-    <div class="cifras estadisticas-inventario">
-      <div class="cifra"><span class="l">${costo ? 'Productos' : 'Unidades'}</span><span class="v num">${fCant(cantidad)}</span></div>
-      <div class="cifra"><span class="l">${costo ? 'Valor a costo' : 'Valor a precio de venta'}</span><span class="v num">${dinero(valor)}</span></div>
+    ${resumenInventario(ps, tipo)}
+    <div class="controles-inventario">
+      <button class="link" data-act="compras">${IC.bolsa} Lista de compras</button>
+      <label class="orden-inventario"><span class="solo-lectura">Ordenar dentro de cada marca</span>
+        <select id="ordenProd">
+          ${Object.entries(ORDEN_INVENTARIO).map(([v, nombre]) =>
+            `<option value="${v}"${U.orden[tipo] === v ? ' selected' : ''}>${nombre}</option>`).join('')}
+        </select></label>
     </div>
-    <div id="listaProd" class="lista-productos">${listaHTML(tipo)}</div>`;
+    <div id="listaProd" class="lista-productos">${listaHTML(tipo, ps)}</div>`;
 }
 function coincideProducto(p, q){
   return norm([p.nombre, p.marca, p.cat, p.codigo].filter(Boolean).join(' ')).includes(q);
@@ -750,11 +818,19 @@ function coincideProducto(p, q){
 function pintarListaProductos(){
   const lista = $('#listaProd');
   lista.innerHTML = listaHTML(U.tab);
-  cargarFotos(lista);
+  prepararFotosInventario(lista);
 }
-function listaHTML(tipo){
+function ultimasVentasPorProducto(){
+  const fechas = new Map();
+  for(const v of vivos(E.ventas)){
+    for(const i of v.items){
+      if(v.fecha > (fechas.get(i.prod) || '')) fechas.set(i.prod, v.fecha);
+    }
+  }
+  return fechas;
+}
+function listaHTML(tipo, todos = productos(tipo)){
   const q = norm(U.q[tipo]), f = U.filtro[tipo], grupos = new Map();
-  const todos = productos(tipo);
   for(const p of todos){
     if(!coincideProducto(p, q)) continue;
     if(f === 'stock' && !avisosDe(p).some(a => a.clase === 'stock')) continue;
@@ -766,9 +842,14 @@ function listaHTML(tipo){
   }
   if(!todos.length) return '<div class="vacio">Todavía no hay productos aquí. Toca «Producto» para agregar el primero.</div>';
   if(!grupos.size) return '<div class="vacio">No hay productos con ese filtro.</div>';
-  return [...grupos].sort(([a, ps], [b, otros]) => otros.length - ps.length || a.localeCompare(b, 'es')).map(([marca, ps]) =>
-    `<section class="grupo-productos"><h2>${esc(marca)}</h2><div class="filas">${ps.map(p => filaProducto(p)).join('')}</div></section>`
-  ).join('');
+  const orden = U.orden[tipo];
+  const ultimasVentas = orden === 'venta' ? ultimasVentasPorProducto() : null;
+  return [...grupos].sort(([a, ps], [b, otros]) => otros.length - ps.length || a.localeCompare(b, 'es')).map(([marca, ps]) => {
+    // La lista de partida ya está ordenada por nombre. Ese orden resuelve los empates.
+    if(orden === 'stock') ps.sort((a, b) => stockDe(a.id) - stockDe(b.id));
+    if(ultimasVentas) ps.sort((a, b) => (ultimasVentas.get(b.id) || '').localeCompare(ultimasVentas.get(a.id) || ''));
+    return `<section class="grupo-productos"><h2>${esc(marca)}</h2><div class="filas">${ps.map(p => filaProducto(p)).join('')}</div></section>`;
+  }).join('');
 }
 function pildoraStock(p, avs = avisosDe(p)){
   const s = stockDe(p.id), cantidad = fCant(s);
@@ -918,7 +999,7 @@ function campo(label, f, op = {}){
   const v = F[f] ?? '';
   const tipo = op.tipo || 'text';
   const id = 'campo-' + f;
-  const attrs = (op.modo ? ` inputmode="${op.modo}"` : '') + (op.ph ? ` placeholder="${esc(op.ph)}"` : '') + (op.lista ? ` list="${op.lista}"` : '') + (op.max ? ` max="${op.max}"` : '') + ' autocomplete="off"';
+  const attrs = (op.modo ? ` inputmode="${op.modo}"` : '') + (op.ph ? ` placeholder="${esc(op.ph)}"` : '') + (op.lista ? ` list="${op.lista}"` : '') + (op.max ? ` max="${op.max}"` : '') + (op.codigo ? ' autocapitalize="off" spellcheck="false"' : '') + ' autocomplete="off"';
   const input = op.area ? `<textarea id="${id}" data-f="${f}"${attrs}>${esc(v)}</textarea>` : `<input id="${id}" type="${tipo}" data-f="${f}" value="${esc(v)}"${attrs}>`;
   return `<div class="campo"><label for="${id}">${label}</label>${input}${op.ayuda ? `<span class="ayuda">${op.ayuda}</span>` : ''}</div>`;
 }
@@ -945,43 +1026,59 @@ document.addEventListener('input', e => {
 function formProd(id, tipo){
   const p = id ? prodPorId(id) : null;
   F = p ? {id:p.id, tipo:p.tipo, nombre:p.nombre, marca:p.marca || '', cat:p.cat || '', unidad:p.unidad || 'unidades', inicial:'',
-      min:p.min ? fCant(p.min) : '', costo:dineroIn(p.costo), precio:dineroIn(p.precio), gasto:p.gasto ? fCant(p.gasto) : '', duraPac:p.duraPac || '',
+      codigo:String(p.codigo ?? ''), min:p.min ? fCant(p.min) : '', max:p.max > 0 ? fCant(p.max) : '',
+      costo:dineroIn(p.costo), precio:dineroIn(p.precio), gasto:p.gasto ? fCant(p.gasto) : '', duraPac:p.duraPac || '',
       vence:p.vence || '', lote:p.lote || '', abierto:p.abierto || '', pao:p.pao || '', prov:p.prov || '', telProv:p.telProv || '', notas:p.notas || '', foto:p.foto || '', fotoNueva:null}
-    : {id:null, tipo:tipo || 'venta', nombre:'', marca:'', cat:'', unidad:'unidades', inicial:'', min:'', costo:'', precio:'', gasto:'1', duraPac:'',
+    : {id:null, tipo:tipo || 'venta', nombre:'', marca:'', cat:'', unidad:'unidades', inicial:'', codigo:'', min:'', max:'', costo:'', precio:'', gasto:'1', duraPac:'',
       vence:'', lote:'', abierto:'', pao:'', prov:'', telProv:'', notas:'', foto:'', fotoNueva:null};
   F.guardar = guardarProd;
-  hojaForm(p ? 'Editar producto' : (F.tipo === 'venta' ? 'Producto para vender' : 'Producto de uso en el spa'), 'form', pintarFormProd, () => { if(F && F.fotoNueva && !F.guardado) FDB.del(F.fotoNueva).catch(() => {}); });
+  hojaForm(p ? 'Editar producto' : 'Nuevo producto', 'form', pintarFormProd, () => { if(F && F.fotoNueva && !F.guardado) FDB.del(F.fotoNueva).catch(() => {}); });
 }
 function pintarFormProd(){
   const cu = $('#fCuerpo');
-  const cats = Array.from(new Set(CATS[F.tipo].concat(E.cats[F.tipo] || [])));
+  const cats = [...new Set([...CATS[F.tipo], ...(E.cats[F.tipo] || []), F.cat].filter(Boolean))];
   const provs = Array.from(new Set(vivos(E.productos).map(p => p.prov).filter(Boolean)));
   const fotoId = F.fotoNueva || F.foto;
+  cu.classList.add('form-producto');
   cu.innerHTML = `
     <div class="seg" role="group" aria-label="Tipo de producto">${[['venta','Para vender'], ['uso','Uso en spa']].map(([v, n]) =>
       opcion('fChip', v, n, F.tipo === v, '', 'data-f="tipo"')).join('')}</div>
-    <div class="foto-campo">${fotoId ? `<span class="av xl"><img data-foto="${esc(fotoId)}" alt=""></span>` : ''}
-      <div style="display:flex;flex-direction:column;gap:8px"><button type="button" class="btn sm soft" data-act="fFoto">${fotoId ? 'Cambiar foto' : 'Agregar foto'}</button>${fotoId ? '<button type="button" class="btn sm ghost" data-act="fSinFoto">Quitar foto</button>' : '<span class="peq muted">Opcional: ayuda a reconocerlo rápido.</span>'}</div></div>
-    ${campo('Nombre del producto *', 'nombre', {ph: F.tipo === 'venta' ? 'Ej.: Protector solar FPS 50' : 'Ej.: Ácido hialurónico HydraFiller'})}
-    ${campo('Marca (opcional)', 'marca', {ph:'Ej.: La Roche-Posay'})}
-    <div class="campo"><span class="lbl">Categoría</span>${chipsF('cat', cats, {extra:`<button type="button" class="chip" data-act="nuevaCat">${IC.mas} Otra</button>`})}</div>
-    <div class="campo"><span class="lbl">Se cuenta en</span>${chipsF('unidad', UNIDADES)}</div>
-    ${!F.id ? pasos('¿Cuántos tienes ahora?', 'inicial', F.unidad) : ''}
-    ${pasos('Avisarme cuando queden', 'min', F.unidad)}
-    <span class="ayuda peq muted" style="margin-top:-8px">Cuando llegue a esa cantidad, el producto aparece en «Se están terminando».</span>
-    ${F.tipo === 'uso' ? pasos('Gasto por tratamiento', 'gasto', F.unidad) + '<span class="ayuda peq muted" style="margin-top:-8px">Es lo que descuenta el botón «Usar» con un solo toque.</span>' : ''}
-    <div class="fila2">${campo('Costo de compra ($)', 'costo', {modo:'decimal', ph:'0,00', ayuda:'Por ' + singular(F.unidad)})}
-      ${F.tipo === 'venta' ? campo('Precio de venta ($)', 'precio', {modo:'decimal', ph:'0,00'}) : '<div></div>'}</div>
-    ${F.tipo === 'venta' ? `<div class="peq" id="margen" style="margin-top:-6px">${textoMargen()}</div>` : ''}
-    <div class="sec-tit">Vencimiento</div>
-    <div class="fila2">${campo('Fecha de vencimiento', 'vence', {tipo:'date'})}${campo('Lote (opcional)', 'lote')}</div>
-    <div class="fila2">${campo('Dura abierto (meses)', 'pao', {modo:'numeric', ph:'Ej.: 12', ayuda:'El número del frasquito abierto: 6M, 12M…'})}${campo('Fecha en que se abrió', 'abierto', {tipo:'date', max:hoyISO()})}</div>
-    ${F.tipo === 'venta' ? `<div class="sec-tit">Para volver a ofrecer</div>${campo('A la paciente le dura (días)', 'duraPac', {modo:'numeric', ph:'Ej.: 60', ayuda:'Opcional. La app te recordará ofrecérselo de nuevo cuando ya se le esté terminando.'})}` : ''}
-    <div class="sec-tit">Proveedor</div>
-    <div class="fila2">${campo('Proveedor', 'prov', {lista:'dlProv', ph:'Nombre'})}${campo('WhatsApp del proveedor', 'telProv', {tipo:'tel', ph:'09…'})}</div>
-    <datalist id="dlProv">${provs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
-    ${campo('Notas (opcional)', 'notas', {area:true, ph:'Ej.: guardar en refrigeración'})}
-    ${F.id ? '' : '<div class="peq muted">Solo el nombre es obligatorio. Lo demás lo puedes completar después.</div>'}`;
+    <section class="card">
+      <div class="foto-campo">${fotoId ? `<span class="av xl"><img data-foto="${esc(fotoId)}" alt=""></span>` : ''}
+        <div class="acciones-foto"><button type="button" class="btn sm soft" data-act="fFoto">${fotoId ? 'Cambiar foto' : 'Agregar foto'}</button>${fotoId ? '<button type="button" class="btn sm ghost" data-act="fSinFoto">Quitar foto</button>' : ''}</div></div>
+      ${campo('Nombre del producto *', 'nombre', {ph: F.tipo === 'venta' ? 'Ej.: Protector solar FPS 50' : 'Ej.: Mascarilla hidratante'})}
+      ${campo('Marca', 'marca', {ph:'Ej.: La Roche-Posay'})}
+      ${campo('Código de barras', 'codigo', {codigo:true})}
+      <div class="campo"><span class="lbl">Categoría</span>${chipsF('cat', cats, {extra:`<button type="button" class="chip" data-act="nuevaCat">${IC.mas} Otra</button>`})}</div>
+      ${F.id ? '' : '<div class="peq muted">Solo el nombre es obligatorio.</div>'}
+    </section>
+    <section class="card">
+      <h3>Existencias</h3>
+      <div class="campo"><span class="lbl">Se cuenta en</span>${chipsF('unidad', UNIDADES)}</div>
+      ${!F.id ? pasos('¿Cuántos tienes ahora?', 'inicial', F.unidad) : ''}
+      ${pasos('Avisarme cuando queden', 'min', F.unidad)}
+      ${pasos('Cantidad ideal para pedir', 'max', F.unidad)}
+      <span class="peq muted">Lo que quieres tener después de recibir un pedido.</span>
+      ${F.tipo === 'uso' ? pasos('Gasto por tratamiento', 'gasto', F.unidad) + '<span class="peq muted">Es lo que descuenta el botón «Usar» con un solo toque.</span>' : ''}
+    </section>
+    <section class="card">
+      <h3>${F.tipo === 'venta' ? 'Precios' : 'Costo'}</h3>
+      <div class="${F.tipo === 'venta' ? 'fila2' : ''}">${campo('Costo de compra ($)', 'costo', {modo:'decimal', ph:'0,00', ayuda:'Por ' + singular(F.unidad)})}
+        ${F.tipo === 'venta' ? campo('Precio de venta ($)', 'precio', {modo:'decimal', ph:'0,00'}) : ''}</div>
+      ${F.tipo === 'venta' ? `<div class="peq" id="margen">${textoMargen()}</div>` : ''}
+    </section>
+    <section class="card">
+      <h3>Vencimiento</h3>
+      <div class="fila2">${campo('Fecha de vencimiento', 'vence', {tipo:'date'})}${campo('Lote', 'lote')}</div>
+      <div class="fila2">${campo('Dura abierto (meses)', 'pao', {modo:'numeric', ph:'Ej.: 12', ayuda:'El número del frasquito abierto: 6M, 12M…'})}${campo('Fecha en que se abrió', 'abierto', {tipo:'date', max:hoyISO()})}</div>
+    </section>
+    ${F.tipo === 'venta' ? `<section class="card"><h3>Para volver a ofrecer</h3>${campo('A la paciente le dura (días)', 'duraPac', {modo:'numeric', ph:'Ej.: 60', ayuda:'La app te recordará ofrecérselo de nuevo cuando ya se le esté terminando.'})}</section>` : ''}
+    <section class="card">
+      <h3>Proveedor</h3>
+      <div class="fila2">${campo('Nombre del proveedor', 'prov', {lista:'dlProv'})}${campo('WhatsApp del proveedor', 'telProv', {tipo:'tel', ph:'09…'})}</div>
+      <datalist id="dlProv">${provs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    </section>
+    <section class="card">${campo('Notas', 'notas', {area:true, ph:'Ej.: guardar en refrigeración'})}</section>`;
   cargarFotos(cu);
   F.alCambiar = f => { if(f === 'precio' || f === 'costo'){ const m = $('#margen'); if(m) m.innerHTML = textoMargen(); } };
 }
@@ -993,28 +1090,30 @@ async function guardarProd(){
   const nombre = F.nombre.trim();
   if(!nombre){ toast('Escribe el nombre del producto'); return; }
   const min = num(F.min), costo = num(F.costo), precio = num(F.precio), gasto = num(F.gasto), pao = parseInt(F.pao, 10), dura = parseInt(F.duraPac, 10), ini = num(F.inicial);
+  const cantidadIdeal = F.max.trim(), max = num(cantidadIdeal);
+  if(cantidadIdeal && (!/^(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test(cantidadIdeal) || !Number.isFinite(max))){
+    $('#paso-max').focus();
+    toast('Escribe una cantidad ideal para pedir de cero o más');
+    return;
+  }
   if(F.abierto && F.abierto > hoyISO()){ toast('La fecha de apertura no puede ser futura'); return; }
-  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat:F.cat, unidad:F.unidad || 'unidades',
+  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat:F.cat, unidad:F.unidad || 'unidades', codigo:F.codigo.trim(), max:max > 0 ? red(max) : 0,
     min:min > 0 ? red(min) : 0, costo:costo > 0 ? red(costo) : 0, precio:F.tipo === 'venta' && precio > 0 ? red(precio) : 0,
     gasto:F.tipo === 'uso' && gasto > 0 ? red(gasto) : 0, duraPac:F.tipo === 'venta' && dura > 0 ? dura : 0,
     vence:F.vence || '', lote:F.lote.trim(), abierto:F.abierto || '', pao:pao > 0 ? pao : 0,
     prov:F.prov.trim(), telProv:F.telProv.trim(), notas:F.notas.trim(), foto:F.fotoNueva || F.foto || ''};
-  let id = F.id, fotoVieja = null;
-  if(id){
-    const p = prodPorId(id);
-    if(p.foto && p.foto !== datos.foto) fotoVieja = p.foto;
-    Object.assign(p, datos); marcar(p);
-  } else {
-    id = uid();
-    E.productos.push(marcar(Object.assign({id}, datos), true));
-    if(ini > 0) E.movs.push(marcar({id:uid(), prod:id, tipo:'inicial', cant:red(ini), fecha:hoyISO(), costo:datos.costo}, true));
-  }
+  const previo = F.id ? prodPorId(F.id) : null;
+  const id = F.id || uid(), nuevo = !F.id;
+  const p = marcar({...previo, id, ...datos}, nuevo);
+  const productos = nuevo ? [...E.productos, p] : E.productos.map(x => x.id === id ? p : x);
+  const estado = {...E, productos};
+  if(nuevo && ini > 0) estado.movs = [...E.movs, marcar({id:uid(), prod:id, tipo:'inicial', cant:red(ini), fecha:hoyISO(), costo:datos.costo}, true)];
+  if(!guardar(estado)) return;
   F.guardado = true;
-  if(!guardar()) return;
-  if(fotoVieja) FDB.del(fotoVieja).catch(() => {});
-  const nuevo = !F.id, tipo = datos.tipo;
+  const fotoVieja = previo?.foto;
+  if(fotoVieja && fotoVieja !== p.foto && !productos.some(x => x.foto === fotoVieja)) FDB.del(fotoVieja).catch(() => {});
   await cerrarCapa();
-  if(nuevo && esInventario(U.tab) && U.tab !== tipo) irPantalla(tipo);
+  if(nuevo && esInventario(U.tab) && U.tab !== p.tipo) irPantalla(p.tipo);
   refrescar();
   toast(nuevo ? 'Producto agregado' : 'Cambios guardados');
 }
@@ -1606,6 +1705,7 @@ const ACT = {
   },
   fChip(b){
     const f = b.dataset.f, v = b.dataset.v;
+    if(f === 'tipo' && v === F.tipo) return;
     F[f] = (f === 'cat' && F[f] === v) ? '' : v;
     if(f === 'tipo' && F.cat && !CATS[v].concat(E.cats[v] || []).includes(F.cat)) F.cat = '';
     repintar();
@@ -1623,7 +1723,7 @@ const ACT = {
     E.cats[F.tipo] = Array.from(new Set((E.cats[F.tipo] || []).concat(c)));
     F.cat = c; guardar(); repintar();
   },
-  fFoto(){ const i = $('#inFoto'); i.value = ''; i.click(); },
+  fFoto(){ if(!F.cargandoFoto){ const i = $('#inFoto'); i.value = ''; i.click(); } },
   fSinFoto(){ if(F.fotoNueva){ FDB.del(F.fotoNueva).catch(() => {}); F.fotoNueva = null; } F.foto = ''; repintar(); },
   vAgregar(b){ agregarALaVenta(b.dataset.id); },
   vQuitar(b){
@@ -1706,13 +1806,25 @@ document.addEventListener('click', e => {
   if(f){ if(b.tagName === 'BUTTON') e.preventDefault(); f(b, e); }
 });
 $('#inFoto').addEventListener('change', async e => {
-  const f = e.target.files && e.target.files[0];
-  if(!f || !F) return;
-  const b = await comprimir(f), id = 'f' + uid();
-  try{ await FDB.put(id, b); }catch(err){ toast('No se pudo guardar la foto'); return; }
-  if(!F){ FDB.del(id).catch(() => {}); return; }
-  if(F.fotoNueva) FDB.del(F.fotoNueva).catch(() => {});
-  F.fotoNueva = id; repintar();
+  const archivo = e.target.files?.[0], formulario = F;
+  if(!archivo || !formulario || formulario.cargandoFoto) return;
+  const botonGuardar = $('[data-act="guardarF"]', capaArriba('form'));
+  formulario.cargandoFoto = botonGuardar.disabled = true;
+  const id = 'f' + uid();
+  try{
+    await FDB.put(id, await comprimir(archivo));
+    if(F !== formulario){
+      FDB.del(id).catch(() => {});
+      return;
+    }
+    if(F.fotoNueva) FDB.del(F.fotoNueva).catch(() => {});
+    F.fotoNueva = id;
+    repintar();
+  }catch(e){
+    if(F === formulario) toast('No se pudo guardar la foto');
+  }finally{
+    formulario.cargandoFoto = botonGuardar.disabled = false;
+  }
 });
 $('#inArchivo').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) recibirArchivo(f); });
 
