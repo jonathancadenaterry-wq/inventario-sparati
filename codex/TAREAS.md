@@ -66,7 +66,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
 - Arma `codex/pruebas/correr.py` (Playwright) con un servidor local que sirva la raíz del repositorio, para que `prueba/` y `codex/` estén accesibles.
 - **Hecha cuando:** la raíz sigue idéntica (`git diff --stat` sin cambios fuera de `prueba/` y `codex/`), `prueba/` abre y funciona como la versión 1, las pruebas pasan y la prueba del contrato pasa.
 
-## T1 · Sistema de diseño y estructura  [ ]
+## T1 · Sistema de diseño y estructura  [x]
 - Pon los tokens, el modo oscuro, las fuentes guardadas en el repositorio y los componentes de `DISENO.md`: barra inferior con Vender al centro, buscador con botón de escanear, chips, segmentado, píldoras, filas, hojas inferiores, toast con deshacer, stepper e íconos.
 - Arma una navegación por pantallas (hash o estado) que mantenga el botón «atrás» de Android funcionando como en la versión 1.
 - **Hecha cuando:** las capturas de los componentes se ven como el diseño en claro y en oscuro.

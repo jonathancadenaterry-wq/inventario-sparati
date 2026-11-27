@@ -16,7 +16,7 @@ const CATS = {
   uso:['Activos e inyectables','Faciales','Corporales','Descartables','Aparatología','Limpieza','Otros'],
 };
 const UNIDADES = ['unidades','frascos','cajas','ampollas','jeringas','sobres','ml','g','pares','paquetes'];
-const PAGOS = ['Efectivo','Transferencia','Tarjeta','Por cobrar'];
+const PAGOS = ['Efectivo','Transferencia','Tarjeta'];
 const MOTIVOS = ['Conteo','Vencido','Dañado','Muestra o regalo','Otro'];
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -135,7 +135,7 @@ function avisosDe(p){
   const s = stockDe(p.id), out = [];
   const min = p.min || 0, c = CONSUMO.get(p.id);
   if(s <= 0) out.push({clase:'stock', nivel:'bad', txt:'Agotado', orden:0});
-  else if(min > 0 && s <= min) out.push({clase:'stock', nivel:'warn', txt:`${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)} (avisar con ${fCant(min)})`, orden:1});
+  else if(min > 0 && s <= min) out.push({clase:'stock', nivel:'bad', txt:`${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)} (avisar con ${fCant(min)})`, orden:1});
   else if(c && s / c <= 14) out.push({clase:'stock', nivel:'warn', txt:`Alcanza para unos ${Math.max(1, Math.round(s / c))} días`, orden:2});
   if(s > 0 && p.vence){
     const d = diasHasta(p.vence);
@@ -194,10 +194,13 @@ function pacientes(){
 function actualizarAvisos(){
   const nV = productos('venta').filter(p => avisosDe(p).length).length;
   const nU = productos('uso').filter(p => avisosDe(p).length).length;
-  const pon = (id, n) => { const e = document.getElementById(id); if(e){ e.hidden = !n; e.textContent = n > 99 ? '99+' : n; } };
-  pon('nVenta', nV); pon('nUso', nU);
+  const n = nV + nU, indicador = $('#avisosInventario');
+  if(indicador){
+    indicador.hidden = !n;
+    indicador.textContent = n > 99 ? '99+' : n;
+  }
   try{
-    if(navigator.setAppBadge){ const t = nV + nU; if(t) navigator.setAppBadge(t).catch(() => {}); else navigator.clearAppBadge().catch(() => {}); }
+    if(navigator.setAppBadge){ if(n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {}); }
   }catch(e){}
 }
 
@@ -235,7 +238,12 @@ async function urlFoto(id){
   return (URLS[id] = URL.createObjectURL(b));
 }
 function cargarFotos(raiz){
-  $$('img[data-foto]', raiz).forEach(async img => { const u = await urlFoto(img.dataset.foto); if(u) img.src = u; else img.remove(); });
+  $$('img[data-foto]', raiz).forEach(async img => {
+    const u = await urlFoto(img.dataset.foto);
+    if(!u){ img.remove(); return; }
+    img.addEventListener('error', () => img.remove(), {once:true});
+    img.src = u;
+  });
 }
 async function cargarImagen(file){
   try{ return await createImageBitmap(file, {imageOrientation:'from-image'}); }
@@ -257,45 +265,93 @@ async function comprimir(file){
 }
 function avatar(p, cls = ''){
   const ini = (p.nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-  return `<span class="av ${cls}">${p.foto ? `<img data-foto="${esc(p.foto)}" alt="">` : esc(ini)}</span>`;
+  return `<span class="av ${cls}" aria-hidden="true"><span>${esc(ini)}</span>${p.foto ? `<img data-foto="${esc(p.foto)}" alt="">` : ''}</span>`;
 }
 
 // ---------- Capas, diálogos y mensajes ----------
 const pila = [];
+let idCapa = 0, resolverCierre, cierrePendiente;
+function activarCapa(){
+  const activa = pila.at(-1)?.el;
+  $('#app').inert = $('.nav').inert = Boolean(activa);
+  document.body.classList.toggle('bloqueo', Boolean(activa));
+  for(const {el} of pila) el.inert = el !== activa;
+}
+function enfocarControl(anterior, raiz){
+  if(!anterior || !raiz) return false;
+  const control = anterior.isConnected ? anterior :
+    anterior.dataset.act && $$('[data-act]', raiz).find(b =>
+      Object.keys(anterior.dataset).every(k => b.dataset[k] === anterior.dataset[k]));
+  if(!control) return false;
+  control.focus({preventScroll:true});
+  return document.activeElement === control;
+}
 function abrirCapa(html, op = {}){
   const d = document.createElement('div');
   d.className = op.cls || 'hoja';
   d.innerHTML = html;
   if(op.tipo) d.dataset.tipo = op.tipo;
+  const dialogo = $('[role="dialog"]', d) || d;
+  dialogo.setAttribute('role', 'dialog');
+  dialogo.setAttribute('aria-modal', 'true');
+  dialogo.tabIndex = -1;
   $('#capas').appendChild(d);
-  pila.push({el:d, alCerrar:op.alCerrar, fija:op.fija});
-  history.pushState({capa:pila.length}, '');
-  document.body.classList.add('bloqueo');
+  const id = ++idCapa;
+  pila.push({id, el:d, alCerrar:op.alCerrar, fija:op.fija, foco:document.activeElement});
+  history.pushState({capa:id}, '');
+  activarCapa();
+  requestAnimationFrame(() => {
+    if(d.inert || !d.isConnected) return;
+    const titulo = $('h2, h3, h1', d);
+    if(titulo) dialogo.setAttribute('aria-label', titulo.textContent);
+    if(!dialogo.contains(document.activeElement)) dialogo.focus({preventScroll:true});
+  });
   return d;
 }
-function cerrarCapa(desdeAtras){
-  const c = pila.pop();
-  if(!c) return;
-  try{ c.alCerrar && c.alCerrar(); }catch(e){}
-  c.el.remove();
-  if(!pila.length) document.body.classList.remove('bloqueo');
-  if(!desdeAtras) history.back();
+function cerrarCapa(){
+  if(!pila.length || pila.at(-1).fija) return Promise.resolve();
+  if(!cierrePendiente){
+    cierrePendiente = new Promise(res => { resolverCierre = res; });
+    history.back();
+  }
+  return cierrePendiente;
 }
 window.addEventListener('popstate', e => {
-  const prof = (e.state && e.state.capa) || 0;
-  while(pila.length > prof){
-    if(pila[pila.length-1].fija){ history.pushState({capa:pila.length}, ''); break; }
-    cerrarCapa(true);
+  let foco;
+  const profundidad = pila.findIndex(c => c.id === e.state?.capa) + 1;
+  while(pila.length > profundidad){
+    if(pila.at(-1).fija){
+      history.pushState({capa:pila.at(-1).id}, '', urlPantalla(U.tab));
+      return;
+    }
+    const c = pila.pop();
+    foco = c.foco;
+    c.el.remove();
+    c.alCerrar?.();
   }
+  activarCapa();
+  if(!pila.length) mostrarPantalla(pantallaDeURL());
+  const activa = pila.at(-1)?.el;
+  if(foco && !enfocarControl(foco, activa || $('#app'))){
+    (activa?.querySelector('[data-act="cerrar"]') || $('.nav [aria-current]'))?.focus({preventScroll:true});
+  }
+  const resolver = resolverCierre;
+  resolverCierre = cierrePendiente = null;
+  resolver?.();
+});
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape' || !pila.length || e.defaultPrevented) return;
+  e.preventDefault();
+  cerrarCapa();
 });
 const capaArriba = tipo => { const c = pila.slice().reverse().find(x => x.el.dataset.tipo === tipo); return c ? c.el : null; };
-function cabecera(titulo, extra = ''){
-  return `<header class="hoja-cab"><button class="icon-btn" data-act="cerrar" aria-label="Cerrar">${IC.x}</button><h2>${titulo}</h2>${extra}</header>`;
+function cabecera(titulo, extra = '', volver = false){
+  return `<header class="hoja-cab"><button class="icon-btn" data-act="cerrar" aria-label="${volver ? 'Volver' : 'Cerrar'}">${volver ? IC.volver : IC.x}</button><h2>${titulo}</h2>${extra}</header>`;
 }
 function confirmar(titulo, texto, ok = 'Sí', peligro = false){
   return new Promise(res => {
     let r = false;
-    const d = abrirCapa(`<div class="dlg" role="dialog" aria-modal="true"><h3>${esc(titulo)}</h3><p>${texto}</p>
+    const d = abrirCapa(`<div class="dlg hoja-inferior" role="dialog"><span class="tirador" aria-hidden="true"></span><h3>${esc(titulo)}</h3><p>${texto}</p>
       <div class="fila"><button class="btn ghost" data-r="0">Cancelar</button><button class="btn ${peligro?'danger':''}" data-r="1">${esc(ok)}</button></div></div>`,
       {cls:'dlg-fondo', alCerrar:() => res(r)});
     d.addEventListener('click', e => {
@@ -308,46 +364,163 @@ function confirmar(titulo, texto, ok = 'Sí', peligro = false){
 let tToast;
 function toast(msg, accion){
   let t = $('#toast');
-  if(!t){ t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
-  t.innerHTML = `<span>${esc(msg)}</span>` + (accion ? `<button type="button">${esc(accion.txt)}</button>` : '');
-  if(accion) $('button', t).onclick = () => { t.hidden = true; accion.fn(); };
+  if(!t){ t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+  t.innerHTML = '<span></span>' + (accion ? '<button type="button">Deshacer</button>' : '');
   t.hidden = false;
-  clearTimeout(tToast); tToast = setTimeout(() => { t.hidden = true; }, accion ? 6000 : 3400);
+  $('span', t).textContent = $('#anuncio').textContent = msg;
+  if(accion) $('button', t).onclick = () => { t.hidden = true; accion(); };
+  clearTimeout(tToast);
+  tToast = setTimeout(() => { t.hidden = true; }, accion ? 5000 : 3400);
+}
+function guardarBorrado(registrosPorLista, borrado){
+  const estado = {...E}, actualizados = {};
+  for(const [lista, registros] of Object.entries(registrosPorLista)){
+    const vigentes = new Set(E[lista]);
+    if(registros.some(r => !vigentes.has(r))){
+      toast('Ese registro cambió mientras tanto.');
+      return null;
+    }
+    const porRegistro = new Map(registros.map(r => [r, marcar({...r, borrado})]));
+    estado[lista] = E[lista].map(r => porRegistro.get(r) || r);
+    actualizados[lista] = [...porRegistro.values()];
+  }
+  return guardar(estado) ? actualizados : null;
+}
+function avisarConDeshacer(mensaje, registrosPorLista, borrado){
+  toast(mensaje, () => {
+    if(!guardarBorrado(registrosPorLista, borrado)) return;
+    refrescar();
+    toast('Listo, se deshizo');
+  });
 }
 
-const IC = {
-  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-  engr:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
-  lapiz:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>',
-  lupa:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
-  bolsa:'<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 7h12l1 13H5z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>',
-  pacientes:'<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>',
-  sync:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0114-5.3L20 9M20 4v5h-5M20 12a8 8 0 01-14 5.3L4 15M4 20v-5h5"/></svg>',
+// Trazos de las referencias del diseño, con el color del control que los contiene.
+const trazosIconos = {
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  inicio:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  inventario:'<path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  bolsa:'<path d="M6 7h12l1 13H5z"/><path d="M9 7a3 3 0 0 1 6 0"/>',
+  pacientes:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  reportes:'<path d="M5 20V11"/><path d="M11 20V5"/><path d="M17 20v-7"/><path d="M3 20h18"/>',
+  escaneo:'<path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v3"/><path d="M20 16v3a1 1 0 0 1-1 1h-3"/><path d="M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8 9v6M11 9v6M14 9v6M17 9v6"/>',
+  lupa:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  campana:'<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  volver:'<path d="M15 5l-7 7 7 7"/>',
+  siguiente:'<path d="m9 6 6 6-6 6"/>',
+  mas:'<path d="M12 5v14M5 12h14"/>',
+  menos:'<path d="M5 12h14"/>',
+  entrada:'<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/>',
+  gota:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  conteo:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="m9 13 2 2 4-4"/>',
+  chat:'<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/>',
+  calendario:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  linterna:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  lapiz:'<path d="M4 20h4L20 8l-4-4L4 16z"/>',
+  pdf:'<path d="M12 3v12m-5-5 5 5 5-5"/><path d="M5 21h14"/>',
+  sync:'<path d="M20 11a8 8 0 0 0-14-5l-2 2"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14 5l2-2"/><path d="M20 21v-5h-5"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+  etiqueta:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
+  ajustes:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
 };
+const IC = Object.fromEntries(Object.entries(trazosIconos).map(([nombre, dibujo]) =>
+  [nombre, `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${dibujo}</svg>`]
+));
 
 // ---------- Vistas principales ----------
-const U = {tab:'inicio', q:{venta:'', uso:''}, filtro:{venta:'todos', uso:'todos'}, mes:hoyISO().slice(0, 7), qVentas:''};
+const RUTAS = {inicio:'', venta:'#inventario', uso:'#uso-en-spa', pacientes:'#pacientes', ventas:'#reportes'};
+const U = {tab:'inicio', tipo:'venta', qInicio:'', qPac:'', q:{venta:'', uso:''}, filtro:{venta:'todos', uso:'todos'}, mes:hoyISO().slice(0, 7), qVentas:''};
+const esInventario = tab => tab === 'venta' || tab === 'uso';
+const urlPantalla = tab => location.pathname + location.search + RUTAS[tab];
+const pantallaDeURL = () => Object.keys(RUTAS).find(tab => RUTAS[tab] === location.hash) || 'inicio';
+const desplazamientos = new Map();
+
+function mostrarPantalla(tab){
+  if(tab === U.tab) return;
+  desplazamientos.set(U.tab, window.scrollY);
+  U.tab = tab;
+  if(esInventario(tab)) U.tipo = tab;
+  const app = $('#app');
+  app.classList.remove('transicion');
+  render();
+  window.scrollTo(0, desplazamientos.get(tab) || 0);
+  // La lectura de la caja reinicia la animación aunque se cambie dos veces de pantalla seguido.
+  void app.offsetWidth;
+  app.classList.add('transicion');
+}
+function irPantalla(tab){
+  if(tab === 'inventario') tab = U.tipo;
+  if(tab === U.tab || !Object.hasOwn(RUTAS, tab)) return;
+  history.pushState(null, '', urlPantalla(tab));
+  mostrarPantalla(tab);
+}
+function prepararNav(){
+  const boton = (tab, ico, texto, indicador = '') => `<button data-act="tab" data-tab="${tab}">${IC[ico]}<span>${texto}</span>${indicador}</button>`;
+  $('.nav').innerHTML = `<div class="nav-in">
+    ${boton('inicio', 'inicio', 'Inicio')}
+    ${boton('inventario', 'inventario', 'Inventario', '<span class="punto" id="avisosInventario" aria-hidden="true" hidden></span>')}
+    <button class="nav-vender" data-act="vender"><span class="circulo">${IC.bolsa}</span><span>Vender</span></button>
+    ${boton('pacientes', 'pacientes', 'Pacientes')}
+    ${boton('ventas', 'reportes', 'Reportes')}
+  </div>`;
+}
+function buscador(texto, {id = '', valor = '', campo = '', escaneo = ''} = {}){
+  return `<div class="buscador"><label class="buscar">${IC.lupa}<input type="search" ${id ? `id="${id}"` : ''} ${campo ? `data-f="${campo}"` : ''} aria-label="${texto}" placeholder="${texto}" value="${esc(valor)}" autocomplete="off"></label>
+    ${escaneo ? `<button class="btn boton-escanear" data-act="escanear" data-modo="${escaneo}" aria-label="Escanear">${IC.escaneo}</button>` : ''}</div>`;
+}
+function opcion(act, valor, texto, activa, clase = '', attrs = ''){
+  return `<button type="button" class="${clase}${activa ? ' on' : ''}" aria-pressed="${activa}" data-act="${act}" data-v="${esc(valor)}" ${attrs}>${texto}</button>`;
+}
 
 function render(){
   calcular();
   const app = $('#app');
-  app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vVentas() : vLista(U.tab);
-  $$('.nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === U.tab));
-  const fab = $('#fab');
-  const txt = {venta:'＋ Producto para vender', uso:'＋ Producto de uso', ventas:'＋ Nueva venta', inicio:productos('venta').length ? '＋ Nueva venta' : ''}[U.tab];
-  fab.hidden = !txt; if(txt) fab.textContent = txt;
+  app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vVentas() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
+  const principal = esInventario(U.tab) ? 'inventario' : U.tab;
+  for(const b of $$('.nav [data-tab]')){
+    if(b.dataset.tab === principal) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
   cargarFotos(app);
   actualizarAvisos();
-  const qb = $('#qProd');
-  if(qb) qb.addEventListener('input', () => { U.q[U.tab] = qb.value; const l = $('#listaProd'); if(l){ l.innerHTML = listaHTML(U.tab); cargarFotos(l); } });
-  const qv = $('#qVentas');
-  if(qv) qv.addEventListener('input', () => { U.qVentas = qv.value; const l = $('#listaVentas'); if(l) l.innerHTML = listaVentasHTML(); });
+  $('#qProd')?.addEventListener('input', e => {
+    U.q[U.tab] = e.target.value;
+    pintarListaProductos();
+  });
+  $('#qVentas')?.addEventListener('input', e => {
+    U.qVentas = e.target.value;
+    $('#listaVentas').innerHTML = listaVentasHTML();
+  });
+  $('#qPac')?.addEventListener('input', e => {
+    U.qPac = e.target.value;
+    $('#pacLista').innerHTML = filasPacientes(U.qPac);
+  });
+  $('#qInicio')?.addEventListener('input', e => {
+    U.qInicio = e.target.value;
+    pintarBusquedaInicio();
+  });
+  if(U.tab === 'inicio') pintarBusquedaInicio();
+}
+function pintarBusquedaInicio(){
+  const q = norm(U.qInicio);
+  const contenido = $('#contenidoInicio'), resultados = $('#resultadosInicio');
+  contenido.hidden = Boolean(q);
+  resultados.hidden = !q;
+  if(!q) return;
+  const ps = productos().filter(p => coincideProducto(p, q)).slice(0, 20);
+  const pac = pacientes().filter(p => norm(p.nombre).includes(q)).slice(0, 10);
+  resultados.innerHTML = (ps.length ? `<section class="grupo-productos"><h2>Productos</h2><div class="filas">${ps.map(p => filaProducto(p, 'verProd', true)).join('')}</div></section>` : '') +
+    (pac.length ? `<section class="grupo-productos"><h2>Pacientes</h2><div class="filas">${pac.map(filaPaciente).join('')}</div></section>` : '') ||
+    '<div class="vacio">No encontré productos ni pacientes con esa búsqueda.</div>';
+  cargarFotos(resultados);
 }
 
 function vInicio(){
-  let h = `<div class="top"><div class="marca-inicio"><img src="emblema.png" class="emblema" alt="" width="128" height="115">
+  const cab = `<h1 class="solo-lectura">Inicio</h1><div class="top"><div class="marca-inicio"><img src="emblema.png" class="emblema" alt="" width="128" height="115">
     <div><img src="logo-texto.png" class="logo-texto" alt="SPARATI" width="210" height="33"><div class="sub">${esc(fDia(hoyISO()))}</div></div></div>
-    <button class="icon-btn" data-act="ajustes" aria-label="Ajustes">${IC.engr}</button></div>`;
+    <button class="icon-btn" data-act="ajustes" aria-label="Ajustes">${IC.ajustes}</button></div>
+    ${buscador('Buscar producto o paciente', {id:'qInicio', valor:U.qInicio, escaneo:'global'})}
+    <div id="resultadosInicio" class="lista-productos" hidden></div>`;
+  let h = '';
   const n = productos().length;
   // Compartir entre los dos celulares
   const envio = E.sync.envio, recibo = E.sync.recibo;
@@ -361,20 +534,20 @@ function vInicio(){
   if(!n){
     h += `<section class="card"><h3>Bienvenida</h3>
       <div class="peq">Empieza agregando tus productos. Para cada uno pones cuántos hay y desde cuántos quieres que la app te avise.</div>
-      <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">＋ Para vender</button><button class="btn gold" data-act="nuevoProd" data-tipo="uso">＋ Uso en spa</button></div>
+      <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">${IC.mas} Para vender</button><button class="btn gold" data-act="nuevoProd" data-tipo="uso">${IC.mas} Uso en spa</button></div>
       ${quien() === 'Jonathan' ? `<button class="btn ghost" data-act="recibir">Recibir el inventario de Elba</button>` : ''}</section>`;
-    return h;
+    return cab + `<div class="contenido-inicio" id="contenidoInicio">${h}</div>`;
   }
   const av = todosLosAvisos(), rc = recompras(), pc = porCobrar();
   if(!av.stock.length && !av.fecha.length && !rc.length && !pc.length)
-    h += `<div class="estado-ok"><span>✓</span><div>Todo en orden. No hay productos por terminarse ni por vencer.</div></div>`;
+    h += `<div class="estado-ok">${IC.check}<div>Todo en orden. No hay productos por terminarse ni por vencer.</div></div>`;
   if(av.stock.length) h += `<section class="card"><div class="card-cab"><h3>Se están terminando (${av.stock.length})</h3><button class="btn sm gold" data-act="compras">Qué pedir</button></div>${av.stock.map(filaAviso).join('')}</section>`;
   if(av.fecha.length) h += `<section class="card"><h3>Fechas de vencimiento (${av.fecha.length})</h3>${av.fecha.map(filaAviso).join('')}</section>`;
   if(rc.length) h += `<section class="card"><h3>Volver a ofrecer (${rc.length})</h3><div class="peq muted">Pacientes que ya deberían estar terminando el producto que compraron.</div>${rc.map(r =>
-    `<div class="alerta"><span class="av sm">${esc((r.v.pac||'?')[0].toUpperCase())}</span><div class="tx"><b>${esc(r.v.pac)}</b><div class="d">${esc(r.p.nombre)} · compró ${haceTxtDias(r.d)}</div></div>
-      <button class="btn sm soft" data-act="recompra" data-v="${r.v.id}" data-p="${r.p.id}">Escribir</button></div>`).join('')}</section>`;
+    `<div class="alerta">${avatar({nombre:r.v.pac}, 'persona sm')}<div class="tx"><b>${esc(r.v.pac)}</b><div class="d">${esc(r.p.nombre)} · compró ${haceTxtDias(r.d)}</div></div>
+      <button class="btn sm soft" data-act="recompra" data-v="${esc(r.v.id)}" data-p="${esc(r.p.id)}">Escribir</button></div>`).join('')}</section>`;
   if(pc.length) h += `<section class="card"><div class="card-cab"><h3>Por cobrar</h3><b class="num">${dinero(pc.reduce((s, v) => s + totalVenta(v), 0))}</b></div>${pc.slice(0, 6).map(v =>
-    `<button class="alerta" data-act="editarVenta" data-id="${v.id}"><div class="tx"><b>${esc(v.pac || 'Sin nombre')}</b><div class="d">${esc(fCorta(v.fecha))} · ${esc(v.items.map(i => i.nombre).join(', '))}</div></div><span class="pill warn num">${dinero(totalVenta(v))}</span></button>`).join('')}</section>`;
+    `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.pac || 'Sin nombre')}</b><div class="d">${esc(fCorta(v.fecha))} · ${esc(v.items.map(i => i.nombre).join(', '))}</div></div><span class="pill warn num">${dinero(totalVenta(v))}</span></button>`).join('')}</section>`;
 
   // Cifras
   const mes = hoyISO().slice(0, 7), vm = vivos(E.ventas).filter(v => v.fecha.startsWith(mes));
@@ -386,54 +559,84 @@ function vInicio(){
     <div class="cifra"><span class="v num">${dinero(ganMes)}</span><span class="l">Ganancia en ventas</span></div>
     <div class="cifra"><span class="v num">${dinero(usoMes)}</span><span class="l">Insumos usados en el spa</span></div>
     <div class="cifra"><span class="v num">${dinero(valor)}</span><span class="l">Valor del inventario (a costo)</span></div></div>`;
-  return h;
+  return cab + `<div class="contenido-inicio" id="contenidoInicio">${h}</div>`;
 }
 function haceTxtDias(d){ return d === 0 ? 'hoy' : d === 1 ? 'ayer' : 'hace ' + d + ' días'; }
 function filaAviso(a){
-  return `<button class="alerta" data-act="verProd" data-id="${a.p.id}">${avatar(a.p, 'sm')}<div class="tx"><b>${esc(a.p.nombre)}</b><div class="d">${a.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · <span class="${a.nivel}">${esc(a.txt)}</span></div></div><span class="chev">›</span></button>`;
+  return `<button class="alerta" data-act="verProd" data-id="${esc(a.p.id)}">${avatar(a.p, 'sm')}<div class="tx"><b>${esc(a.p.nombre)}</b><div class="d">${a.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · <span class="${a.nivel}">${esc(a.txt)}</span></div></div><span class="chev">${IC.siguiente}</span></button>`;
 }
 function ultimoCambio(){ let m = 0; for(const k of ['productos','movs','ventas']) for(const x of E[k]) if(x.por === quien() && x.mod > m) m = x.mod; return m; }
 
 function vLista(tipo){
-  const titulo = tipo === 'venta' ? 'Para vender' : 'Uso en spa';
-  const sub = tipo === 'venta' ? 'Productos que vendes a tus pacientes' : 'Lo que usas en los tratamientos';
-  const ps = productos(tipo), conAviso = ps.filter(p => avisosDe(p).length).length;
-  const cats = Array.from(new Set(ps.map(p => p.cat).filter(Boolean)));
-  const f = U.filtro[tipo];
-  let h = `<div class="top"><div><h1>${titulo}</h1><div class="sub">${sub}</div></div><button class="icon-btn" data-act="compras" aria-label="Lista de compras">${IC.bolsa}</button></div>`;
-  if(ps.length){
-    h += `<label class="buscar">${IC.lupa}<input type="search" id="qProd" placeholder="Buscar producto o marca" value="${esc(U.q[tipo])}" autocomplete="off"></label>
-      <div class="chips scroll"><button class="chip ${f==='todos'?'on':''}" data-act="filtro" data-f="todos">Todos (${ps.length})</button>
-      <button class="chip ${f==='avisos'?'on':''}" data-act="filtro" data-f="avisos">Con avisos${conAviso ? `<span class="n">${conAviso}</span>` : ''}</button>
-      ${cats.map(c => `<button class="chip ${f===c?'on':''}" data-act="filtro" data-f="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
-  }
-  h += `<div id="listaProd" style="display:flex;flex-direction:column;gap:10px">${listaHTML(tipo)}</div>`;
-  return h;
+  const ps = productos(tipo);
+  const cats = [...new Set(ps.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const filtros = [['todos', 'Todos'], ['stock', '<span class="indicador" aria-hidden="true"></span>Por terminarse'],
+    ['fecha', '<span class="indicador vence" aria-hidden="true"></span>Vencen pronto'], ...cats.map(c => ['cat:' + c, esc(c)])];
+  const costo = tipo === 'uso';
+  const cantidad = costo ? ps.length : ps.reduce((s, p) => s + Math.max(0, stockDe(p.id)), 0);
+  const valor = ps.reduce((s, p) => s + Math.max(0, stockDe(p.id)) * ((costo ? p.costo : p.precio) || 0), 0);
+  return `<header class="top"><h1>Inventario</h1><div class="top-acciones">
+      <button class="icon-btn" data-act="compras" aria-label="Lista de compras">${IC.bolsa}</button>
+      <button class="btn sm" data-act="nuevoProd" data-tipo="${tipo}">${IC.mas} Producto</button></div></header>
+    <div class="seg" role="group" aria-label="Tipo de inventario">
+      ${[['venta','Para vender'], ['uso', 'Uso en spa']].map(([t, texto]) =>
+        opcion('tab', t, texto + ' · ' + (tipo === t ? ps.length : productos(t).length), tipo === t, '', `data-tab="${t}"`)).join('')}
+    </div>
+    ${buscador('Buscar en el inventario', {id:'qProd', valor:U.q[tipo], escaneo:tipo})}
+    <div class="chips scroll" role="group" aria-label="Filtrar productos">
+      ${filtros.map(([f, texto]) => opcion('filtro', f, texto, U.filtro[tipo] === f, 'chip')).join('')}
+    </div>
+    <div class="cifras estadisticas-inventario">
+      <div class="cifra"><span class="l">${costo ? 'Productos' : 'Unidades'}</span><span class="v num">${fCant(cantidad)}</span></div>
+      <div class="cifra"><span class="l">${costo ? 'Valor a costo' : 'Valor a precio de venta'}</span><span class="v num">${dinero(valor)}</span></div>
+    </div>
+    <div id="listaProd" class="lista-productos">${listaHTML(tipo)}</div>`;
+}
+function coincideProducto(p, q){
+  return norm([p.nombre, p.marca, p.cat, p.codigo].filter(Boolean).join(' ')).includes(q);
+}
+function pintarListaProductos(){
+  const lista = $('#listaProd');
+  lista.innerHTML = listaHTML(U.tab);
+  cargarFotos(lista);
 }
 function listaHTML(tipo){
-  const all = productos(tipo);
-  if(!all.length) return `<div class="vacio">Todavía no hay productos ${tipo === 'venta' ? 'para vender' : 'de uso en el spa'}.<br>Toca el botón de abajo para agregar el primero.</div>`;
-  const q = norm(U.q[tipo]), f = U.filtro[tipo];
-  let ps = all.filter(p => !q || norm(p.nombre + ' ' + (p.marca || '') + ' ' + (p.cat || '')).includes(q));
-  if(f === 'avisos') ps = ps.filter(p => avisosDe(p).length);
-  else if(f !== 'todos') ps = ps.filter(p => p.cat === f);
-  // Primero los que tienen avisos
-  ps.sort((a, b) => (avisosDe(b).length ? 1 : 0) - (avisosDe(a).length ? 1 : 0) || a.nombre.localeCompare(b.nombre, 'es'));
-  if(!ps.length) return `<div class="vacio">No hay productos con ese filtro.</div>`;
-  return ps.map(p => tarjetaProd(p)).join('');
+  const q = norm(U.q[tipo]), f = U.filtro[tipo], grupos = new Map();
+  const todos = productos(tipo);
+  for(const p of todos){
+    if(!coincideProducto(p, q)) continue;
+    if(f === 'stock' && !avisosDe(p).some(a => a.clase === 'stock')) continue;
+    if(f === 'fecha' && !avisosDe(p).some(a => a.clase === 'fecha' && a.nivel === 'warn')) continue;
+    if(f.startsWith('cat:') && p.cat !== f.slice(4)) continue;
+    const marca = p.marca?.trim() || 'Sin marca';
+    if(!grupos.has(marca)) grupos.set(marca, []);
+    grupos.get(marca).push(p);
+  }
+  if(!todos.length) return '<div class="vacio">Todavía no hay productos aquí. Toca «Producto» para agregar el primero.</div>';
+  if(!grupos.size) return '<div class="vacio">No hay productos con ese filtro.</div>';
+  return [...grupos].sort(([a, ps], [b, otros]) => otros.length - ps.length || a.localeCompare(b, 'es')).map(([marca, ps]) =>
+    `<section class="grupo-productos"><h2>${esc(marca)}</h2><div class="filas">${ps.map(p => filaProducto(p)).join('')}</div></section>`
+  ).join('');
 }
-function tarjetaProd(p){
-  const s = stockDe(p.id), avs = avisosDe(p);
-  const nivel = avs.some(a => a.clase === 'stock' && a.nivel === 'bad') ? 'bad' : avs.some(a => a.clase === 'stock') ? 'warn' : '';
-  const sub = [p.marca, p.tipo === 'venta' && p.precio ? dinero(p.precio) : '', p.cat].filter(Boolean).map(esc).join(' · ');
-  const gasto = p.gasto > 0 ? p.gasto : 1;
-  return `<div class="prod"><button class="prod-main" data-act="verProd" data-id="${p.id}">${avatar(p)}
-      <div class="tx"><b>${esc(p.nombre)}</b><div class="m">${sub || '&nbsp;'}</div>${avs.length ? `<div class="pills">${avs.map(a => `<span class="pill ${a.nivel}">${esc(a.txt)}</span>`).join('')}</div>` : ''}</div>
-      <div class="stock ${nivel}"><div class="q num">${fCant(s)}</div><div class="u">${esc(uTxt(s, p.unidad))}</div></div></button>
-    <div class="prod-acc">${p.tipo === 'venta'
-      ? `<button data-act="vender" data-id="${p.id}">Vender</button>`
-      : `<button data-act="usarRapido" data-id="${p.id}">Usar ${fCant(gasto)} ${esc(uTxt(gasto, p.unidad))}</button><button data-act="usar" data-id="${p.id}">Otra cantidad</button>`}
-      <button data-act="entrada" data-id="${p.id}">Llegó más</button></div></div>`;
+function pildoraStock(p, avs = avisosDe(p)){
+  const s = stockDe(p.id), cantidad = fCant(s);
+  const bajo = s <= (p.min || 0);
+  const fechas = avs.filter(a => a.clase === 'fecha');
+  const estado = bajo || fechas.some(a => a.nivel === 'bad') ? 'bad' : fechas.length ? 'warn' : 'ok';
+  const texto = s <= 0 ? 'Agotado' : bajo ? `${s === 1 ? 'Queda' : 'Quedan'} ${cantidad}` : cantidad;
+  return `<span class="pill stock ${estado}" title="${cantidad} ${esc(uTxt(s, p.unidad))}">${texto}</span>`;
+}
+function filaProducto(p, accion = 'verProd', mostrarMarca = false){
+  const [nombre, ...presentacion] = p.nombre.split(' · ');
+  const avs = avisosDe(p);
+  const aviso = avs.find(a => a.clase === 'fecha') || avs.find(a => a.clase === 'stock' && a.nivel === 'warn');
+  const precio = p.tipo === 'venta' && p.precio ? `<span class="sin-salto">${dinero(p.precio)}</span>` : '';
+  const sub = [mostrarMarca ? esc(p.marca) : '', ...presentacion.map(esc), precio,
+    esc(aviso?.txt || (!presentacion.length && p.tipo === 'uso' ? singular(p.unidad) : ''))].filter(Boolean).join(' · ');
+  const cantidadEnVenta = accion === 'vAgregar' ? F.items.find(i => i.prod === p.id)?.cant : '';
+  return `<button class="fila-lista" data-act="${accion}" data-id="${esc(p.id)}">${avatar(p)}
+    <span class="tx"><b>${esc(nombre)}</b>${sub ? `<span class="m">${sub}</span>` : ''}${accion === 'vAgregar' ? `<span class="m en-venta"${cantidadEnVenta ? '' : ' hidden'}>${cantidadEnVenta ? esc(cantidadEnVenta) + ' en la venta' : ''}</span>` : ''}</span>
+    ${pildoraStock(p, avs)}</button>`;
 }
 
 function vVentas(){
@@ -444,14 +647,14 @@ function vVentas(){
   const top = new Map();
   for(const v of vm) for(const it of v.items){ const x = top.get(it.prod) || {n:it.nombre, c:0, t:0}; x.c += it.cant; x.t += it.cant * it.precio; top.set(it.prod, x); }
   const tops = Array.from(top.values()).sort((a, b) => b.t - a.t).slice(0, 5), maxT = tops.length ? tops[0].t : 1;
-  let h = `<div class="top"><div><h1>Ventas</h1><div class="sub">Qué vendiste, a quién y cuándo</div></div><button class="icon-btn" data-act="pacientes" aria-label="Pacientes">${IC.pacientes}</button></div>
-    <div class="mes"><button data-act="mes" data-d="-1" aria-label="Mes anterior">‹</button><b>${MESES[m-1]} ${y}</b><button data-act="mes" data-d="1" aria-label="Mes siguiente" ${U.mes >= hoyISO().slice(0, 7) ? 'disabled' : ''}>›</button></div>
+  let h = `<header class="top"><h1>Reportes</h1></header>
+    <div class="mes"><button data-act="mes" data-d="-1" aria-label="Mes anterior">${IC.volver}</button><b>${cap(MESES[m-1])} ${y}</b><button data-act="mes" data-d="1" aria-label="Mes siguiente" ${U.mes >= hoyISO().slice(0, 7) ? 'disabled' : ''}>${IC.siguiente}</button></div>
     <div class="cifras"><div class="cifra"><span class="v num">${dinero(tot)}</span><span class="l">${vm.length} ${vm.length===1?'venta':'ventas'}</span></div>
       <div class="cifra"><span class="v num">${dinero(gan)}</span><span class="l">Ganancia (venta − costo)</span></div>
-      ${cobrar ? `<div class="cifra ancha"><span class="v num" style="color:var(--warn)">${dinero(cobrar)}</span><span class="l">Por cobrar este mes</span></div>` : ''}</div>`;
+      ${cobrar ? `<div class="cifra ancha"><span class="v num" style="color:var(--atencion)">${dinero(cobrar)}</span><span class="l">Por cobrar este mes</span></div>` : ''}</div>`;
   if(tops.length) h += `<section class="card"><h3>Lo más vendido</h3>${tops.map(t => `<div class="top-prod"><span class="n">${esc(t.n)} <span class="muted">· ${fCant(t.c)}</span></span><span class="b" style="width:${Math.max(8, Math.round(t.t / maxT * 70))}px"></span><b class="num">${dinero(t.t)}</b></div>`).join('')}</section>`;
-  h += `<label class="buscar">${IC.lupa}<input type="search" id="qVentas" placeholder="Buscar por paciente o producto" value="${esc(U.qVentas)}" autocomplete="off"></label>
-    <div id="listaVentas" style="display:flex;flex-direction:column;gap:10px">${listaVentasHTML()}</div>`;
+  h += `<h2 class="titulo-seccion">Ventas</h2>${buscador('Buscar por paciente o producto', {id:'qVentas', valor:U.qVentas})}
+    <div id="listaVentas" class="lista-productos">${listaVentasHTML()}</div>`;
   return h;
 }
 function listaVentasHTML(){
@@ -463,7 +666,7 @@ function listaVentasHTML(){
   let h = '', dia = '';
   for(const v of vs){
     if(v.fecha !== dia){ dia = v.fecha; h += `<div class="dia-tit">${esc(fDia(v.fecha))}${q && v.fecha.slice(0,4) !== String(new Date().getFullYear()) ? ' ' + v.fecha.slice(0,4) : ''}</div>`; }
-    h += `<button class="venta" data-act="editarVenta" data-id="${v.id}"><div class="c"><span class="pac">${esc(v.pac || 'Sin nombre')}</span><span class="tot num">${dinero(totalVenta(v))}</span></div>
+    h += `<button class="venta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="c"><span class="pac">${esc(v.pac || 'Sin nombre')}</span><span class="tot num">${dinero(totalVenta(v))}</span></div>
       <div class="it">${esc(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(' · '))}</div>
       <div class="c"><span class="pill ${v.cobrado ? 'acc' : 'warn'}">${esc(v.cobrado ? cap(v.pago) : 'Por cobrar')}</span>${v.por ? `<span class="peq muted">Registró ${esc(v.por)}</span>` : ''}</div></button>`;
   }
@@ -479,6 +682,8 @@ function verProd(id){
 function pintarProd(d){
   const p = prodPorId(d.dataset.id);
   if(!p || p.borrado){ cerrarCapa(); return; }
+  const scroll = $('.hoja-cuerpo', d)?.scrollTop || 0;
+  const accion = d.contains(document.activeElement) ? document.activeElement.dataset.act : '';
   calcular();
   const s = stockDe(p.id), avs = avisosDe(p), c = CONSUMO.get(p.id);
   const movs = vivos(E.movs).filter(m => m.prod === p.id).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
@@ -500,23 +705,28 @@ function pintarProd(d){
   if(p.abierto) datos.push(['Se abrió', fCorta(p.abierto) + (p.pao ? ' · usar antes del ' + fCorta(sumarMeses(p.abierto, p.pao)) : '')]);
   if(p.prov) datos.push(['Proveedor', p.prov + (p.telProv ? ' · ' + p.telProv : '')]);
   const etiqueta = {inicial:'Cantidad inicial', entrada:'Llegó', venta:'Venta', uso:'Uso en tratamiento', ajuste:'Ajuste', apertura:'Abrí uno nuevo'};
-  d.innerHTML = cabecera(esc(p.nombre), `<button class="icon-btn" data-act="editarProd" data-id="${p.id}" aria-label="Editar">${IC.lapiz}</button>`) + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <div class="det-cab">${avatar(p, 'xl')}<div><h3>${esc(p.nombre)}</h3><div class="muted">${esc([p.marca, p.cat].filter(Boolean).join(' · '))}</div>
+  const [nombre, ...presentacion] = p.nombre.split(' · ');
+  const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
+  d.innerHTML = cabecera(titulo, `<button class="icon-btn" data-act="editarProd" data-id="${esc(p.id)}" aria-label="Editar producto">${IC.lapiz}</button>`, true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+    <div class="det-cab">${avatar(p, 'xl')}<div><div class="muted">${esc([p.marca, ...presentacion, p.cat].filter(Boolean).join(' · '))}</div>
       <div class="chips" style="margin-top:6px"><span class="pill ${p.tipo === 'venta' ? 'acc' : 'gold'}">${p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'}</span></div></div></div>
-    <section class="card"><div class="det-stock"><span class="q num" style="color:${avs.some(a => a.clase==='stock' && a.nivel==='bad') ? 'var(--bad)' : avs.some(a => a.clase==='stock') ? 'var(--warn)' : 'inherit'}">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))}</span></div>
-      ${avs.length ? `<div class="chips" style="justify-content:center">${avs.map(a => `<span class="pill ${a.nivel}">${esc(a.txt)}</span>`).join('')}</div>` : '<div class="chips" style="justify-content:center"><span class="pill ok">✓ Sin avisos</span></div>'}
-      <div class="acc-grid">${p.tipo === 'venta' ? `<button class="btn" data-act="vender" data-id="${p.id}">Vender</button>` : `<button class="btn" data-act="usar" data-id="${p.id}">Usar</button>`}
-        <button class="btn gold" data-act="entrada" data-id="${p.id}">Llegó más</button>
-        <button class="btn ghost" data-act="ajuste" data-id="${p.id}">Contar / corregir</button>
-        ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${p.id}">Lo abrí hoy</button>` : `<button class="btn ghost" data-act="editarProd" data-id="${p.id}">Editar datos</button>`}</div>
+    <section class="card"><div class="det-stock"><span class="q num" style="color:${avs.some(a => a.clase==='stock' && a.nivel==='bad') ? 'var(--mal)' : avs.some(a => a.clase==='stock') ? 'var(--atencion)' : 'inherit'}">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))}</span></div>
+      ${avs.length ? `<div class="chips" style="justify-content:center">${avs.map(a => `<span class="pill ${a.nivel}">${esc(a.txt)}</span>`).join('')}</div>` : `<div class="chips" style="justify-content:center"><span class="pill ok">${IC.check} Sin avisos</span></div>`}
+      <div class="acc-grid">${p.tipo === 'venta' ? `<button class="btn" data-act="vender" data-id="${esc(p.id)}">${IC.bolsa} Vender</button>` : `<button class="btn" data-act="usarRapido" data-id="${esc(p.id)}">${IC.gota} Usar ${fCant(p.gasto > 0 ? p.gasto : 1)} ${esc(uTxt(p.gasto > 0 ? p.gasto : 1, p.unidad))}</button>`}
+        <button class="btn gold" data-act="entrada" data-id="${esc(p.id)}">${IC.entrada} Llegó más</button>
+        <button class="btn ghost" data-act="ajuste" data-id="${esc(p.id)}">Contar / corregir</button>
+        ${p.tipo === 'uso' ? `<button class="btn ghost" data-act="usar" data-id="${esc(p.id)}">Otra cantidad</button>` : ''}
+        ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${esc(p.id)}">Lo abrí hoy</button>` : ''}</div>
       ${p.telProv ? `<a class="btn soft" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">Pedir al proveedor por WhatsApp</a>` : ''}</section>
     <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Datos</h3>${datos.map(x => `<div class="dato"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}
       ${p.notas ? `<div class="dato"><span>Notas</span><span style="font-weight:500">${esc(p.notas)}</span></div>` : ''}</section>
     <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Movimientos</h3>${movs.length ? movs.slice(0, 60).map(m => `<div class="mov"><span>${esc(etiqueta[m.tipo] || m.tipo)}${m.pac ? ' · ' + esc(m.pac) : ''}</span><span class="q num ${m.cant >= 0 ? 'mas' : 'menos'}">${m.cant >= 0 ? '+' : '−'}${fCant(Math.abs(m.cant))}</span>
       <span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.motivo ? ' · ' + esc(m.motivo) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}${m.por ? ' · ' + esc(m.por) : ''}</span></div>`).join('') : '<div class="muted peq">Sin movimientos.</div>'}</section>
-    <button class="btn danger full" data-act="borrarProd" data-id="${p.id}">Eliminar producto</button>
+    <button class="btn danger full" data-act="borrarProd" data-id="${esc(p.id)}">Eliminar producto</button>
   </div></div>`;
   cargarFotos(d);
+  $('.hoja-cuerpo', d).scrollTop = scroll;
+  if(accion) $(`[data-act="${accion}"]`, d)?.focus({preventScroll:true});
 }
 function waLink(tel, texto){
   let t = String(tel || '').replace(/\D/g, '');
@@ -541,8 +751,10 @@ function hojaForm(titulo, tipo, pintar, alCerrar){
 function repintar(){
   const cu = $('#fCuerpo'); if(!cu || !F) return;
   const sc = cu.parentElement.scrollTop;
+  const activo = document.activeElement;
   F.pintar();
   cu.parentElement.scrollTop = sc;
+  if(!activo.isConnected) enfocarControl(activo, cu);
 }
 function campo(label, f, op = {}){
   const v = F[f] ?? '';
@@ -552,12 +764,18 @@ function campo(label, f, op = {}){
   const input = op.area ? `<textarea id="${id}" data-f="${f}"${attrs}>${esc(v)}</textarea>` : `<input id="${id}" type="${tipo}" data-f="${f}" value="${esc(v)}"${attrs}>`;
   return `<div class="campo"><label for="${id}">${label}</label>${input}${op.ayuda ? `<span class="ayuda">${op.ayuda}</span>` : ''}</div>`;
 }
-function pasos(label, f, unidad){
-  return `<div class="campo"><span class="lbl">${label}${unidad ? ' (' + esc(unidad) + ')' : ''}</span><div class="paso"><button type="button" data-act="paso" data-f="${f}" data-d="-1" aria-label="Menos">−</button>
-    <input type="text" inputmode="decimal" data-f="${f}" value="${esc(F[f] ?? '')}"><button type="button" data-act="paso" data-f="${f}" data-d="1" aria-label="Más">+</button></div></div>`;
+function pasos(label, f, unidad, item){
+  const titulo = label + (unidad ? ' (' + unidad + ')' : '');
+  const id = item === undefined ? 'paso-' + f : `paso-${f}-${item}`;
+  const attrs = item === undefined ? `data-f="${f}"` : `data-item="${item}" data-c="${f}"`;
+  const valor = item === undefined ? F[f] : F.items[item][f];
+  return `<div class="campo"><label for="${id}">${esc(titulo)}</label><div class="paso">
+    <button type="button" data-act="paso" data-d="-1" aria-label="Restar uno">${IC.menos}</button>
+    <input id="${id}" type="text" inputmode="decimal" ${attrs} value="${esc(valor ?? '')}">
+    <button type="button" data-act="paso" data-d="1" aria-label="Sumar uno">${IC.mas}</button></div></div>`;
 }
 function chipsF(f, opciones, op = {}){
-  return `<div class="chips">${opciones.map(o => `<button type="button" class="chip ${F[f] === o ? 'on' : ''}" data-act="fChip" data-f="${f}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}${op.extra || ''}</div>`;
+  return `<div class="chips">${opciones.map(o => opcion('fChip', o, esc(o), F[f] === o, 'chip', `data-f="${f}"`)).join('')}${op.extra || ''}</div>`;
 }
 function listaPacientes(){ return `<datalist id="dlPac">${pacientes().map(p => `<option value="${esc(p.nombre)}">`).join('')}</datalist>`; }
 document.addEventListener('input', e => {
@@ -582,12 +800,13 @@ function pintarFormProd(){
   const provs = Array.from(new Set(vivos(E.productos).map(p => p.prov).filter(Boolean)));
   const fotoId = F.fotoNueva || F.foto;
   cu.innerHTML = `
-    <div class="seg"><button type="button" class="${F.tipo==='venta'?'on':''}" data-act="fChip" data-f="tipo" data-v="venta">Para vender</button><button type="button" class="${F.tipo==='uso'?'on':''}" data-act="fChip" data-f="tipo" data-v="uso">Uso en el spa</button></div>
+    <div class="seg" role="group" aria-label="Tipo de producto">${[['venta','Para vender'], ['uso','Uso en spa']].map(([v, n]) =>
+      opcion('fChip', v, n, F.tipo === v, '', 'data-f="tipo"')).join('')}</div>
     <div class="foto-campo">${fotoId ? `<span class="av xl"><img data-foto="${esc(fotoId)}" alt=""></span>` : ''}
       <div style="display:flex;flex-direction:column;gap:8px"><button type="button" class="btn sm soft" data-act="fFoto">${fotoId ? 'Cambiar foto' : 'Agregar foto'}</button>${fotoId ? '<button type="button" class="btn sm ghost" data-act="fSinFoto">Quitar foto</button>' : '<span class="peq muted">Opcional: ayuda a reconocerlo rápido.</span>'}</div></div>
     ${campo('Nombre del producto *', 'nombre', {ph: F.tipo === 'venta' ? 'Ej.: Protector solar FPS 50' : 'Ej.: Ácido hialurónico HydraFiller'})}
     ${campo('Marca (opcional)', 'marca', {ph:'Ej.: La Roche-Posay'})}
-    <div class="campo"><span class="lbl">Categoría</span>${chipsF('cat', cats, {extra:`<button type="button" class="chip" data-act="nuevaCat">＋ Otra</button>`})}</div>
+    <div class="campo"><span class="lbl">Categoría</span>${chipsF('cat', cats, {extra:`<button type="button" class="chip" data-act="nuevaCat">${IC.mas} Otra</button>`})}</div>
     <div class="campo"><span class="lbl">Se cuenta en</span>${chipsF('unidad', UNIDADES)}</div>
     ${!F.id ? pasos('¿Cuántos tienes ahora?', 'inicial', F.unidad) : ''}
     ${pasos('Avisarme cuando queden', 'min', F.unidad)}
@@ -636,8 +855,8 @@ async function guardarProd(){
   if(!guardar()) return;
   if(fotoVieja) FDB.del(fotoVieja).catch(() => {});
   const nuevo = !F.id, tipo = datos.tipo;
-  cerrarCapa();
-  if(nuevo && U.tab !== tipo && U.tab !== 'inicio'){ U.tab = tipo; }
+  await cerrarCapa();
+  if(nuevo && esInventario(U.tab) && U.tab !== tipo) irPantalla(tipo);
   refrescar();
   toast(nuevo ? 'Producto agregado' : 'Cambios guardados');
 }
@@ -686,16 +905,17 @@ function guardarUso(){
   const p = prodPorId(F.prod), c = num(F.cant);
   if(!(c > 0)){ toast('Escribe cuánto usaste'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
-  E.movs.push(marcar({id:uid(), prod:p.id, tipo:'uso', cant:-red(c), fecha:F.fecha, pac:F.pac.trim(), trat:F.trat.trim(), nota:p.lote ? 'Lote ' + p.lote : ''}, true));
-  if(!guardar()) return;
+  const m = marcar({id:uid(), prod:p.id, tipo:'uso', cant:-red(c), fecha:F.fecha, pac:F.pac.trim(), trat:F.trat.trim(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
+  if(!guardar({...E, movs:[...E.movs, m]})) return;
   cerrarCapa(); refrescar();
-  toast(`−${fCant(c)} ${p.unidad} de ${p.nombre}`);
+  avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}`, {movs:[m]}, true);
 }
 function usarRapido(id){
   const p = prodPorId(id), c = p.gasto > 0 ? p.gasto : 1;
   const m = marcar({id:uid(), prod:id, tipo:'uso', cant:-c, fecha:hoyISO(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
-  E.movs.push(m); guardar(); refrescar();
-  toast(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}. Quedan ${fCant(stockDe(id))}`, {txt:'Deshacer', fn:() => { m.borrado = true; marcar(m); guardar(); refrescar(); toast('Listo, se deshizo'); }});
+  if(!guardar({...E, movs:[...E.movs, m]})) return;
+  refrescar();
+  avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}. Quedan ${fCant(stockDe(id))}`, {movs:[m]}, true);
 }
 
 // Contar / corregir
@@ -706,11 +926,11 @@ function formAjuste(id){
     const dif = red(num(F.real) - stockDe(id));
     $('#fCuerpo').innerHTML = `<div class="peq muted">Según la app hay <b>${fCant(stockDe(id))} ${esc(p.unidad)}</b>. Escribe lo que realmente hay.</div>
       ${pasos('¿Cuántos hay de verdad?', 'real', p.unidad)}
-      <div class="peq" id="aDif">${isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--bad)' : 'var(--ok)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'}</div>
+      <div class="peq" id="aDif">${isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'}</div>
       <div class="campo"><span class="lbl">Motivo</span>${chipsF('motivo', MOTIVOS)}</div>
       ${campo('Nota (opcional)', 'nota')}`;
   });
-  F.alCambiar = f => { if(f === 'real'){ const dif = red(num(F.real) - stockDe(id)); const e = $('#aDif'); if(e) e.innerHTML = isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--bad)' : 'var(--ok)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'; } };
+  F.alCambiar = f => { if(f === 'real'){ const dif = red(num(F.real) - stockDe(id)); const e = $('#aDif'); if(e) e.innerHTML = isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'; } };
 }
 function guardarAjuste(){
   const p = prodPorId(F.prod), real = num(F.real);
@@ -727,19 +947,37 @@ function guardarAjuste(){
 function formVenta(id, prodId){
   const v = id ? E.ventas.find(x => x.id === id) : null;
   F = v ? {id:v.id, pac:v.pac || '', tel:v.tel || '', fecha:v.fecha, pago:v.cobrado ? cap(v.pago) : 'Por cobrar', nota:v.nota || '',
-        items:v.items.map(i => ({prod:i.prod, nombre:i.nombre, cant:fCant(i.cant), precio:dineroIn(i.precio), costo:i.costo || 0})), buscar:'', guardar:guardarVenta}
-    : {id:null, pac:'', tel:'', fecha:hoyISO(), pago:'Efectivo', nota:'', items:[], buscar:'', guardar:guardarVenta};
+        items:v.items.map(i => ({prod:i.prod, nombre:i.nombre, cant:fCant(i.cant), precio:dineroIn(i.precio), costo:i.costo || 0})), buscar:''}
+    : {id:null, pac:'', tel:'', fecha:hoyISO(), pago:'Efectivo', nota:'', items:[], buscar:''};
+  F.guardar = guardarVenta;
+  F.pagoMarcado = F.pago === 'Por cobrar' ? PAGOS[0] : F.pago;
   if(prodId) agregarItem(prodId);
-  const d = hojaForm(v ? 'Editar venta' : 'Nueva venta', 'form', pintarVenta);
-  if(v){
-    const pie = $('.hoja-pie .in', d);
-    pie.insertAdjacentHTML('afterbegin', `<button class="btn danger" data-act="borrarVenta" style="flex:0 0 auto">Eliminar</button>`);
-  }
-  F.alCambiar = (f, el) => {
-    if(f === 'pac'){ const x = pacientes().find(p => norm(p.nombre) === norm(F.pac)); if(x && x.tel && !F.tel){ F.tel = x.tel; const t = $('[data-f="tel"]'); if(t) t.value = x.tel; } }
-    if(f === 'buscar'){ const s = $('#selProd'); if(s){ s.innerHTML = selectorHTML(); cargarFotos(s); } }
+  const d = abrirCapa(cabecera(v ? 'Editar venta' : 'Nueva venta', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in" id="fCuerpo"></div></div>
+    <div class="carrito hoja-inferior">
+      <button class="resumen-venta" data-act="verCarrito" aria-controls="detalleVenta" aria-expanded="${Boolean(v)}">
+        <span class="tirador" aria-hidden="true"></span><span><span id="resumenVenta"></span>${IC.volver}</span></button>
+      <div class="carrito-detalle" id="detalleVenta"${v ? '' : ' hidden'}></div>
+      <div class="total"><span>Total</span><span class="num" id="vTotal"></span></div>
+      <footer class="hoja-pie"><div class="in">
+        ${v ? '<button class="btn danger" data-act="borrarVenta">Eliminar</button>' : ''}
+        <button class="btn ghost" data-act="cerrar">Cancelar</button><button class="btn" data-act="guardarF">Guardar</button>
+      </div></footer>
+    </div>`, {cls:'hoja venta-form', tipo:'form', alCerrar:() => { F = null; }});
+  $('#fCuerpo', d).innerHTML = `<div class="card">
+      ${campo('Paciente', 'pac', {lista:'dlPac', ph:'Nombre de la paciente'})}${listaPacientes()}
+      <div class="fila2">${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}${campo('WhatsApp (opcional)', 'tel', {tipo:'tel', ph:'09…'})}</div></div>
+    ${buscador('Buscar producto', {campo:'buscar', escaneo:'vender'})}
+    <h3 class="titulo-seccion">Productos</h3><div class="filas" id="selProd"></div>`;
+  pintarSelectorVenta();
+  pintarCarrito();
+  F.alCambiar = f => {
+    if(f === 'pac' && !F.tel){
+      const p = pacientes().find(p => norm(p.nombre) === norm(F.pac));
+      if(p?.tel) F.tel = $('#campo-tel', d).value = p.tel;
+    }
+    if(f === 'buscar') pintarSelectorVenta();
   };
-  F.alItem = () => { const t = $('#vTotal'); if(t) t.textContent = dinero(totalF()); $$('[data-sub]').forEach(e => { const it = F.items[+e.dataset.sub]; e.textContent = it ? dinero((num(it.cant) || 0) * (num(it.precio) || 0)) : ''; }); };
+  F.alItem = actualizarTotalesVenta;
 }
 function agregarItem(pid){
   const p = prodPorId(pid);
@@ -748,83 +986,112 @@ function agregarItem(pid){
   F.items.push({prod:pid, nombre:p.nombre, cant:'1', precio:dineroIn(p.precio), costo:p.costo || 0});
 }
 const totalF = () => red(F.items.reduce((s, i) => s + (num(i.cant) || 0) * (num(i.precio) || 0), 0));
-function selectorHTML(){
-  const q = norm(F.buscar);
-  const ps = productos('venta').filter(p => !q || norm(p.nombre + ' ' + (p.marca || '')).includes(q)).slice(0, 30);
-  if(!productos('venta').length) return '<div class="peq muted">No hay productos para vender. Agrégalos en la pestaña «Para vender».</div>';
-  if(!ps.length) return '<div class="peq muted">No encontré ese producto.</div>';
-  return ps.map(p => `<button type="button" class="sel-item" data-act="vAgregar" data-id="${p.id}">${avatar(p, 'sm')}<span class="tx"><b>${esc(p.nombre)}</b><span class="peq muted">${p.precio ? dinero(p.precio) + ' · ' : ''}hay ${fCant(stockDe(p.id))}</span></span><span class="pill acc">＋</span></button>`).join('');
+function pintarSelectorVenta(){
+  const q = norm(F.buscar), selector = $('#selProd');
+  const todos = productos('venta');
+  const ps = todos.filter(p => coincideProducto(p, q)).slice(0, 30);
+  selector.innerHTML = ps.length ? ps.map(p => filaProducto(p, 'vAgregar', true)).join('') :
+    `<div class="vacio">${todos.length ? 'No encontré ese producto.' : 'Agrega productos en Inventario para empezar a vender.'}</div>`;
+  cargarFotos(selector);
 }
-function pintarVenta(){
-  const cu = $('#fCuerpo');
-  cu.innerHTML = `${campo('Paciente', 'pac', {lista:'dlPac', ph:'Nombre de la paciente'})}${listaPacientes()}
-    <div class="fila2">${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}${campo('WhatsApp (opcional)', 'tel', {tipo:'tel', ph:'09…'})}</div>
-    <div class="sec-tit">Productos</div>
-    ${F.items.map((it, i) => `<div class="item-venta"><span class="n">${esc(it.nombre)}</span><button type="button" class="x" data-act="vQuitar" data-i="${i}" aria-label="Quitar">✕</button>
-      <div class="ctl"><div class="campo"><span class="lbl">Cantidad</span><input type="text" inputmode="decimal" data-item="${i}" data-c="cant" value="${esc(it.cant)}"></div>
-      <div class="campo"><span class="lbl">Precio c/u ($)</span><input type="text" inputmode="decimal" data-item="${i}" data-c="precio" value="${esc(it.precio)}"></div></div>
-      <span class="sub" data-sub="${i}">${dinero((num(it.cant) || 0) * (num(it.precio) || 0))}</span></div>`).join('')}
-    <div class="card" style="gap:8px"><label class="buscar" style="border:none;padding:0">${IC.lupa}<input type="search" data-f="buscar" placeholder="${F.items.length ? 'Agregar otro producto' : 'Busca el producto que vendiste'}" value="${esc(F.buscar)}" autocomplete="off"></label>
-      <div class="selector" id="selProd">${selectorHTML()}</div></div>
-    <div class="total"><span>Total</span><span class="num" id="vTotal">${dinero(totalF())}</span></div>
-    <div class="campo"><span class="lbl">Forma de pago</span>${chipsF('pago', PAGOS)}</div>
-    ${campo('Nota (opcional)', 'nota')}`;
-  cargarFotos(cu);
+function pintarCarrito(){
+  const detalle = $('#detalleVenta');
+  const sc = detalle.scrollTop;
+  detalle.innerHTML = `${F.items.map((it, i) => `<div class="item-venta">
+      <span class="producto-carrito">${avatar(prodPorId(it.prod) || it, 'sm')}<span class="n">${esc(it.nombre)}</span></span><button type="button" class="x" data-act="vQuitar" data-i="${i}" aria-label="Quitar ${esc(it.nombre)}">${IC.x}</button>
+      <div class="ctl">
+        ${pasos('Cantidad', 'cant', '', i)}
+        <div class="campo"><label for="venta-precio-${i}">Precio c/u ($)</label><input id="venta-precio-${i}" type="text" inputmode="decimal" data-item="${i}" data-c="precio" value="${esc(it.precio)}"></div>
+      </div>
+      <span class="sub num" data-sub="${i}"></span></div>`).join('')}
+    <div class="campo"><span class="lbl">Forma de pago</span>
+      <div class="seg" role="group" aria-label="Forma de pago">${PAGOS.map(p => opcion('pagoVenta', p, p, F.pagoMarcado === p)).join('')}</div>
+      <label class="check"><input type="checkbox" id="pagoPendiente"${F.pago === 'Por cobrar' ? ' checked' : ''}> Queda pendiente</label>
+    </div>
+    ${campo('Nota (opcional)', 'nota', {area:true})}`;
+  detalle.scrollTop = sc;
+  $('#pagoPendiente').addEventListener('change', e => { F.pago = e.target.checked ? 'Por cobrar' : F.pagoMarcado; });
+  cargarFotos(detalle);
+  actualizarTotalesVenta();
+}
+function actualizarTotalesVenta(){
+  const n = F.items.length;
+  $('#resumenVenta').textContent = `Venta · ${n} ${n === 1 ? 'producto' : 'productos'}`;
+  $('#vTotal').textContent = dinero(totalF());
+  $$('[data-sub]', $('#detalleVenta')).forEach(e => {
+    const it = F.items[+e.dataset.sub];
+    e.textContent = dinero((num(it.cant) || 0) * (num(it.precio) || 0));
+  });
+  const cantidades = new Map(F.items.map(i => [i.prod, i.cant]));
+  for(const b of $$('[data-act="vAgregar"]', $('#selProd'))){
+    const cantidad = cantidades.get(b.dataset.id), etiqueta = $('.en-venta', b);
+    etiqueta.hidden = !cantidad;
+    etiqueta.textContent = cantidad ? cantidad + ' en la venta' : '';
+  }
+}
+function agregarALaVenta(id){
+  agregarItem(id);
+  pintarCarrito();
 }
 document.addEventListener('input', e => {
   const i = e.target.dataset && e.target.dataset.item;
   if(F && F.items && i !== undefined){ F.items[+i][e.target.dataset.c] = e.target.value; if(F.alItem) F.alItem(); }
 });
 async function guardarVenta(){
+  const formulario = F;
   if(!F.items.length){ toast('Agrega al menos un producto'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
   for(const it of F.items){ if(!(num(it.cant) > 0)){ toast('Revisa la cantidad de ' + it.nombre); return; } if(!(num(it.precio) >= 0)){ toast('Revisa el precio de ' + it.nombre); return; } }
   if(!F.pac.trim() && !(await confirmar('¿Guardar sin nombre?', 'No escribiste el nombre de la paciente. Así no sabrás después a quién se lo vendiste.', 'Guardar igual'))) return;
+  if(F !== formulario) return;
   // Avisar si se vende más de lo que hay
   const previo = F.id ? E.ventas.find(x => x.id === F.id) : null;
   const falta = F.items.filter(it => { const antes = previo ? (previo.items.find(x => x.prod === it.prod) || {cant:0}).cant : 0; return num(it.cant) > stockDe(it.prod) + antes; });
   if(falta.length && !(await confirmar('No alcanza el inventario', `Según la app no hay suficiente de: <b>${falta.map(i => esc(i.nombre)).join(', ')}</b>. Si sí lo tienes, guarda igual y luego corrige la cantidad con «Contar / corregir».`, 'Guardar igual'))) return;
+  if(F !== formulario) return;
   const items = F.items.map(it => ({prod:it.prod, nombre:it.nombre, cant:red(num(it.cant)), precio:red(num(it.precio)), costo:it.costo || 0}));
   const cobrado = F.pago !== 'Por cobrar';
   const pago = cobrado && previo && cap(previo.pago) === F.pago ? previo.pago : F.pago;
-  let v;
-  if(previo){
-    v = previo;
-    Object.assign(v, {pac:F.pac.trim(), tel:F.tel.trim(), fecha:F.fecha, items, cobrado, pago, nota:F.nota.trim()});
-    marcar(v);
-    for(const m of E.movs) if(m.venta === v.id && !m.borrado){ m.borrado = true; marcar(m); }
-  } else {
-    v = marcar({id:uid(), pac:F.pac.trim(), tel:F.tel.trim(), fecha:F.fecha, items, cobrado, pago, nota:F.nota.trim(), recordados:{}}, true);
-    E.ventas.push(v);
-  }
-  for(const it of items) E.movs.push(marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant, fecha:v.fecha, pac:v.pac, precio:it.precio, venta:v.id}, true));
-  completarPacientes();
-  if(!guardar()) return;
-  const nuevo = !F.id;
-  cerrarCapa(); refrescar();
-  toast(nuevo ? `Venta guardada · ${dinero(totalVenta(v))}` : 'Venta actualizada');
+  const base = previo || {id:uid(), recordados:{}};
+  const v = marcar({...base, pac:F.pac.trim(), tel:F.tel.trim(), fecha:F.fecha, items, cobrado, pago, nota:F.nota.trim()}, !previo);
+  const ventas = previo ? E.ventas.map(x => x === previo ? v : x) : [...E.ventas, v];
+  const movs = E.movs.map(m => m.venta === v.id && !m.borrado ? marcar({...m, borrado:true}) : m);
+  for(const it of items) movs.push(marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant, fecha:v.fecha, pac:v.pac, precio:it.precio, venta:v.id}, true));
+  const estado = {...E, ventas, movs, pacientes:[...E.pacientes]};
+  completarPacientes(estado);
+  if(!guardar(estado)) return;
+  await cerrarCapa();
+  refrescar();
+  toast(previo ? 'Venta actualizada' : `Venta guardada · ${dinero(totalVenta(v))}`);
 }
 async function borrarVenta(){
+  const formulario = F;
   const v = E.ventas.find(x => x.id === F.id); if(!v) return;
   if(!(await confirmar('¿Eliminar esta venta?', 'Los productos vuelven al inventario.', 'Eliminar', true))) return;
-  v.borrado = true; marcar(v);
-  for(const m of E.movs) if(m.venta === v.id && !m.borrado){ m.borrado = true; marcar(m); }
-  guardar(); cerrarCapa(); refrescar(); toast('Venta eliminada');
+  if(F !== formulario) return;
+  const borrados = guardarBorrado({ventas:[v], movs:vivos(E.movs).filter(m => m.venta === v.id)}, true);
+  if(!borrados) return;
+  await cerrarCapa();
+  refrescar();
+  avisarConDeshacer('Venta eliminada', borrados, false);
 }
 
 // ---------- Pacientes ----------
-function abrirPacientes(){
-  const d = abrirCapa('', {tipo:'pacientes'});
-  const pintar = q => {
-    const lista = pacientes().filter(p => !q || norm(p.nombre).includes(norm(q)));
-    $('#pacLista', d).innerHTML = lista.length ? lista.map(p => {
-      const vs = vivos(E.ventas).filter(v => norm(v.pac) === norm(p.nombre));
-      return `<button class="alerta" data-act="verPaciente" data-n="${esc(p.nombre)}"><span class="av sm">${esc(p.nombre[0].toUpperCase())}</span><div class="tx"><b>${esc(p.nombre)}</b><div class="d">${vs.length} ${vs.length===1?'compra':'compras'}${vs.length ? ' · última ' + esc(fCorta(vs.sort((a, b) => b.fecha.localeCompare(a.fecha))[0].fecha)) : ''}</div></div><span class="num" style="font-weight:800">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span></button>`;
-    }).join('') : '<div class="vacio">Todavía no hay pacientes. Aparecen solas cuando registras ventas.</div>';
-  };
-  d.innerHTML = cabecera('Pacientes') + `<div class="hoja-cuerpo"><div class="hoja-in"><label class="buscar">${IC.lupa}<input type="search" id="qPac" placeholder="Buscar paciente" autocomplete="off"></label><section class="card" style="gap:0" id="pacLista"></section></div></div>`;
-  pintar('');
-  $('#qPac', d).addEventListener('input', e => pintar(e.target.value));
+function vPacientes(){
+  return `<header class="top"><h1>Pacientes</h1></header>
+    ${buscador('Buscar paciente', {id:'qPac', valor:U.qPac})}
+    <div class="filas" id="pacLista">${filasPacientes(U.qPac)}</div>`;
+}
+function filasPacientes(q){
+  const lista = pacientes().filter(p => norm(p.nombre).includes(norm(q)));
+  if(!lista.length) return `<div class="vacio">${q ? 'No encontré pacientes con esa búsqueda.' : 'Todavía no hay pacientes. Aparecen solas cuando registras ventas.'}</div>`;
+  return lista.map(filaPaciente).join('');
+}
+function filaPaciente(p){
+  const vs = vivos(E.ventas).filter(v => norm(v.pac) === norm(p.nombre)).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const detalle = vs.length ? `${vs.length} ${vs.length === 1 ? 'compra' : 'compras'} · última ${fCorta(vs[0].fecha)}` : 'Sin compras';
+  return `<button class="fila-lista" data-act="verPaciente" data-n="${esc(p.nombre)}">${avatar(p, 'persona')}
+    <span class="tx"><b>${esc(p.nombre)}</b><span class="m">${esc(detalle)}</span></span><span class="num">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span></button>`;
 }
 function verPaciente(nombre){
   const d = abrirCapa('', {tipo:'paciente'});
@@ -836,11 +1103,11 @@ function pintarPaciente(d){
   const vs = vivos(E.ventas).filter(v => norm(v.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const usos = vivos(E.movs).filter(m => m.tipo === 'uso' && norm(m.pac) === k).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const tel = (vs.find(v => v.tel) || {}).tel || '';
-  d.innerHTML = cabecera(esc(n)) + `<div class="hoja-cuerpo"><div class="hoja-in">
+  d.innerHTML = cabecera(esc(n), '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
     <div class="cifras"><div class="cifra"><span class="v num">${dinero(vs.reduce((s, v) => s + totalVenta(v), 0))}</span><span class="l">${vs.length} ${vs.length===1?'compra':'compras'}</span></div>
       <div class="cifra"><span class="v num">${usos.length}</span><span class="l">Productos usados en tratamientos</span></div></div>
     ${tel ? `<a class="btn soft" href="${waLink(tel, 'Hola ' + n.split(' ')[0] + ', ')}" target="_blank" rel="noopener">Escribirle por WhatsApp</a>` : ''}
-    <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Compras</h3>${vs.length ? vs.map(v => `<button class="alerta" data-act="editarVenta" data-id="${v.id}"><div class="tx"><b>${esc(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(', '))}</b><div class="d">${esc(fDia(v.fecha))} ${v.fecha.slice(0, 4)}</div></div><span class="pill ${v.cobrado ? 'acc' : 'warn'} num">${dinero(totalVenta(v))}</span></button>`).join('') : '<div class="muted peq">Sin compras.</div>'}</section>
+    <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Compras</h3>${vs.length ? vs.map(v => `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(', '))}</b><div class="d">${esc(fDia(v.fecha))} ${v.fecha.slice(0, 4)}</div></div><span class="pill ${v.cobrado ? 'acc' : 'warn'} num">${dinero(totalVenta(v))}</span></button>`).join('') : '<div class="muted peq">Sin compras.</div>'}</section>
     ${usos.length ? `<section class="card" style="gap:0"><h3 style="margin-bottom:4px">Usado en sus tratamientos</h3>${usos.map(m => { const p = prodPorId(m.prod); return `<div class="mov"><span>${esc(p ? p.nombre : 'Producto borrado')}</span><span class="q num">${fCant(-m.cant)} ${esc(p ? p.unidad : '')}</span><span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}</span></div>`; }).join('')}</section>` : ''}
   </div></div>`;
 }
@@ -852,11 +1119,11 @@ function pintarCompras(d){
   const lista = paraPedir(), grupos = new Map();
   for(const x of lista){ const k = x.p.prov || ''; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); }
   let h = '';
-  if(!lista.length) h = '<div class="estado-ok"><span>✓</span><div>No hay nada por pedir. Todo tiene suficiente cantidad.</div></div>';
+  if(!lista.length) h = `<div class="estado-ok">${IC.check}<div>No hay nada por pedir. Todo tiene suficiente cantidad.</div></div>`;
   for(const [prov, xs] of grupos){
     const tel = (xs.find(x => x.p.telProv) || {p:{}}).p.telProv;
     h += `<section class="card" style="gap:0"><div class="card-cab" style="margin-bottom:6px"><h3>${esc(prov || 'Sin proveedor')}</h3>${tel ? `<a class="btn sm soft" href="${waLink(tel, textoPedido(xs))}" target="_blank" rel="noopener">Pedir</a>` : ''}</div>
-      ${xs.map(x => `<button class="alerta" data-act="verProd" data-id="${x.p.id}">${avatar(x.p, 'sm')}<div class="tx"><b>${esc(x.p.nombre)}</b><div class="d">${x.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · hay ${fCant(x.s)}</div></div><span class="pill gold">Pedir ${fCant(x.sug)}</span></button>`).join('')}</section>`;
+      ${xs.map(x => `<button class="alerta" data-act="verProd" data-id="${esc(x.p.id)}">${avatar(x.p, 'sm')}<div class="tx"><b>${esc(x.p.nombre)}</b><div class="d">${x.p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'} · hay ${fCant(x.s)}</div></div><span class="pill gold">Pedir ${fCant(x.sug)}</span></button>`).join('')}</section>`;
   }
   d.innerHTML = cabecera('Lista de compras') + `<div class="hoja-cuerpo"><div class="hoja-in">
     <div class="peq muted">Productos que se están terminando, con una cantidad sugerida para pedir (para unas semanas, según lo que usas o vendes).</div>${h}
@@ -867,6 +1134,37 @@ function textoPedido(xs){ return 'Hola, quisiera hacer un pedido:\n' + xs.map(x 
 async function compartirTexto(t){
   try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ if(e && e.name === 'AbortError') return; }
   try{ await navigator.clipboard.writeText(t); toast('Lista copiada. Pégala en WhatsApp.'); }catch(e){ toast('No se pudo compartir en este navegador'); }
+}
+
+// El buscador admite códigos guardados mientras se prepara la lectura con cámara.
+function abrirCodigo(modo){
+  const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
+    <span class="tirador" aria-hidden="true"></span><h3>Escanear</h3>
+    <div class="campo"><label for="codigoEscrito">Escribir el código a mano</label>
+      <input type="text" id="codigoEscrito" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+      <span class="ayuda error-codigo" id="errorCodigo" role="status"></span>
+    </div>
+    <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button><button class="btn" type="submit">Buscar código</button></div>
+  </form>`, {cls:'dlg-fondo', tipo:'codigo'});
+  const form = $('form', d), campo = $('#codigoEscrito', d), error = $('#errorCodigo', d);
+  campo.setAttribute('aria-describedby', error.id);
+  campo.addEventListener('input', () => { error.textContent = ''; campo.removeAttribute('aria-invalid'); });
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if(cierrePendiente) return;
+    const q = norm(campo.value);
+    const tipo = modo === 'vender' ? 'venta' : esInventario(modo) ? modo : undefined;
+    const p = q && productos(tipo).find(p => norm(p.codigo) === q);
+    if(!p){
+      campo.setAttribute('aria-invalid', 'true');
+      error.textContent = 'No encontré un producto con ese código.';
+      return;
+    }
+    await cerrarCapa();
+    if(modo === 'vender') agregarALaVenta(p.id);
+    else verProd(p.id);
+  });
+  d.addEventListener('click', e => { if(e.target === d) cerrarCapa(); });
 }
 
 // ---------- Compartir entre los dos celulares ----------
@@ -1037,11 +1335,12 @@ function abrirAjustes(){ const d = abrirCapa('', {tipo:'ajustes'}); pintarAjuste
 function pintarAjustes(d = capaArriba('ajustes')){
   if(!d) return;
   const cu = $('.hoja-cuerpo', d), sc = cu ? cu.scrollTop : 0;
+  const activo = document.activeElement;
   const badge = 'setAppBadge' in navigator;
   const permiso = window.Notification ? Notification.permission : 'no';
   d.innerHTML = cabecera('Ajustes') + `<div class="hoja-cuerpo"><div class="hoja-in">
     <section class="card"><h3>¿Quién usa este celular?</h3>
-      <div class="seg"><button class="${quien()==='Elba'?'on':''}" data-act="ponQuien" data-v="Elba">Elba</button><button class="${quien()==='Jonathan'?'on':''}" data-act="ponQuien" data-v="Jonathan">Jonathan</button></div>
+      <div class="seg" role="group" aria-label="Quién usa el celular">${['Elba', 'Jonathan'].map(n => opcion('ponQuien', n, n, quien() === n)).join('')}</div>
       <div class="peq muted">Cada venta y movimiento queda con el nombre de quien lo registró.</div></section>
     <section class="card"><h3>Datos de ejemplo</h3>
       <div class="peq">Agrega 104 productos con sus cantidades y fotos disponibles, precios de ejemplo y ventas y usos ficticios.</div>
@@ -1053,11 +1352,11 @@ function pintarAjustes(d = capaArriba('ajustes')){
       <div class="peq muted">Último envío: ${haceTxt(E.sync.envio)} · Último recibido: ${haceTxt(E.sync.recibo)}</div>
       <div class="peq muted">Ese mismo archivo es tu copia de seguridad: si se borra la app o cambias de celular, con «Recibir» vuelve todo.</div></section>
     <section class="card"><h3>Avisos</h3>
-      <div class="campo"><span class="lbl">Avisar del vencimiento con</span><div class="seg">${[30,60,90].map(n => `<button class="${E.ajustes.diasVence===n?'on':''}" data-act="diasVence" data-v="${n}">${n} días</button>`).join('')}</div></div>
+      <div class="campo"><span class="lbl">Avisar del vencimiento con</span><div class="seg" role="group" aria-label="Días de aviso">${[30,60,90].map(n => opcion('diasVence', n, n + ' días', E.ajustes.diasVence === n)).join('')}</div></div>
       ${badge ? (permiso === 'granted' ? '<div class="peq">✓ El ícono de la app muestra cuántos productos tienen avisos.</div>'
         : `<button class="btn sm soft" data-act="permisoBadge">Mostrar el número de avisos en el ícono</button><div class="peq muted">El celular te pedirá permiso de notificaciones; solo se usa para el número del ícono.</div>`)
-        : '<div class="peq muted">Los avisos aparecen al abrir la app, en Inicio y con un número rojo en las pestañas.</div>'}</section>
-    <section class="card"><h3>Apariencia</h3><div class="seg">${[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([v, n]) => `<button class="${E.ajustes.tema===v?'on':''}" data-act="aTema" data-v="${v}">${n}</button>`).join('')}</div></section>
+        : '<div class="peq muted">Los avisos aparecen al abrir la app, en Inicio y con un número rojo junto a Inventario.</div>'}</section>
+    <section class="card"><h3>Apariencia</h3><div class="seg" role="group" aria-label="Tema">${[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([v, n]) => opcion('aTema', v, n, E.ajustes.tema === v)).join('')}</div></section>
     <details class="card"><summary style="font-weight:800;cursor:pointer">Avanzado</summary>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
       <button class="btn ghost" data-act="actualizar">Actualizar la app ahora</button>
@@ -1067,6 +1366,7 @@ function pintarAjustes(d = capaArriba('ajustes')){
       <div class="peq muted" style="text-align:center">SPARATI · Inventario · versión ${VERSION_APP}</div></div></details>
   </div></div>`;
   $('.hoja-cuerpo', d).scrollTop = sc;
+  if(!activo.isConnected) enfocarControl(activo, d);
   const bt = $('#aBorrarTxt', d);
   bt.addEventListener('input', () => { $('#aBorrar', d).disabled = bt.value.trim().toUpperCase() !== 'BORRAR'; });
 }
@@ -1081,19 +1381,30 @@ function elegirQuien(){
 }
 function aplicarTema(){
   const v = E.ajustes.tema;
-  if(v === 'light' || v === 'dark') document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme;
+  const oscuro = v === 'dark' || (v !== 'light' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = oscuro ? 'dark' : 'light';
+}
+function seleccionarOpcion(b){
+  for(const opcion of $$('[aria-pressed]', b.parentElement)){
+    opcion.classList.toggle('on', opcion === b);
+    opcion.setAttribute('aria-pressed', String(opcion === b));
+  }
 }
 
 // ---------- Acciones ----------
 const ACT = {
-  tab(b){ U.tab = b.dataset.tab; window.scrollTo(0, 0); render(); },
+  tab(b){ irPantalla(b.dataset.tab); },
   cerrar(){ cerrarCapa(); },
-  fab(){ if(U.tab === 'ventas' || U.tab === 'inicio') formVenta(); else formProd(null, U.tab); },
   ajustes(){ abrirAjustes(); },
   nuevoProd(b){ formProd(null, b.dataset.tipo); },
   verProd(b){ verProd(b.dataset.id); },
   editarProd(b){ formProd(b.dataset.id); },
-  filtro(b){ U.filtro[U.tab] = b.dataset.f; render(); },
+  filtro(b){
+    U.filtro[U.tab] = b.dataset.v;
+    seleccionarOpcion(b);
+    pintarListaProductos();
+  },
+  escanear(b){ abrirCodigo(b.dataset.modo); },
   vender(b){ formVenta(null, b.dataset.id); },
   usar(b){ formUso(b.dataset.id); },
   usarRapido(b){ usarRapido(b.dataset.id); },
@@ -1103,12 +1414,22 @@ const ACT = {
   async borrarProd(b){
     const p = prodPorId(b.dataset.id);
     if(!(await confirmar('¿Eliminar producto?', `«${esc(p.nombre)}» se quita del inventario. Las ventas donde aparece se conservan.`, 'Eliminar', true))) return;
-    p.borrado = true; marcar(p); guardar(); cerrarCapa(); refrescar(); toast('Producto eliminado');
+    const borrados = guardarBorrado({productos:[p]}, true);
+    if(!borrados) return;
+    await cerrarCapa();
+    refrescar();
+    avisarConDeshacer('Producto eliminado', borrados, false);
   },
   compras(){ abrirCompras(); },
   compartirCompras(){ compartirTexto('🛒 Lista de compras SPARATI\n' + paraPedir().map(x => `• ${x.p.nombre}${x.p.marca ? ' (' + x.p.marca + ')' : ''}: pedir ${fCant(x.sug)} ${x.p.unidad} (hay ${fCant(x.s)})${x.p.prov ? ' — ' + x.p.prov : ''}`).join('\n')); },
   // Formularios
-  guardarF(){ if(F && F.guardar) F.guardar(); },
+  async guardarF(){
+    const form = F;
+    if(!form || form.guardando || cierrePendiente) return;
+    form.guardando = true;
+    try{ await form.guardar(); }
+    finally{ form.guardando = false; }
+  },
   fChip(b){
     const f = b.dataset.f, v = b.dataset.v;
     F[f] = (f === 'cat' && F[f] === v) ? '' : v;
@@ -1116,10 +1437,10 @@ const ACT = {
     repintar();
   },
   paso(b){
-    const f = b.dataset.f, d = Number(b.dataset.d), v = num(F[f]);
-    F[f] = fCant(Math.max(0, (isFinite(v) ? v : 0) + d));
-    const inp = $(`input[data-f="${f}"]`); if(inp) inp.value = F[f];
-    if(F.alCambiar) F.alCambiar(f, inp);
+    const inp = $('input', b.closest('.paso'));
+    const v = num(inp.value), d = Number(b.dataset.d);
+    inp.value = fCant(Math.max(0, (isFinite(v) ? v : 0) + d));
+    inp.dispatchEvent(new Event('input', {bubbles:true}));
   },
   async nuevaCat(){
     const n = prompt('Nombre de la nueva categoría:');
@@ -1130,8 +1451,22 @@ const ACT = {
   },
   fFoto(){ const i = $('#inFoto'); i.value = ''; i.click(); },
   fSinFoto(){ if(F.fotoNueva){ FDB.del(F.fotoNueva).catch(() => {}); F.fotoNueva = null; } F.foto = ''; repintar(); },
-  vAgregar(b){ agregarItem(b.dataset.id); F.buscar = ''; repintar(); },
-  vQuitar(b){ F.items.splice(+b.dataset.i, 1); repintar(); },
+  vAgregar(b){ agregarALaVenta(b.dataset.id); },
+  vQuitar(b){
+    F.items.splice(+b.dataset.i, 1);
+    pintarCarrito();
+    $('.resumen-venta').focus({preventScroll:true});
+  },
+  verCarrito(b){
+    const detalle = $('#detalleVenta');
+    detalle.hidden = !detalle.hidden;
+    b.setAttribute('aria-expanded', String(!detalle.hidden));
+  },
+  pagoVenta(b){
+    F.pagoMarcado = b.dataset.v;
+    if(!$('#pagoPendiente').checked) F.pago = F.pagoMarcado;
+    seleccionarOpcion(b);
+  },
   editarVenta(b){ formVenta(b.dataset.id); },
   borrarVenta(){ borrarVenta(); },
   mes(b){
@@ -1139,7 +1474,6 @@ const ACT = {
     const nm = iso(d).slice(0, 7); if(nm > hoyISO().slice(0, 7)) return;
     U.mes = nm; render();
   },
-  pacientes(){ abrirPacientes(); },
   verPaciente(b){ verPaciente(b.dataset.n); },
   recompra(b){
     const v = E.ventas.find(x => x.id === b.dataset.v), p = prodPorId(b.dataset.p);
@@ -1178,7 +1512,7 @@ const ACT = {
 
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
-  if(!b || b.disabled) return;
+  if(!b || b.disabled || cierrePendiente) return;
   const f = ACT[b.dataset.act];
   if(f){ if(b.tagName === 'BUTTON') e.preventDefault(); f(b, e); }
 });
@@ -1198,6 +1532,11 @@ cargar();
 aplicarTema();
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); }catch(e){}
 if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', aplicarTema);
+history.scrollRestoration = 'manual';
+U.tab = pantallaDeURL();
+if(esInventario(U.tab)) U.tipo = U.tab;
+history.replaceState(null, '', urlPantalla(U.tab));
+prepararNav();
 render();
 if(!quien()) elegirQuien();
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && !pila.length) render(); });
