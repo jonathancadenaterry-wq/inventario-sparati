@@ -266,6 +266,71 @@ svg.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;st
 .det-stock .u{color:var(--tenue);font-weight:700}
 .avisos-producto{justify-content:center}
 .avisos-producto .pill{white-space:normal;text-align:center}
+
+/* Ficha de producto para vender */
+.ficha-venta>.nav{position:relative;flex:none}
+.ficha-venta .hoja-cuerpo{scroll-padding-bottom:30px}
+.ficha-venta-portada{position:relative;max-width:600px;margin:0 auto}
+.av.foto-ficha{width:100%;height:188px;border-radius:0 0 30px 30px;font-size:56px}
+.av.foto-ficha.con-foto:has(img){height:clamp(230px, 84.62vw, 330px)}
+.foto-ficha img{object-position:center 25%}
+.ficha-venta-controles{position:absolute;top:20px;left:var(--margen-izq);right:var(--margen-der);display:flex;justify-content:space-between}
+.ficha-venta-contenido{gap:16px;padding-top:20px;padding-bottom:44px}
+.ficha-venta-cab{display:flex;flex-direction:column;gap:8px;overflow-wrap:anywhere}
+.ficha-venta-cab h1{margin:0;font:600 26px/1.15 var(--serif)}
+.ficha-venta-cab p{font-size:14px;color:var(--tenue);margin:0}
+.ficha-venta-cab .pill{white-space:normal}
+.stock-ficha{--color-stock:var(--bien);gap:12px}
+.stock-ficha.bad{--color-stock:var(--mal)}
+.stock-ficha.warn{--color-stock:var(--atencion)}
+.stock-ficha .det-stock{justify-content:flex-start;flex-wrap:wrap;padding:4px 0 0}
+.stock-ficha .q{color:var(--color-stock);line-height:1.18;overflow-wrap:anywhere;font-variant-numeric:lining-nums tabular-nums}
+.stock-ficha .u{font-weight:400}
+.stock-ficha .det-stock .pill{margin-left:auto}
+.barra-stock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.barra-stock span{height:10px;border-radius:6px;background:var(--hundido)}
+.barra-stock .lleno{background:var(--color-stock)}
+.stock-ficha p{margin:0;font-size:14px}
+.avisos-fecha-ficha .pill{white-space:normal}
+.acciones-ficha{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) 52px;gap:10px}
+.acciones-ficha .btn{min-height:52px;padding:8px 6px;font-weight:600;gap:6px}
+.acciones-ficha .ico{width:20px;height:20px}
+.acciones-ficha .btn.ghost{background:var(--superficie);color:var(--marca)}
+.acciones-ficha .btn.ghost .ico{width:22px;height:22px}
+.precios-ficha{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.precios-ficha .cifra{padding:12px;gap:4px;border-radius:var(--radio-tarjeta)}
+.precios-ficha .v{font-variant-numeric:lining-nums tabular-nums}
+.precios-ficha .ganancia{color:var(--bien-contraste)}
+.precios-ficha .ganancia.negativa{color:var(--mal)}
+.precios-ficha .porcentaje{font-size:12px;font-weight:600}
+.datos-ficha{padding:4px 16px;gap:0}
+.dato-ficha{display:grid;grid-template-columns:40px auto minmax(0,1fr);align-items:center;gap:12px;padding:14px 0;font-size:14px;color:var(--tenue);text-align:left;overflow-wrap:anywhere}
+button.dato-ficha{background:none;border:0;border-radius:10px}
+.dato-ficha+.dato-ficha{border-top:1px solid var(--linea)}
+.dato-ico{width:40px;height:40px;border-radius:14px;background:var(--marca-suave);color:var(--marca);display:grid;place-items:center}
+.dato-ficha b{color:var(--tinta);text-align:right;font-weight:600}
+.dato-ficha .por-asignar{color:var(--marca)}
+.historial-ficha{display:grid;gap:16px;margin-top:6px}
+.linea-tiempo{margin:0;padding:18px 16px 4px;gap:0;list-style:none}
+.paso-historial{position:relative;display:grid;gap:2px;margin-left:5px;padding:0 0 16px 18px;line-height:1.35;overflow-wrap:anywhere}
+.paso-historial::before{content:"";position:absolute;left:0;top:5px;bottom:-5px;width:2px;background:var(--linea)}
+.paso-historial:last-child::before{bottom:0}
+.paso-historial::after{content:"";position:absolute;width:12px;height:12px;left:-5px;top:4px;background:var(--tenue);border-radius:50%}
+.paso-historial[data-mov="venta"]::after{background:var(--marca)}
+.paso-historial[data-mov="entrada"]::after{background:var(--bien)}
+.paso-historial time{font-size:12px;font-weight:600;color:var(--tenue)}
+.paso-historial b{font-size:14px;font-weight:600}
+.paso-historial p{margin:0;font-size:13px;color:var(--tenue)}
+.otros-datos-ficha{gap:4px}
+.bloqueo.ficha-abierta .toast{bottom:calc(env(safe-area-inset-bottom) + var(--alto-nav) + 34px)}
+
+.visor-codigo{position:relative;overflow:hidden;border-radius:var(--radio-tarjeta);background:#17121A;aspect-ratio:4 / 3}
+.visor-codigo video{width:100%;height:100%;display:block;object-fit:cover}
+.visor-codigo::after{content:"";position:absolute;inset:32% 9%;border:2px solid #fff;border-radius:12px;box-shadow:0 0 0 300px #0005;pointer-events:none}
+.asignar-codigo p{margin:0}
+.asignar-codigo .error-codigo{color:var(--mal);margin:0}
+.asignar-codigo .error-codigo:empty{display:none}
+
 .mensaje-recordatorio{margin:0;overflow-wrap:anywhere}
 .acc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .acc-grid .btn{padding-inline:12px;gap:6px}
@@ -298,6 +363,7 @@ textarea{min-height:76px;resize:vertical}
 .paso button{width:44px;height:44px;border:1px solid var(--linea);border-radius:10px;background:var(--superficie);color:var(--tinta);display:grid;place-items:center;padding:0;flex:none}
 .paso button .ico{width:18px;height:18px}
 .paso input{border:0;border-radius:8px;text-align:center;font-weight:700;font-size:16px;padding:10px 0}
+.paso input:focus-visible{outline-offset:-3px}
 .foto-campo{display:flex;align-items:center;gap:14px}
 .acciones-foto{display:flex;flex-wrap:wrap;gap:8px}
 .form-producto #margen:empty{display:none}
@@ -344,4 +410,5 @@ textarea{min-height:76px;resize:vertical}
 @media (max-width:340px){
   .inventario-cab{gap:8px;flex-wrap:wrap}
   .form-producto .fila2{grid-template-columns:minmax(0,1fr)}
+  .acciones-ficha .btn{font-size:13px}
 }

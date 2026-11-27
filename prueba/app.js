@@ -17,10 +17,11 @@ const CATS = {
 };
 const UNIDADES = ['unidades','frascos','cajas','ampollas','jeringas','sobres','ml','g','pares','paquetes'];
 const PAGOS = ['Efectivo','Transferencia','Tarjeta'];
-const MOTIVOS = ['Conteo','Vencido','Dañado','Muestra o regalo','Otro'];
+const MOTIVOS = {conteo:'Conteo', dañado:'Se dañó', vencido:'Se venció', regalo:'Regalo', otro:'Otro'};
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const barraPrincipal = $('.nav');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const ahora = () => Date.now();
@@ -291,8 +292,16 @@ const pila = [];
 let idCapa = 0, resolverCierre, cierrePendiente;
 function activarCapa(){
   const activa = pila.at(-1)?.el;
-  $('#app').inert = $('.nav').inert = Boolean(activa);
+  const fichaVenta = activa?.classList.contains('ficha-venta');
+  $('#app').inert = Boolean(activa);
+  barraPrincipal.inert = Boolean(activa) && !fichaVenta;
+  if(fichaVenta){
+    if(barraPrincipal.parentElement !== activa) activa.append(barraPrincipal);
+  }
+  else if(barraPrincipal.parentElement !== document.body) $('#capas').before(barraPrincipal);
   document.body.classList.toggle('bloqueo', Boolean(activa));
+  document.body.classList.toggle('ficha-abierta', Boolean(fichaVenta));
+  marcarPestanaPrincipal();
   for(const {el} of pila) el.inert = el !== activa;
 }
 function enfocarControl(anterior, raiz){
@@ -326,11 +335,11 @@ function abrirCapa(html, op = {}){
   });
   return d;
 }
-function cerrarCapa(){
+function cerrarCapa(cantidad = 1){
   if(!pila.length || pila.at(-1).fija) return Promise.resolve();
   if(!cierrePendiente){
     cierrePendiente = new Promise(res => { resolverCierre = res; });
-    history.back();
+    history.go(-cantidad);
   }
   return cierrePendiente;
 }
@@ -390,8 +399,8 @@ function toast(msg, accion){
   clearTimeout(tToast);
   tToast = setTimeout(() => { t.hidden = true; }, accion ? 5000 : 3400);
 }
-function guardarBorrado(registrosPorLista, borrado){
-  const estado = {...E}, actualizados = {};
+function guardarBorrado(registrosPorLista, borrado, productos = E.productos){
+  const estado = {...E, productos}, actualizados = {};
   for(const [lista, registros] of Object.entries(registrosPorLista)){
     const vigentes = new Set(E[lista]);
     if(registros.some(r => !vigentes.has(r))){
@@ -404,9 +413,9 @@ function guardarBorrado(registrosPorLista, borrado){
   }
   return guardar(estado) ? actualizados : null;
 }
-function avisarConDeshacer(mensaje, registrosPorLista, borrado){
+function avisarConDeshacer(mensaje, registrosPorLista, borrado, restaurarProductos){
   toast(mensaje, () => {
-    if(!guardarBorrado(registrosPorLista, borrado)) return;
+    if(!guardarBorrado(registrosPorLista, borrado, restaurarProductos?.())) return;
     refrescar();
     toast('Listo, se deshizo');
   });
@@ -474,13 +483,24 @@ function irPantalla(tab){
 }
 function prepararNav(){
   const boton = (tab, ico, texto, indicador = '') => `<button data-act="tab" data-tab="${tab}">${IC[ico]}<span>${texto}</span>${indicador}</button>`;
-  $('.nav').innerHTML = `<div class="nav-in">
+  barraPrincipal.innerHTML = `<div class="nav-in">
     ${boton('inicio', 'inicio', 'Inicio')}
     ${boton('inventario', 'inventario', 'Inventario', '<span class="punto" id="avisosInventario" aria-hidden="true" hidden></span>')}
     <button class="nav-vender" data-act="vender"><span class="circulo">${IC.bolsa}</span><span>Vender</span></button>
     ${boton('pacientes', 'pacientes', 'Pacientes')}
     ${boton('ventas', 'reportes', 'Reportes')}
   </div>`;
+}
+function marcarPestanaPrincipal(){
+  const enFicha = barraPrincipal.closest('.ficha-venta');
+  const principal = enFicha || esInventario(U.tab) ? 'inventario' : U.tab;
+  const venta = $('.nav-vender', barraPrincipal);
+  if(enFicha) venta?.setAttribute('aria-label', 'Vender otros productos');
+  else venta?.removeAttribute('aria-label');
+  for(const b of $$('[data-tab]', barraPrincipal)){
+    if(b.dataset.tab === principal) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
 }
 function buscador(texto, {id = '', valor = '', campo = '', escaneo = ''} = {}){
   return `<div class="buscador"><label class="buscar">${IC.lupa}<input type="search" ${id ? `id="${id}"` : ''} ${campo ? `data-f="${campo}"` : ''} aria-label="${texto}" placeholder="${texto}" value="${esc(valor)}" autocomplete="off"></label>
@@ -496,11 +516,7 @@ function render(){
   const tira = $('.filtros-inventario', app);
   const posicionFiltros = tira?.scrollLeft;
   app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vVentas() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
-  const principal = esInventario(U.tab) ? 'inventario' : U.tab;
-  for(const b of $$('.nav [data-tab]')){
-    if(b.dataset.tab === principal) b.setAttribute('aria-current', 'page');
-    else b.removeAttribute('aria-current');
-  }
+  marcarPestanaPrincipal();
   const lista = $('#listaProd', app);
   prepararFotosInventario(lista);
   if(!lista) cargarFotos(app);
@@ -916,20 +932,118 @@ function pintarProd(d){
   const p = prodPorId(d.dataset.id);
   if(!p || p.borrado){ cerrarCapa(); return; }
   const scroll = $('.hoja-cuerpo', d)?.scrollTop || 0;
-  const accion = d.contains(document.activeElement) ? document.activeElement.dataset.act : '';
-  calcular();
+  const foco = d.contains(document.activeElement) ? document.activeElement : null;
   const s = stockDe(p.id), avs = avisosDe(p), c = CONSUMO.get(p.id);
-  const movs = vivos(E.movs).filter(m => m.prod === p.id).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
-  const datos = [];
-  if(p.tipo === 'venta'){
-    if(p.precio) datos.push(['Precio de venta', dinero(p.precio)]);
-    if(p.costo) datos.push(['Costo', dinero(p.costo)]);
-    if(p.precio && p.costo) datos.push(['Ganancia por unidad', dinero(p.precio - p.costo) + ' (' + Math.round((p.precio - p.costo) / p.precio * 100) + ' %)']);
-    if(p.duraPac) datos.push(['A la paciente le dura', 'unos ' + p.duraPac + ' días']);
-  } else {
-    if(p.costo) datos.push(['Costo', dinero(p.costo) + ' por ' + singular(p.unidad)]);
-    if(p.gasto) datos.push(['Gasto por tratamiento', fCant(p.gasto) + ' ' + uTxt(p.gasto, p.unidad)]);
+  const movs = vivos(E.movs).filter(m => m.prod === p.id).reverse().sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
+  d.classList.toggle('ficha-venta', p.tipo === 'venta');
+  d.innerHTML = p.tipo === 'venta' ? fichaVenta(p, s, avs, c, movs) : fichaCabina(p, s, avs, c, movs);
+  d.setAttribute('aria-label', p.nombre);
+  if(pila.at(-1)?.el === d) activarCapa();
+  cargarFotos(d);
+  $('.hoja-cuerpo', d).scrollTop = scroll;
+  enfocarControl(foco, d);
+}
+function fichaVenta(p, s, avisos, consumo, movs){
+  const id = esc(p.id), [nombre, ...presentacion] = p.nombre.split(' · ');
+  const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
+  const stock = avisos.find(a => a.clase === 'stock');
+  const nivel = stock?.nivel || 'ok';
+  const estado = s <= 0 ? 'Agotado' : stock ? 'Por terminarse' : 'Disponible';
+  const escala = p.max > 0 ? p.max : Math.max(5, 2 * (p.min || 0) + 1);
+  const llenos = Math.max(0, Math.min(5, Math.ceil(5 * s / escala)));
+  const dias = consumo && Math.max(1, Math.round(s / consumo));
+  const prediccion = s > 0 && consumo ?
+    `Vendes unos <b>${fCant(consumo * 30)} al mes</b> y se acabaría en <b>~${dias} ${dias === 1 ? 'día' : 'días'}</b>.` :
+    s > 0 ? 'Con más ventas podremos estimar cuánto durará.' : '';
+  const avisoMin = p.min > 0 ? `Te aviso cuando ${p.min === 1 ? 'quede' : 'queden'} ${fCant(p.min)}.` : '';
+  const caducidad = p.vence ? aFecha(p.vence) : null;
+  const vence = caducidad ? `<time datetime="${esc(p.vence)}" title="${esc(fCorta(p.vence))}">${MESES_C[caducidad.getMonth()]} ${caducidad.getFullYear()}</time>` : '';
+  const lote = p.lote ? `lote ${esc(p.lote)}` : '';
+  const ventas = new Map(vivos(E.ventas).filter(v => v.items.some(i => i.prod === p.id)).map(v => [v.id, v]));
+  const compradoras = new Set([...ventas.values()].map(v => norm(v.pac)).filter(Boolean));
+  for(const m of movs) if(m.tipo === 'venta' && !m.venta && norm(m.pac)) compradoras.add(norm(m.pac));
+  const costo = p.costo || 0, precio = p.precio || 0;
+  const margen = precio > 0 && costo > 0 ? red(precio - costo) : null;
+  const datos = [
+    p.duraPac && ['A la paciente le dura', `Unos ${p.duraPac} días`],
+    p.pao && ['Dura abierto', `${p.pao} ${p.pao === 1 ? 'mes' : 'meses'}`],
+    p.abierto && ['Se abrió', fCorta(p.abierto)],
+    p.prov && ['Proveedor', [p.prov, p.telProv].filter(Boolean).join(' · ')],
+    p.notas && ['Notas', p.notas],
+  ].filter(Boolean);
+  return `<div class="hoja-cuerpo"><div class="ficha-venta-portada">
+    ${avatar(p, `foto-ficha${p.foto ? ' con-foto' : ''}`)}
+    <div class="ficha-venta-controles"><button class="icon-btn" data-act="cerrar" aria-label="Volver">${IC.volver}</button>
+      <button class="icon-btn" data-act="editarProd" data-id="${id}" aria-label="Editar producto">${IC.lapiz}</button></div>
+    </div><div class="hoja-in ficha-venta-contenido">
+    <header class="ficha-venta-cab"><div class="chips"><span class="pill acc">Para vender</span>${p.cat ? `<span class="pill gold">${esc(p.cat)}</span>` : ''}</div>
+      <h1>${titulo}</h1>${p.marca || presentacion.length ? `<p>${esc([p.marca, ...presentacion].filter(Boolean).join(' · '))}</p>` : ''}</header>
+    <section class="card stock-ficha ${nivel}" aria-label="Existencias">
+      <div class="det-stock"><span class="q num">${fCant(s)}</span><span class="u">${p.unidad && p.unidad !== 'unidades' ? esc(uTxt(s, p.unidad)) + ' ' : ''}en stock</span><span class="pill ${nivel}">${estado}</span></div>
+      <div class="barra-stock" aria-hidden="true">${'<span class="lleno"></span>'.repeat(llenos)}${'<span></span>'.repeat(5 - llenos)}</div>
+      ${prediccion || avisoMin ? `<p>${prediccion} ${avisoMin}</p>` : ''}
+      ${avisos.some(a => a.clase === 'fecha') ? `<div class="chips avisos-fecha-ficha">${avisos.filter(a => a.clase === 'fecha').map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : ''}
+    </section>
+    <div class="acciones-ficha" role="group" aria-label="Acciones del producto">
+      <button class="btn" data-act="vender" data-id="${id}">${IC.bolsa} Vender</button>
+      <button class="btn soft" data-act="entrada" data-id="${id}">${IC.entrada} Llegó más</button>
+      <button class="btn ghost" data-act="ajuste" data-id="${id}" aria-label="Ajustar cantidad">${IC.ajustes}</button>
+    </div>
+    <div class="precios-ficha" role="group" aria-label="Precios del producto">
+      <div class="cifra"><span class="l">Precio</span><b class="v num">${precio ? dinero(precio) : '—'}</b></div>
+      <div class="cifra"><span class="l">Costo</span><b class="v num">${costo ? dinero(costo) : '—'}</b></div>
+      <div class="cifra ganancia${margen < 0 ? ' negativa' : ''}"><span class="l">Ganancia</span><b class="v num">${margen === null ? '—' : dinero(margen)}</b>
+        ${margen === null ? '' : `<span class="porcentaje">${Math.round(margen / precio * 100)} %</span>`}</div>
+    </div>
+    <section class="card datos-ficha" aria-label="Datos del producto">
+      <button class="dato-ficha" data-act="asignarCodigo" data-id="${id}"><span class="dato-ico">${IC.escaneo}</span><span>Código de barras</span>
+        <b class="${p.codigo ? '' : 'por-asignar'}">${p.codigo ? 'Asignado' : 'Asignar con la cámara'}</b></button>
+      <div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Vence</span><b>${[vence || 'Sin fecha', lote].filter(Boolean).join(' · ')}</b></div>
+      <div class="dato-ficha"><span class="dato-ico">${IC.pacientes}</span><span>Lo compran</span><b>${compradoras.size} ${compradoras.size === 1 ? 'paciente' : 'pacientes'}</b></div>
+    </section>
+    <section class="historial-ficha" aria-labelledby="historialProducto"><h2 class="titulo-seccion" id="historialProducto">Historial</h2>
+      ${movs.length ? `<ol class="card linea-tiempo" role="list">${movs.map(m => filaHistorial(m, ventas.get(m.venta))).join('')}</ol>` : '<div class="card muted">Aún no hay movimientos.</div>'}</section>
+    ${datos.length || p.telProv ? `<section class="card otros-datos-ficha"><h3>Otros datos</h3>
+      ${datos.map(([etiqueta, valor]) => `<div class="dato"><span>${esc(etiqueta)}</span><span>${esc(valor)}</span></div>`).join('')}
+      ${p.telProv ? `<a class="btn soft" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">Pedir al proveedor por WhatsApp</a>` : ''}
+    </section>` : ''}
+    ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${id}">Lo abrí hoy</button>` : ''}
+    <button class="btn danger full" data-act="borrarProd" data-id="${id}">Eliminar producto</button>
+  </div></div>`;
+}
+function filaHistorial(m, venta){
+  const cant = fCant(Math.abs(m.cant));
+  const cambio = m.cant > 0 ? '+' + cant : m.cant < 0 ? '− ' + cant : 'Sin diferencia';
+  const motivo = norm(m.motivo);
+  const nombre = m.pac || venta?.pac;
+  let titulo, detalle;
+  switch(m.tipo){
+    case 'venta':
+      titulo = nombre ? `Venta a ${nombre}` : 'Venta';
+      detalle = [cambio, m.precio != null ? dinero(m.precio) + (m.cant < -1 ? ' c/u' : '') : '', venta?.pago ? cap(venta.pago) : ''];
+      break;
+    case 'entrada':
+      titulo = `${m.cant === 1 ? 'Llegó' : 'Llegaron'} ${cant}`;
+      detalle = [m.costo > 0 ? `Costo ${dinero(m.costo)} c/u` : ''];
+      break;
+    case 'ajuste':
+      titulo = motivo === 'conteo' ? 'Conteo de inventario' : 'Ajuste de inventario';
+      detalle = [cambio, motivo === 'conteo' ? '' : etiquetaMotivo(m.motivo)];
+      break;
+    case 'inicial': titulo = 'Cantidad inicial'; detalle = [cant]; break;
+    case 'uso': titulo = 'Uso en tratamiento'; detalle = [cambio, m.trat]; break;
+    case 'apertura': titulo = 'Abrí uno nuevo'; detalle = []; break;
+    default: titulo = m.tipo; detalle = [cambio];
   }
+  detalle.push(m.nota, m.por);
+  return `<li class="paso-historial" data-mov="${esc(m.tipo)}"><time datetime="${esc(m.fecha)}">${esc(fCorta(m.fecha))}</time>
+    <b>${esc(titulo)}</b>${detalle.some(Boolean) ? `<p>${esc(detalle.filter(Boolean).join(' · '))}</p>` : ''}</li>`;
+}
+const etiquetaMotivo = motivo => Object.hasOwn(MOTIVOS, motivo) ? MOTIVOS[motivo] : motivo;
+function fichaCabina(p, s, avs, c, movs){
+  const datos = [];
+  if(p.costo) datos.push(['Costo', dinero(p.costo) + ' por ' + singular(p.unidad)]);
+  if(p.gasto) datos.push(['Gasto por tratamiento', fCant(p.gasto) + ' ' + uTxt(p.gasto, p.unidad)]);
   datos.push(['Avisar cuando queden', p.min ? fCant(p.min) + ' ' + uTxt(p.min, p.unidad) : 'No configurado']);
   if(c) datos.push(['Gasto promedio', fCant(c * 30) + ' ' + (p.unidad || '') + ' al mes']);
   if(p.vence) datos.push(['Vence', fCorta(p.vence)]);
@@ -940,26 +1054,23 @@ function pintarProd(d){
   const etiqueta = {inicial:'Cantidad inicial', entrada:'Llegó', venta:'Venta', uso:'Uso en tratamiento', ajuste:'Ajuste', apertura:'Abrí uno nuevo'};
   const [nombre, ...presentacion] = p.nombre.split(' · ');
   const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
-  d.innerHTML = cabecera(titulo, `<button class="icon-btn" data-act="editarProd" data-id="${esc(p.id)}" aria-label="Editar producto">${IC.lapiz}</button>`, true) + `<div class="hoja-cuerpo"><div class="hoja-in">
+  return cabecera(titulo, `<button class="icon-btn" data-act="editarProd" data-id="${esc(p.id)}" aria-label="Editar producto">${IC.lapiz}</button>`, true) + `<div class="hoja-cuerpo"><div class="hoja-in">
     <div class="det-cab">${avatar(p, 'xl')}<div><div class="muted">${esc([p.marca, ...presentacion, p.cat].filter(Boolean).join(' · '))}</div>
-      <div class="chips" style="margin-top:6px"><span class="pill ${p.tipo === 'venta' ? 'acc' : 'gold'}">${p.tipo === 'venta' ? 'Para vender' : 'Uso en spa'}</span></div></div></div>
+      <div class="chips" style="margin-top:6px"><span class="pill gold">Uso en spa</span></div></div></div>
     <section class="card"><div class="det-stock"><span class="q num" style="color:${avs.some(a => a.clase==='stock' && a.nivel==='bad') ? 'var(--mal)' : avs.some(a => a.clase==='stock') ? 'var(--atencion)' : 'inherit'}">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))}</span></div>
       ${avs.length ? `<div class="chips avisos-producto">${avs.map(a => `<span class="pill ${a.nivel}">${esc(textoAviso(a))}</span>`).join('')}</div>` : `<div class="chips" style="justify-content:center"><span class="pill ok">${IC.check} Sin avisos</span></div>`}
-      <div class="acc-grid">${p.tipo === 'venta' ? `<button class="btn" data-act="vender" data-id="${esc(p.id)}">${IC.bolsa} Vender</button>` : `<button class="btn" data-act="usarRapido" data-id="${esc(p.id)}">${IC.gota} Usar ${fCant(p.gasto > 0 ? p.gasto : 1)} ${esc(uTxt(p.gasto > 0 ? p.gasto : 1, p.unidad))}</button>`}
+      <div class="acc-grid"><button class="btn" data-act="usarRapido" data-id="${esc(p.id)}">${IC.gota} Usar ${fCant(p.gasto > 0 ? p.gasto : 1)} ${esc(uTxt(p.gasto > 0 ? p.gasto : 1, p.unidad))}</button>
         <button class="btn gold" data-act="entrada" data-id="${esc(p.id)}">${IC.entrada} Llegó más</button>
         <button class="btn ghost" data-act="ajuste" data-id="${esc(p.id)}">Contar / corregir</button>
-        ${p.tipo === 'uso' ? `<button class="btn ghost" data-act="usar" data-id="${esc(p.id)}">Otra cantidad</button>` : ''}
+        <button class="btn ghost" data-act="usar" data-id="${esc(p.id)}">Otra cantidad</button>
         ${p.pao ? `<button class="btn ghost" data-act="abrirHoy" data-id="${esc(p.id)}">Lo abrí hoy</button>` : ''}</div>
       ${p.telProv ? `<a class="btn soft" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">Pedir al proveedor por WhatsApp</a>` : ''}</section>
     <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Datos</h3>${datos.map(x => `<div class="dato"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}
       ${p.notas ? `<div class="dato"><span>Notas</span><span style="font-weight:500">${esc(p.notas)}</span></div>` : ''}</section>
     <section class="card" style="gap:0"><h3 style="margin-bottom:4px">Movimientos</h3>${movs.length ? movs.slice(0, 60).map(m => `<div class="mov"><span>${esc(etiqueta[m.tipo] || m.tipo)}${m.pac ? ' · ' + esc(m.pac) : ''}</span><span class="q num ${m.cant >= 0 ? 'mas' : 'menos'}">${m.cant >= 0 ? '+' : '−'}${fCant(Math.abs(m.cant))}</span>
-      <span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.motivo ? ' · ' + esc(m.motivo) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}${m.por ? ' · ' + esc(m.por) : ''}</span></div>`).join('') : '<div class="muted peq">Sin movimientos.</div>'}</section>
+      <span class="s">${esc(fCorta(m.fecha))}${m.trat ? ' · ' + esc(m.trat) : ''}${m.motivo ? ' · ' + esc(etiquetaMotivo(m.motivo)) : ''}${m.nota ? ' · ' + esc(m.nota) : ''}${m.por ? ' · ' + esc(m.por) : ''}</span></div>`).join('') : '<div class="muted peq">Sin movimientos.</div>'}</section>
     <button class="btn danger full" data-act="borrarProd" data-id="${esc(p.id)}">Eliminar producto</button>
   </div></div>`;
-  cargarFotos(d);
-  $('.hoja-cuerpo', d).scrollTop = scroll;
-  if(accion) $(`[data-act="${accion}"]`, d)?.focus({preventScroll:true});
 }
 function waLink(tel, texto){
   let t = String(tel || '').replace(/\D/g, '');
@@ -1123,7 +1234,8 @@ function formEntrada(id){
   const p = prodPorId(id);
   F = {prod:id, cant:'1', costo:dineroIn(p.costo), fecha:hoyISO(), vence:'', lote:'', nota:'', guardar:guardarEntrada};
   hojaForm('Llegó más · ' + esc(p.nombre), 'form', () => {
-    $('#fCuerpo').innerHTML = `<div class="peq muted">Ahora hay <b>${fCant(stockDe(id))} ${esc(p.unidad)}</b>.</div>
+    const stock = stockDe(id);
+    $('#fCuerpo').innerHTML = `<div class="peq muted">Ahora hay <b>${fCant(stock)} ${esc(uTxt(stock, p.unidad))}</b>.</div>
       ${pasos('¿Cuántos llegaron?', 'cant', p.unidad)}
       <div class="fila2">${campo('Costo de cada uno ($)', 'costo', {modo:'decimal', ph:'0,00'})}${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}</div>
       <div class="fila2">${campo('Vence (opcional)', 'vence', {tipo:'date'})}${campo('Lote (opcional)', 'lote')}</div>
@@ -1131,20 +1243,28 @@ function formEntrada(id){
   });
 }
 async function guardarEntrada(){
-  const p = prodPorId(F.prod), c = num(F.cant), costo = num(F.costo);
+  const p = prodPorId(F.prod), c = red(num(F.cant)), costo = red(num(F.costo));
   if(!(c > 0)){ toast('Escribe cuántos llegaron'); return; }
   if(!F.fecha || F.fecha > hoyISO()){ toast('Revisa la fecha'); return; }
-  const entrada = marcar({id:uid(), prod:p.id, tipo:'entrada', cant:red(c), fecha:F.fecha, costo:costo > 0 ? red(costo) : 0, nota:F.nota.trim()}, true);
-  const actualizado = {...p};
-  if(costo > 0) actualizado.costo = red(costo);
+  const entrada = marcar({id:uid(), prod:p.id, tipo:'entrada', cant:c, fecha:F.fecha, costo:costo > 0 ? costo : 0, nota:F.nota.trim()}, true);
+  const cambios = {};
+  if(costo > 0 && costo !== p.costo) cambios.costo = costo;
   // Se guarda la fecha de vencimiento más próxima de lo que hay
-  if(F.vence && (!p.vence || stockDe(p.id) <= 0 || F.vence < p.vence)) actualizado.vence = F.vence;
-  if(F.lote.trim()) actualizado.lote = F.lote.trim();
-  const nuevosProductos = E.productos.map(x => x === p ? marcar(actualizado) : x);
+  if(F.vence && F.vence !== p.vence && (!p.vence || stockDe(p.id) <= 0 || F.vence < p.vence)) cambios.vence = F.vence;
+  const lote = F.lote.trim();
+  if(lote && lote !== p.lote) cambios.lote = lote;
+  const campos = Object.keys(cambios);
+  const nuevosProductos = campos.length ? E.productos.map(x => x === p ? marcar({...p, ...cambios}) : x) : E.productos;
   if(!guardar({...E, productos:nuevosProductos, movs:[...E.movs, entrada]})) return;
   await cerrarCapa();
   refrescar();
-  toast(`+${fCant(c)} ${p.unidad} de ${p.nombre}`);
+  avisarConDeshacer(`Llegó mercadería · +${fCant(c)} ${uTxt(c, p.unidad)}`, {movs:[entrada]}, true, () =>
+    E.productos.map(actual => {
+      if(actual.id !== p.id || actual.borrado) return actual;
+      const restaurados = campos.filter(campo => actual[campo] === cambios[campo]);
+      if(!restaurados.length) return actual;
+      return marcar({...actual, ...Object.fromEntries(restaurados.map(campo => [campo, p[campo] ?? (campo === 'costo' ? 0 : '')]))});
+    }));
 }
 
 // Usar en tratamiento
@@ -1178,29 +1298,39 @@ function usarRapido(id){
 }
 
 // Contar / corregir
-function formAjuste(id){
+function formAjuste(id, desdeFicha = false){
   const p = prodPorId(id);
-  F = {prod:id, real:fCant(stockDe(id)), motivo:'Conteo', nota:'', guardar:guardarAjuste};
-  hojaForm('Contar · ' + esc(p.nombre), 'form', () => {
-    const dif = red(num(F.real) - stockDe(id));
-    $('#fCuerpo').innerHTML = `<div class="peq muted">Según la app hay <b>${fCant(stockDe(id))} ${esc(p.unidad)}</b>. Escribe lo que realmente hay.</div>
+  F = {prod:id, real:fCant(Math.max(0, stockDe(id))), motivo:'conteo', nota:'', guardar:guardarAjuste, desdeFicha};
+  hojaForm(`${desdeFicha ? 'Ajustar' : 'Contar'} · ${esc(p.nombre)}`, 'form', () => {
+    const stock = stockDe(id);
+    $('#fCuerpo').innerHTML = `<div class="peq muted">Según la app hay <b>${fCant(stock)} ${esc(uTxt(stock, p.unidad))}</b>. Escribe lo que realmente hay.</div>
       ${pasos('¿Cuántos hay de verdad?', 'real', p.unidad)}
-      <div class="peq" id="aDif">${isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'}</div>
-      <div class="campo"><span class="lbl">Motivo</span>${chipsF('motivo', MOTIVOS)}</div>
+      <div class="peq" id="aDif" role="status">${diferenciaAjuste(id)}</div>
+      <div class="campo"><span class="lbl">Motivo</span><div class="chips" role="group" aria-label="Motivo">
+        ${Object.entries(MOTIVOS).map(([v, texto]) => opcion('fChip', v, texto, F.motivo === v, 'chip', 'data-f="motivo"')).join('')}</div></div>
       ${campo('Nota (opcional)', 'nota')}`;
   });
-  F.alCambiar = f => { if(f === 'real'){ const dif = red(num(F.real) - stockDe(id)); const e = $('#aDif'); if(e) e.innerHTML = isFinite(dif) && dif ? `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>` : 'Sin diferencia.'; } };
+  F.alCambiar = f => { if(f === 'real') $('#aDif').innerHTML = diferenciaAjuste(id); };
+}
+function diferenciaAjuste(id){
+  const real = num(F.real);
+  const dif = red(real - stockDe(id));
+  if(!(real >= 0)) return 'Escribe la cantidad que hay.';
+  if(!dif) return 'Sin diferencia.';
+  return `Diferencia: <b style="color:${dif < 0 ? 'var(--mal)' : 'var(--bien)'}">${dif > 0 ? '+' : '−'}${fCant(Math.abs(dif))}</b>`;
 }
 async function guardarAjuste(){
   const p = prodPorId(F.prod), real = num(F.real);
   if(!(real >= 0)){ toast('Escribe la cantidad que hay'); return; }
   const dif = red(real - stockDe(p.id));
-  if(!dif){ cerrarCapa(); toast('La cantidad ya estaba bien'); return; }
+  if(!dif && !(F.desdeFicha && F.motivo === 'conteo')){ cerrarCapa(); toast('La cantidad ya estaba bien'); return; }
   const ajuste = marcar({id:uid(), prod:p.id, tipo:'ajuste', cant:dif, fecha:hoyISO(), motivo:F.motivo, nota:F.nota.trim()}, true);
   if(!guardar({...E, movs:[...E.movs, ajuste]})) return;
   await cerrarCapa();
   refrescar();
-  toast(`${p.nombre}: ahora hay ${fCant(real)}`);
+  const quedan = stockDe(p.id);
+  const cantidad = quedan > 0 ? `${quedan === 1 ? 'Queda' : 'Quedan'} ${fCant(quedan)}` : 'Agotado';
+  avisarConDeshacer(dif ? `Cantidad ajustada · ${cantidad}` : 'Conteo guardado · Sin diferencia', {movs:[ajuste]}, true);
 }
 
 // ---------- Ventas ----------
@@ -1307,7 +1437,7 @@ async function guardarVenta(){
   // Avisar si se vende más de lo que hay
   const previo = F.id ? E.ventas.find(x => x.id === F.id) : null;
   const falta = F.items.filter(it => { const antes = previo ? (previo.items.find(x => x.prod === it.prod) || {cant:0}).cant : 0; return num(it.cant) > stockDe(it.prod) + antes; });
-  if(falta.length && !(await confirmar('No alcanza el inventario', `Según la app no hay suficiente de: <b>${falta.map(i => esc(i.nombre)).join(', ')}</b>. Si sí lo tienes, guarda igual y luego corrige la cantidad con «Contar / corregir».`, 'Guardar igual'))) return;
+  if(falta.length && !(await confirmar('No alcanza el inventario', `Según la app no hay suficiente stock para esta venta. Revisa <b>${falta.map(i => esc(i.nombre)).join(', ')}</b>. Si tienes lo necesario, guarda igual y luego ajusta la cantidad en su ficha.`, 'Guardar igual'))) return;
   if(F !== formulario) return;
   const items = F.items.map(it => ({prod:it.prod, nombre:it.nombre, cant:red(num(it.cant)), precio:red(num(it.precio)), costo:it.costo || 0}));
   const cobrado = F.pago !== 'Por cobrar';
@@ -1316,13 +1446,15 @@ async function guardarVenta(){
   const v = marcar({...base, pac:F.pac.trim(), tel:F.tel.trim(), fecha:F.fecha, items, cobrado, pago, nota:F.nota.trim()}, !previo);
   const ventas = previo ? E.ventas.map(x => x === previo ? v : x) : [...E.ventas, v];
   const movs = E.movs.map(m => m.venta === v.id && !m.borrado ? marcar({...m, borrado:true}) : m);
-  for(const it of items) movs.push(marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant, fecha:v.fecha, pac:v.pac, precio:it.precio, venta:v.id}, true));
+  const registrados = items.map(it => marcar({id:uid(), prod:it.prod, tipo:'venta', cant:-it.cant, fecha:v.fecha, pac:v.pac, precio:it.precio, venta:v.id}, true));
+  movs.push(...registrados);
   const estado = {...E, ventas, movs, pacientes:[...E.pacientes]};
   completarPacientes(estado);
   if(!guardar(estado)) return;
   await cerrarCapa();
   refrescar();
-  toast(previo ? 'Venta actualizada' : `Venta guardada · ${dinero(totalVenta(v))}`);
+  if(previo) toast('Venta actualizada');
+  else avisarConDeshacer(`Venta guardada · ${dinero(totalVenta(v))}`, {ventas:[v], movs:registrados}, true);
 }
 async function borrarVenta(){
   const formulario = F;
@@ -1400,7 +1532,137 @@ async function compartirTexto(t){
   try{ await navigator.clipboard.writeText(t); toast('Lista copiada. Pégala en WhatsApp.'); }catch(e){ toast('No se pudo compartir en este navegador'); }
 }
 
-// El buscador admite códigos guardados mientras se prepara la lectura con cámara.
+// ---------- Códigos de barras ----------
+const FORMATOS_CODIGO = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code'];
+let lectorLocal;
+async function detectorDeCodigos(){
+  const formatos = await window.BarcodeDetector?.getSupportedFormats?.().catch(() => []);
+  if(formatos && FORMATOS_CODIGO.every(f => formatos.includes(f))) return new window.BarcodeDetector({formats:FORMATOS_CODIGO});
+  if(!lectorLocal){
+    lectorLocal = new Promise((resolver, rechazar) => {
+      const script = document.createElement('script');
+      script.src = new URL('vendor/barcode-detector.js', document.baseURI);
+      script.onload = () => {
+        const api = window.BarcodeDetectionAPI;
+        api.prepareZXingModule({overrides:{locateFile: () => new URL('vendor/zxing_reader.wasm', document.baseURI).href}});
+        resolver(api.BarcodeDetector);
+      };
+      script.onerror = () => { script.remove(); rechazar(new Error('No se pudo cargar el lector')); };
+      document.head.append(script);
+    }).catch(error => { lectorLocal = null; throw error; });
+  }
+  const Detector = await lectorLocal;
+  return new Detector({formats:FORMATOS_CODIGO});
+}
+function asignarCodigo(id){
+  const p = prodPorId(id);
+  const d = abrirCapa(cabecera('Asignar código de barras', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in asignar-codigo">
+    <p class="muted">${esc(p.nombre)}</p>
+    <div class="visor-codigo" hidden><video playsinline muted autoplay aria-label="Vista de la cámara"></video></div>
+    <button class="btn soft" type="button" data-camara>${IC.escaneo} Abrir cámara</button>
+    <p class="ayuda" role="status" id="estadoCamara"></p>
+    <form class="card">
+      <div class="campo"><label for="codigoAsignar">Escribir el código a mano</label>
+        <input type="text" id="codigoAsignar" value="${esc(p.codigo ?? '')}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="errorAsignar" required>
+        <p class="ayuda error-codigo" id="errorAsignar" role="status"></p></div>
+      <button class="btn" type="submit">Guardar código</button>
+    </form></div></div>`, {tipo:'asignarCodigo', alCerrar:() => {
+    detenerCamara();
+    document.removeEventListener('visibilitychange', pausarCamara);
+  }});
+  const video = $('video', d), visor = video.parentElement, boton = $('[data-camara]', d), estado = $('#estadoCamara', d);
+  const campo = $('#codigoAsignar', d), error = $('#errorAsignar', d), form = $('form', d);
+  let intento, flujo, espera;
+  function limpiarError(){
+    error.textContent = '';
+    campo.removeAttribute('aria-invalid');
+  }
+  function detenerCamara(){
+    intento = null;
+    clearTimeout(espera);
+    flujo?.getTracks().forEach(pista => pista.stop());
+    flujo = video.srcObject = null;
+    visor.hidden = true;
+    boton.disabled = false;
+  }
+  function pausarCamara(){
+    if(document.hidden && intento){
+      detenerCamara();
+      estado.textContent = 'La cámara se pausó. Puedes abrirla de nuevo.';
+    }
+  }
+  async function abrirCamara(){
+    const actual = intento = {};
+    boton.disabled = true;
+    estado.textContent = 'Abriendo la cámara…';
+    try{
+      if(!navigator.mediaDevices?.getUserMedia) throw new Error('Cámara no disponible');
+      const nueva = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+      if(intento !== actual){ nueva.getTracks().forEach(pista => pista.stop()); return; }
+      flujo = video.srcObject = nueva;
+      video.muted = true;
+      visor.hidden = false;
+      await video.play();
+      const detector = await detectorDeCodigos();
+      if(intento !== actual) return;
+      estado.textContent = 'Pon el código dentro del recuadro.';
+      async function leer(){
+        if(intento !== actual) return;
+        try{
+          const codigos = video.readyState >= 2 ? await detector.detect(video) : [];
+          if(intento !== actual) return;
+          const codigo = codigos.find(c => c.rawValue?.trim())?.rawValue;
+          if(codigo){
+            detenerCamara();
+            campo.value = codigo;
+            limpiarError();
+            estado.textContent = 'Código leído. Revisa que esté bien y guárdalo.';
+            $('[type="submit"]', form).focus();
+          } else espera = setTimeout(leer, 120);
+        }catch(e){
+          if(intento !== actual) return;
+          detenerCamara();
+          estado.textContent = 'No pude leer el código. Intenta de nuevo o escríbelo a mano.';
+        }
+      }
+      leer();
+    }catch(e){
+      if(intento !== actual) return;
+      detenerCamara();
+      estado.textContent = e.name === 'NotAllowedError' ? 'No se dio permiso para la cámara. Puedes escribir el código a mano.' :
+        'No pude abrir la cámara. Puedes escribir el código a mano.';
+    }
+  }
+  document.addEventListener('visibilitychange', pausarCamara);
+  boton.addEventListener('click', abrirCamara);
+  campo.addEventListener('input', () => {
+    if(intento){ detenerCamara(); estado.textContent = ''; }
+    limpiarError();
+  });
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if(cierrePendiente) return;
+    const codigo = campo.value.trim(), q = norm(codigo);
+    const otro = q && productos().find(x => x.id !== id && norm(x.codigo) === q);
+    if(!q || otro){
+      campo.setAttribute('aria-invalid', 'true');
+      error.textContent = otro ? `Ese código ya está asignado a ${otro.nombre}.` : 'Escribe el código del producto.';
+      campo.focus();
+      return;
+    }
+    const actual = prodPorId(id);
+    if(!actual || actual.borrado) return;
+    if(actual.codigo !== codigo){
+      const actualizado = marcar({...actual, codigo});
+      if(!guardar({...E, productos:E.productos.map(x => x === actual ? actualizado : x)})) return;
+    }
+    await cerrarCapa();
+    refrescar();
+    toast('Código asignado');
+  });
+  if(!p.codigo) abrirCamara();
+}
+
 function abrirCodigo(modo){
   const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
     <span class="tirador" aria-hidden="true"></span><h3>Escanear</h3>
@@ -1658,7 +1920,12 @@ function seleccionarOpcion(b){
 
 // ---------- Acciones ----------
 const ACT = {
-  tab(b){ irPantalla(b.dataset.tab); },
+  async tab(b){
+    const tab = b.dataset.tab;
+    const desdeFicha = b.closest('.ficha-venta');
+    if(desdeFicha) await cerrarCapa(pila.length);
+    irPantalla(desdeFicha && tab === 'inventario' ? 'venta' : tab);
+  },
   cerrar(){ cerrarCapa(); },
   ajustes(){ abrirAjustes(); },
   avisosInicio(b){ abrirAvisosInicio(b.dataset.filtro); },
@@ -1678,11 +1945,12 @@ const ACT = {
     pintarListaProductos();
   },
   escanear(b){ abrirCodigo(b.dataset.modo); },
+  asignarCodigo(b){ asignarCodigo(b.dataset.id); },
   vender(b){ formVenta(null, b.dataset.id); },
   usar(b){ formUso(b.dataset.id); },
   usarRapido(b){ usarRapido(b.dataset.id); },
   entrada(b){ formEntrada(b.dataset.id); },
-  ajuste(b){ formAjuste(b.dataset.id); },
+  ajuste(b){ formAjuste(b.dataset.id, Boolean(b.closest('.ficha-venta'))); },
   abrirHoy(b){ const p = prodPorId(b.dataset.id); p.abierto = hoyISO(); marcar(p); guardar(); refrescar(); toast(`Anotado: ${p.nombre} se abrió hoy. Úsalo antes del ${fCorta(sumarMeses(p.abierto, p.pao))}`); },
   async borrarProd(b){
     const p = prodPorId(b.dataset.id);

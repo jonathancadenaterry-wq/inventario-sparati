@@ -98,6 +98,43 @@ def datos_guardados(pagina):
     return pagina.evaluate('(clave) => JSON.parse(localStorage.getItem(clave))', CLAVE)
 
 
+def simular_camara(pagina):
+    pagina.add_init_script("""(() => {
+      // Conservar el lector de producción y simular únicamente el video de un EAN-13.
+      Object.defineProperty(window, 'BarcodeDetector', {value: undefined, configurable: true});
+      window.camaraPrueba = {solicitudes: [], pistas: [], modo: 'negada'};
+      Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async opciones => {
+        const camara = window.camaraPrueba;
+        camara.solicitudes.push(opciones);
+        if(camara.modo === 'negada') throw new DOMException('Permiso denegado', 'NotAllowedError');
+        const lienzo = document.createElement('canvas');
+        lienzo.width = 480;
+        lienzo.height = 240;
+        const contexto = lienzo.getContext('2d');
+        const codigo = '5901234123457';
+        const l = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+        const g = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+        const r = l.map(d => [...d].map(bit => bit === '1' ? '0' : '1').join(''));
+        const izquierda = [...codigo.slice(1, 7)].map((d, i) => ('LGGLLG'[i] === 'L' ? l : g)[d]).join('');
+        const derecha = [...codigo.slice(7)].map(d => r[d]).join('');
+        const barras = '101' + izquierda + '01010' + derecha + '101';
+        const flujo = lienzo.captureStream(15), [pista] = flujo.getVideoTracks();
+        camara.pistas.push(pista);
+        function cuadro(){
+          contexto.fillStyle = 'white';
+          contexto.fillRect(0, 0, 480, 240);
+          if(camara.modo === 'ean'){
+            contexto.fillStyle = 'black';
+            [...barras].forEach((v, i) => { if(v === '1') contexto.fillRect(50 + 4 * i, 55, 4, 130); });
+          }
+        }
+        const reloj = setInterval(() => pista.readyState === 'ended' ? clearInterval(reloj) : cuadro(), 80);
+        cuadro();
+        return flujo;
+      }});
+    })();""")
+
+
 def inventario(pagina, tipo):
     if tipo in ('venta', 'uso'):
         if not pagina.get_by_role('heading', name='Inventario', exact=True).is_visible():
@@ -337,6 +374,7 @@ def prueba_sin_conexion(navegador):
         pagina.route(preparacion, lambda ruta: ruta.fulfill(content_type='text/html', body='<p>Preparación</p>'))
         pagina.goto(preparacion)
         pagina.evaluate("""Promise.all(['sp-v1', 'cc-v1', 'di-v1', 'spp-anterior'].map(k => caches.open(k)))""")
+        simular_camara(pagina)
         pagina = sitio.abrir(estado=ESTADO_V1)
         pagina.wait_for_function('navigator.serviceWorker.controller !== null')
         assert pagina.evaluate('navigator.serviceWorker.ready.then(r => r.scope)') == APP
@@ -384,6 +422,29 @@ def prueba_sin_conexion(navegador):
         pagina.wait_for_function("document.querySelector('#listaProd img')?.naturalWidth > 0")
         pagina.get_by_role('button', name='Producto', exact=True).click()
         expect(pagina.get_by_label('Código de barras')).to_be_visible()
+        cerrar_hoja(pagina)
+        pagina.locator('#listaProd .fila-lista').click()
+        ficha = pagina.get_by_role('dialog', name=re.compile('Péptidos Efecto Botox', re.I))
+        asignar = ficha.get_by_role('button', name=re.compile('Asignar con la cámara'))
+        pagina.evaluate("camaraPrueba.modo = 'blanca'")
+        asignar.click()
+        escaner = pagina.get_by_role('dialog', name='Asignar código de barras')
+        expect(escaner.get_by_text('Pon el código dentro del recuadro.')).to_be_visible()
+        video = escaner.locator('video')
+        for atributo in ('playsinline', 'muted', 'autoplay'):
+            expect(video).to_have_attribute(atributo, '')
+        cerrar_hoja(pagina)
+        assert pagina.evaluate('camaraPrueba.pistas[0].readyState') == 'ended'
+        expect(asignar).to_be_focused()
+        pagina.evaluate("camaraPrueba.modo = 'ean'")
+        asignar.click()
+        expect(escaner.get_by_label('Escribir el código a mano')).to_have_value('5901234123457')
+        expect(escaner.get_by_text('Código leído.', exact=False)).to_be_visible()
+        assert pagina.evaluate('camaraPrueba.pistas[1].readyState') == 'ended'
+        escaner.get_by_role('button', name='Guardar código').click()
+        expect(ficha.get_by_role('button', name='Código de barras Asignado')).to_be_visible()
+        assert any(p.get('codigo') == '5901234123457' and 'Péptidos Efecto Botox' in p['nombre']
+                   for p in datos_guardados(pagina)['productos'])
     finally:
         sitio.cerrar()
 
@@ -782,6 +843,191 @@ def prueba_inventario_300_productos(navegador, perfil=None):
         sitio.cerrar()
 
 
+def prueba_ficha_venta(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        venta = ESTADO_V1['ventas'][0]
+        repetida = {**venta, 'id': 'v2', 'pac': 'maria jose andrade', 'fecha': '2026-11-26', 'pago': 'tarjeta'}
+        borrada = {**venta, 'id': 'v3', 'pac': 'Ficha borrada', 'borrado': True}
+        m4 = ESTADO_V1['movs'][3]
+        estado = {**ESTADO_V1,
+            'productos': [{**p, 'precio': 16, 'costo': 9.5, 'max': 5, 'vence': '2028-03-10', 'lote': '24A3'}
+                          if p['id'] == 'p1' else p for p in ESTADO_V1['productos']],
+            'movs': [{**m, 'cant': 1} if m['id'] == 'm1' else m for m in ESTADO_V1['movs']] + [
+                {**m4, 'id': 'm10', 'pac': '', 'venta': 'v2', 'fecha': '2026-11-26'},
+            ],
+            'ventas': [venta, repetida, borrada],
+        }
+        pagina = sitio.abrir(estado=estado, quien='Elba')
+        inventario(pagina, 'venta')
+        producto = pagina.locator('#listaProd [data-id=p1]')
+        producto.click()
+        ficha = pagina.get_by_role('dialog', name=estado['productos'][0]['nombre'])
+        stock = ficha.get_by_role('region', name='Existencias')
+        historial = ficha.get_by_role('region', name='Historial')
+        acciones = ficha.get_by_role('group', name='Acciones del producto')
+        deshacer = pagina.get_by_role('button', name='Deshacer')
+        expect(ficha.get_by_role('heading', level=1)).to_be_visible()
+        expect(ficha.locator('.foto-ficha')).to_have_text('SS')
+        expect(stock.locator('.q')).to_have_text('1')
+        expect(stock).to_contain_text('Por terminarse')
+        expect(stock).to_contain_text('se acabaría en ~14 días')
+        expect(stock).to_contain_text('Te aviso cuando queden 2.')
+        expect(stock.locator('.barra-stock .lleno')).to_have_count(1)
+        expect(ficha.locator('.precios-ficha .cifra')).to_have_text(['Precio$ 16,00', 'Costo$ 9,50', 'Ganancia$ 6,50 41 %'])
+        expect(ficha.locator('.datos-ficha')).to_contain_text('mar 2028 · lote 24A3')
+        expect(ficha.locator('.datos-ficha')).to_contain_text('1 paciente')
+        expect(historial.locator('li')).to_have_count(4)
+        expect(historial.locator('li b')).to_have_text(['Venta a maria jose andrade', 'Llegaron 2', 'Venta a María José Andrade', 'Cantidad inicial'])
+        expect(historial.locator('li').first).to_contain_text('− 1 · $ 18,00 · Tarjeta')
+        barra = ficha.get_by_role('navigation', name='Principal')
+        expect(barra.get_by_role('button', name='Inventario')).to_have_attribute('aria-current', 'page')
+        assert ficha.locator('.hoja-cuerpo').evaluate('el => el.scrollWidth === el.clientWidth')
+        for esquema in ('dark', 'light'):
+            pagina.emulate_media(color_scheme=esquema)
+            expect(pagina.locator('html')).to_have_attribute('data-theme', esquema)
+            razones = contrastes(pagina, [['.stock-ficha .pill'], ['.precios-ficha .ganancia'], ['.dato-ficha .dato-ico']])
+            assert min(razones) >= 4.5, razones
+
+        acciones.get_by_role('button', name='Vender', exact=True).click()
+        formulario = pagina.get_by_role('dialog', name='Nueva venta')
+        expect(formulario.locator('#vTotal')).to_have_text('$ 16,00')
+        formulario.get_by_label('Paciente', exact=True).fill('Rosa Cauce')
+        formulario.get_by_role('button', name='Guardar', exact=True).click()
+        expect(stock.locator('.q')).to_have_text('0')
+        expect(stock).to_contain_text('Agotado')
+        expect(stock.locator('.barra-stock .lleno')).to_have_count(0)
+        expect(historial.locator('li').first).to_contain_text('Venta a Rosa Cauce')
+        expect(ficha.locator('.datos-ficha')).to_contain_text('2 pacientes')
+        guardado = datos_guardados(pagina)
+        assert guardado['movs'][-1]['cant'] == -1 and guardado['movs'][-1]['venta'] == guardado['ventas'][-1]['id']
+        deshacer.click()
+        expect(stock.locator('.q')).to_have_text('1')
+        expect(historial).not_to_contain_text('Rosa Cauce')
+        expect(ficha.locator('.datos-ficha')).to_contain_text('1 paciente')
+        guardado = datos_guardados(pagina)
+        assert guardado['movs'][-1]['borrado'] and guardado['ventas'][-1]['borrado']
+
+        acciones.get_by_role('button', name='Llegó más').click()
+        formulario = pagina.get_by_role('dialog', name=re.compile('^Llegó más'))
+        formulario.get_by_label('¿Cuántos llegaron?').fill('3')
+        formulario.get_by_label('Costo de cada uno').fill('11,75')
+        formulario.get_by_label('Vence (opcional)').fill('2027-08-01')
+        formulario.get_by_label('Lote (opcional)').fill('LOTE-NUEVO')
+        formulario.get_by_role('button', name='Guardar', exact=True).click()
+        expect(stock.locator('.q')).to_have_text('4')
+        expect(historial.locator('li').first).to_contain_text('Llegaron 3')
+        expect(historial.locator('li').first).to_contain_text('Costo $ 11,75 c/u')
+        expect(ficha.locator('.datos-ficha')).to_contain_text('ago 2027 · lote LOTE-NUEVO')
+        expect(ficha.locator('.precios-ficha')).to_contain_text('$ 11,75')
+        guardado = datos_guardados(pagina)
+        assert (guardado['movs'][-1]['tipo'], guardado['movs'][-1]['cant'], guardado['movs'][-1]['por']) == ('entrada', 3, 'Elba')
+        deshacer.click()
+        expect(stock.locator('.q')).to_have_text('1')
+        expect(historial).not_to_contain_text('Llegaron 3')
+        expect(ficha.locator('.datos-ficha')).to_contain_text('mar 2028 · lote 24A3')
+        expect(ficha.locator('.precios-ficha')).to_contain_text('$ 9,50')
+        guardado = datos_guardados(pagina)
+        assert guardado['movs'][-1]['borrado'] and guardado['productos'][0]['costo'] == 9.5
+
+        ajustar = acciones.get_by_role('button', name='Ajustar cantidad')
+        ajustar.click()
+        formulario = pagina.get_by_role('dialog', name=re.compile('^Ajustar'))
+        motivos = formulario.get_by_role('group', name='Motivo')
+        expect(motivos.get_by_role('button')).to_have_text(['Conteo', 'Se dañó', 'Se venció', 'Regalo', 'Otro'])
+        real = formulario.get_by_label('¿Cuántos hay de verdad?')
+        real.fill('0')
+        assert real.evaluate('el => getComputedStyle(el).outlineOffset') == '-3px'
+        motivos.get_by_role('button', name='Se dañó').click()
+        formulario.get_by_label('Nota (opcional)').fill('Se rompió el envase')
+        formulario.get_by_role('button', name='Guardar', exact=True).click()
+        expect(stock.locator('.q')).to_have_text('0')
+        expect(historial.locator('li').first).to_contain_text('− 1 · Se dañó · Se rompió el envase')
+        ajuste = datos_guardados(pagina)['movs'][-1]
+        assert (ajuste['tipo'], ajuste['cant'], ajuste['motivo']) == ('ajuste', -1, 'dañado')
+        deshacer.click()
+        expect(stock.locator('.q')).to_have_text('1')
+        expect(historial).not_to_contain_text('Se rompió el envase')
+        assert datos_guardados(pagina)['movs'][-1]['borrado']
+
+        ajustar.click()
+        expect(motivos.get_by_role('button', name='Conteo')).to_have_attribute('aria-pressed', 'true')
+        formulario.get_by_role('button', name='Guardar', exact=True).click()
+        expect(historial.locator('li').first).to_contain_text('Conteo de inventario')
+        expect(historial.locator('li').first).to_contain_text('Sin diferencia')
+        conteo = datos_guardados(pagina)['movs'][-1]
+        assert (conteo['tipo'], conteo['cant'], conteo['motivo']) == ('ajuste', 0, 'conteo')
+        deshacer.click()
+        expect(historial).not_to_contain_text('Conteo de inventario')
+
+        barra.get_by_role('button', name='Vender otros productos').click()
+        expect(pagina.locator('#vTotal')).to_have_text('$ 0,00')
+        cerrar_hoja(pagina)
+        expect(ficha).to_be_visible()
+        barra.get_by_role('button', name='Reportes').click()
+        expect(pagina.locator('#capas > *')).to_have_count(0)
+        expect(pagina).to_have_url(APP + '#reportes')
+        pagina.evaluate('history.back()')
+        expect(producto).to_be_visible()
+        expect(pagina.locator('#capas > *')).to_have_count(0)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_asignar_codigo(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        sitio.pagina.add_init_script("""(() => {
+          window.solicitudesCamara = 0;
+          Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async () => {
+            solicitudesCamara++;
+            throw new DOMException('Permiso denegado', 'NotAllowedError');
+          }});
+        })();""")
+        estado = {**ESTADO_V1, 'productos': [
+            {**p, 'codigo': 'SP-ABCDE'} if p['id'] == 'p3' else p for p in ESTADO_V1['productos']
+        ]}
+        pagina = sitio.abrir(estado=estado)
+        inventario(pagina, 'venta')
+        producto = pagina.locator('#listaProd [data-id=p1]')
+        producto.click()
+        assert pagina.evaluate('solicitudesCamara') == 0
+        ficha = pagina.get_by_role('dialog', name=ESTADO_V1['productos'][0]['nombre'])
+        boton = ficha.get_by_role('button', name='Código de barras Asignar con la cámara')
+        boton.tap() if perfil else boton.click()
+        escaner = pagina.get_by_role('dialog', name='Asignar código de barras')
+        expect(escaner.get_by_text('No se dio permiso para la cámara.', exact=False)).to_be_visible()
+        assert pagina.evaluate('solicitudesCamara') == 1
+        campo = escaner.get_by_label('Escribir el código a mano')
+        assert campo.evaluate('el => getComputedStyle(el).fontSize') == '16px'
+        guardar = escaner.get_by_role('button', name='Guardar código')
+        campo.fill(' sp-abcde ')
+        guardar.click()
+        expect(escaner.locator('#errorAsignar')).to_contain_text('Ese código ya está asignado')
+        assert datos_guardados(pagina) == estado
+        campo.fill(' 0012345678905 ')
+        guardar.click()
+        asignado = ficha.get_by_role('button', name='Código de barras Asignado')
+        expect(asignado).to_be_visible()
+        guardado = datos_guardados(pagina)
+        assert guardado['productos'][0]['codigo'] == '0012345678905'
+        assert guardado['productos'][0]['por'] == 'Jonathan'
+        assert guardado['movs'] == estado['movs'] and guardado['ventas'] == estado['ventas']
+        asignado.click()
+        expect(campo).to_have_value('0012345678905')
+        assert pagina.evaluate('solicitudesCamara') == 1
+        cerrar_hoja(pagina)
+        expect(asignado).to_be_focused()
+        cerrar_hoja(pagina)
+        pagina.reload()
+        pagina.get_by_role('button', name='Escanear').click()
+        pagina.get_by_label('Escribir el código a mano').fill('0012345678905')
+        pagina.get_by_role('button', name='Buscar código').click()
+        expect(asignado).to_be_visible()
+    finally:
+        sitio.cerrar()
+
+
 def prueba_apariencia(navegador, perfil=None):
     sitio = Sitio(navegador, perfil=perfil)
     try:
@@ -1089,6 +1335,8 @@ def capturar(navegador, tarea):
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         sitio = Sitio(navegador, color=color)
         try:
+            if tarea == 'T4':
+                simular_camara(sitio.pagina)
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
                 'v': 1, 'productos': [], 'movs': [], 'ventas': [],
@@ -1100,6 +1348,56 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T4':
+                inventario(pagina, 'venta')
+                nombre = 'Hydrating Foaming Cleanser · 200 ml'
+                # Conservar la foto y el historial de ejemplo y preparar la ficha del diseño.
+                pagina.evaluate("""nombre => {
+                  const productos = E.productos.map(p => p.nombre === nombre ?
+                    {...p, min:2, precio:16, costo:9.5, vence:'2028-03-10', lote:'24A3'} : p);
+                  guardar({...E, productos});
+                  refrescar();
+                }""", nombre)
+                pagina.get_by_role('searchbox', name='Buscar en el inventario').fill(nombre)
+                pagina.locator('#listaProd .fila-lista').click()
+                ficha = pagina.get_by_role('dialog', name=nombre)
+                foto = ficha.locator('.foto-ficha img')
+                foto.evaluate('img => img.decode()')
+                guardar(sitio, 'producto-ficha', tema)
+                ficha.locator('.stock-ficha').evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'producto-precios', tema)
+
+                acciones = ficha.get_by_role('group', name='Acciones del producto')
+                acciones.get_by_role('button', name='Vender', exact=True).click()
+                guardar(sitio, 'producto-vender', tema)
+                cerrar_hoja(pagina)
+                acciones.get_by_role('button', name='Llegó más').click()
+                llegada = pagina.get_by_role('dialog', name=re.compile('^Llegó más'))
+                llegada.get_by_label('¿Cuántos llegaron?').fill('3')
+                guardar(sitio, 'producto-entrada', tema)
+                llegada.get_by_role('button', name='Guardar', exact=True).click()
+                expect(pagina.get_by_role('button', name='Deshacer')).to_be_visible()
+                guardar(sitio, 'producto-deshacer', tema)
+                pagina.clock.fast_forward(5000)
+
+                acciones.get_by_role('button', name='Ajustar cantidad').click()
+                ajuste = pagina.get_by_role('dialog', name=re.compile('^Ajustar'))
+                guardar(sitio, 'producto-ajuste', tema)
+                ajuste.get_by_role('button', name='Guardar', exact=True).click()
+                expect(pagina.get_by_role('button', name='Deshacer')).to_be_visible()
+                pagina.clock.fast_forward(5000)
+
+                ficha.get_by_role('button', name=re.compile('Asignar con la cámara')).click()
+                codigo = pagina.get_by_role('dialog', name='Asignar código de barras')
+                expect(codigo.get_by_text('No se dio permiso', exact=False)).to_be_visible()
+                guardar(sitio, 'producto-codigo', tema)
+                codigo.get_by_label('Escribir el código a mano').fill('5901234123457')
+                codigo.get_by_role('button', name='Guardar código').click()
+                expect(ficha.get_by_role('button', name='Código de barras Asignado')).to_be_visible()
+                pagina.clock.fast_forward(5000)
+                ficha.locator('.datos-ficha').evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'producto-historial', tema)
+                continue
             if tarea == 'T3':
                 inventario(pagina, 'venta')
                 pagina.wait_for_function("document.querySelector('#listaProd img')?.naturalWidth > 0")
@@ -1149,14 +1447,14 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T3', choices=['T2', 'T3'],
-                        help='guardar capturas en modo claro y oscuro (T3 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T4', choices=['T2', 'T3', 'T4'],
+                        help='guardar capturas en modo claro y oscuro (T4 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
                         prueba_formulario_producto, prueba_inventario_resumen_y_orden,
-                        prueba_inventario_300_productos, prueba_apariencia,
+                        prueba_inventario_300_productos, prueba_ficha_venta, prueba_asignar_codigo, prueba_apariencia,
                         prueba_inicio_resumen, prueba_inicio_accesos, prueba_inicio_avisos]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():

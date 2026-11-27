@@ -92,7 +92,7 @@ Según `Inventario.png`:
 - botón «+ Producto», que abre el formulario de la versión 1 con el diseño nuevo, más los campos `codigo` y `max`.
 - **Hecha cuando:** con 300 productos de prueba la lista se desplaza con fluidez (usa `content-visibility` o paginado) y los filtros funcionan.
 
-## T4 · Ficha de producto para vender  [ ]
+## T4 · Ficha de producto para vender  [x]
 Según `Producto.png`:
 - foto grande;
 - stock con barra y la predicción «se acabaría en ~N días», que sale del consumo de la versión 1;

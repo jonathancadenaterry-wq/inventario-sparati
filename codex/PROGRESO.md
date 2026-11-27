@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T4
-- Última corrida: 27-nov-2026, 09:54 (Ecuador) · T3 completada
+- Tarea actual: T5
+- Última corrida: 27-nov-2026, 10:17 (Ecuador) · T4 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -75,3 +75,21 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Revisé las diez capturas T3 de 390×844 en claro y oscuro. Frente a `Inventario.png`, la pantalla mantiene el segmentado, las cifras y los grupos por marca. El selector de orden y «Lista de compras» añaden una fila debajo de las cifras.
 - Pasaron 15 pruebas en Chromium a 390×844 y 12 con su perfil de iPhone 14 Pro. Comprobé el deslizamiento táctil de los filtros, el acceso al último de 300 productos agrupados en una marca y la carga diferida de su foto. También pasaron el reintento con una foto, los archivos v1 y la recarga sin conexión. La validación de iPhone se hizo con el perfil emulado de Chromium.
 - Sigue T4 con la ficha de producto para vender. La búsqueda por código funciona con entrada manual. La cámara queda para T7 y el uso de la cantidad ideal para sugerir pedidos queda para T11.
+
+### 27-nov-2026 · 10:00–10:17 (Ecuador) · T4
+
+**Revisión de las ocho capturas T3 adjuntas**
+
+- **Para vender y Uso en spa, claro y oscuro.** Frente a `Inventario.png`, la fila de «Lista de compras» y el selector de orden desplazan hacia abajo el primer grupo. El chip de la siguiente categoría asoma cortado por el borde derecho. En ambos inventarios se alcanzan a leer fragmentos de las filas debajo de la barra translúcida y la bolsa central.
+- **Cantidades abiertas, claro y oscuro.** El desglose se extiende solo en la columna izquierda. Debajo de «Valor a costo» queda un espacio vacío de la altura de casi toda la lista y se ven menos productos en el primer pantallazo.
+- **Editar existencias, claro y oscuro.** El mínimo sin configurar se ve como un campo vacío entre los botones de sumar y restar. El anillo de foco de la cantidad ideal queda parcialmente cubierto en el lado del botón de sumar.
+- **Producto nuevo, oscuro.** El título de «Existencias» aparece justo encima del pie fijo. Hay que desplazar el formulario para llegar al primer campo de esa sección.
+
+**Trabajo completado**
+
+- La ficha de productos para vender muestra la foto grande, el stock con una barra de cinco tramos, la previsión de consumo, el precio, el costo y la ganancia. Muestra el vencimiento y el lote, las pacientes que compraron ese producto y una línea de tiempo con los movimientos vigentes.
+- Las acciones «Vender», «Llegó más» y «Ajustar» registran sus movimientos y ofrecen «Deshacer» durante cinco segundos. Se comprobó que la anulación devuelve el stock y que deshacer una entrada también devuelve sus cambios de costo, vencimiento y lote. Un conteo sin diferencia queda registrado en el historial.
+- Desde «Código de barras» se puede leer con la cámara o escribir el código a mano. El lector local leyó un EAN-13 simulado con la conexión desactivada. También se probó la alternativa sin permiso, el cierre de la cámara al regresar y la validación de códigos duplicados.
+- Se guardaron 16 capturas a 390×844 en claro y oscuro. Se compararon la foto, el encabezado, la barra, las acciones, los precios y el historial con `Producto.png`. Se ajustó el espacio del vencimiento y el lote para que los datos del ejemplo quepan en una línea. El foco de los campos de cantidad quedó dentro del campo, visible entre los dos botones. Los campos de fecha nativos siguen mostrando mes/día/año en Chromium.
+- Pasaron 17 pruebas en Chromium y 14 con el perfil de iPhone 14 Pro, incluidos los archivos v1 y la recarga sin conexión. Queda por comprobar el permiso y el enfoque de la cámara en el iPhone de Elba, en Safari y desde la pantalla de inicio.
+- Sigue T5 con «Frasco en uso», las aperturas y el cálculo de rendimiento en la ficha de cabina. El escáner general y sus modos corresponden a T7. Los cambios de la corrida están en `prueba/` y `codex/` para que los guarde el bucle.
