@@ -1,0 +1,891 @@
+{
+ "nota": "Catálogo real de SPARATI (26-nov-2026). Los precios son SOLO de ejemplo para el modo de prueba; los reales los pondrá Elba.",
+ "productos": [
+  {
+   "tipo": "venta",
+   "nombre": "Péptidos Efecto Botox · 50 ml",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/peptidos.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Contorno de ojos · 40 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Collagen Serum · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Hydrating Foaming Cleanser · 100 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Hydrating Foaming Cleanser · 200 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/cleanser.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Purifying Cleanser Gel · 200 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 2,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Syndet Espuma Calmante · 150 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Hydrating Toner · 250 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 3,
+   "foto": "codex/diseno/fotos/hydtoner.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Soothing Toner · 250 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 2,
+   "foto": "codex/diseno/fotos/soothing.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Purifying Toner · 250 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 4,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Purifying Mask · 100 g",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/purmask.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Harmony Body Splash",
+   "marca": "Professional Spa",
+   "cat": "Corporal",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/splash.jpg",
+   "precioEjemplo": 15
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Firming Cold Gel · 200 g",
+   "marca": "Professional Spa",
+   "cat": "Corporal",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 15
+  },
+  {
+   "tipo": "venta",
+   "nombre": "DTX · sobre",
+   "marca": "",
+   "cat": "Otros",
+   "unidad": "sobres",
+   "cantidad": 6,
+   "precioEjemplo": 5
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Gel de Malva · 10 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Bálsamo Descongestivo · 10 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Seda Hidratante Facial · 10 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Eyes Contour Serum · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "PDRN Recovery Serum",
+   "marca": "Natural Center",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Fórmula RRR · 50 ml",
+   "marca": "",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Reduce Hot Cream · 500 g",
+   "marca": "Professional Spa",
+   "cat": "Corporal",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/reducehot.jpg",
+   "precioEjemplo": 15
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Body Sugar Scrub Anti-Stress · 500 g",
+   "marca": "Professional Spa",
+   "cat": "Corporal",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/scrub.jpg",
+   "precioEjemplo": 15
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Gel Renovador Ácido Mandélico 15 % · 30 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Gel de Ácido Tranexámico 3 % · 120 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Gel de Colágeno + Hialurónico + Ceramidas · 70 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "NutriDerma Plus+ · 60 ml",
+   "marca": "Natural Center",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Crema Modulador Melanogénico · 30 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Vitamina B · 70 g",
+   "marca": "Imagcev",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Collagen Gel · 250 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Protector Sebo-Oil Control FPS 60+ · 60 g",
+   "marca": "Imagcev",
+   "cat": "Protector solar",
+   "unidad": "unidades",
+   "cantidad": 2,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Protector Auriskin UV FPS 60+ · 60 g",
+   "marca": "Imagcev",
+   "cat": "Protector solar",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Protector Sebo-Oil Control FPS 60+ · 120 g",
+   "marca": "Imagcev",
+   "cat": "Protector solar",
+   "unidad": "unidades",
+   "cantidad": 3,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Sun Screen Clear SPF 50+ · 60 g",
+   "marca": "Professional Spa",
+   "cat": "Protector solar",
+   "unidad": "unidades",
+   "cantidad": 4,
+   "foto": "codex/diseno/fotos/sunscreen.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Hyaluronic Drops 5 % + Argireline · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/drops.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Hyaluronic Gel Cream SPF 15",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/gelcream.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Niacinamide 10 % + Péptidos de zinc · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 5,
+   "foto": "codex/diseno/fotos/niacin.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Suero de Vitamina C Liposomada · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/vitc.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Azelac Serum (ácido azelaico) · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Facial",
+   "unidad": "frascos",
+   "cantidad": 6,
+   "foto": "codex/diseno/fotos/azelac.jpg",
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "venta",
+   "nombre": "Procicar NF crema cicatrices · 60 g",
+   "marca": "Medihealth",
+   "cat": "Facial",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "precioEjemplo": 18
+  },
+  {
+   "tipo": "uso",
+   "nombre": "AHA's Peel Almendra · 30 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Gluco Peel · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Yellow Peel · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Tranexpeel Whitening · 30 ml",
+   "marca": "Lumière",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Salicylic Complex · 30 ml",
+   "marca": "Lumière",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Oil Control Acid · 30 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Suero Ionizable algas + Z · 30 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Ácido Salicílico BHA 3 %",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Serum Aclarador White · 30 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Ácido Mandélico pH 3,5",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Fusión CLM Células madre · 50 ml",
+   "marca": "Imagcev",
+   "cat": "Activos e inyectables",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Bicarbonato de sodio 8,4 % · ampolla 10 ml",
+   "marca": "",
+   "cat": "Activos e inyectables",
+   "unidad": "ampollas",
+   "cantidad": 3
+  },
+  {
+   "tipo": "uso",
+   "nombre": "TKTX crema anestésica · 10 g",
+   "marca": "TKTX",
+   "cat": "Activos e inyectables",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "DMAE Lifting · ampolla",
+   "marca": "ActiBell",
+   "cat": "Activos e inyectables",
+   "unidad": "ampollas",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Hidrafiller ácido hialurónico · ampolla",
+   "marca": "ActiBell",
+   "cat": "Activos e inyectables",
+   "unidad": "ampollas",
+   "cantidad": 3
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Clar Biopéptide ECM Matrix · caja 8 ampollas 2 ml",
+   "marca": "ActiBell",
+   "cat": "Activos e inyectables",
+   "unidad": "cajas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "ADN · 30 g",
+   "marca": "Imagcev",
+   "cat": "Activos e inyectables",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Aqua Stem Cell Culture Ampoule · 8 ml",
+   "marca": "Lan Frost",
+   "cat": "Activos e inyectables",
+   "unidad": "ampollas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Supreme ENZ+R · 10 ml",
+   "marca": "Supremedics",
+   "cat": "Activos e inyectables",
+   "unidad": "frascos",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "PDRN Professional Vial · 10 cc",
+   "marca": "Natural Center",
+   "cat": "Activos e inyectables",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Manicmagne · 70 g",
+   "marca": "Imagcev",
+   "cat": "Corporales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Muestra Mascarilla Spirulina + Zn · 3 ml",
+   "marca": "Natural Center",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Muestra Sensitive Calm gel calmante · 3 ml",
+   "marca": "Natural Center",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Muestra Anti-Pollution Age Mask · 3 ml",
+   "marca": "Natural Center",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Muestra Smart Scrub exfoliante · 3 ml",
+   "marca": "Natural Center",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Mascarilla Manicure & Pedicure (paso 3) · sobre 5 ml",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 3
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Gentle Face Scrub Men Care · sobre 5 ml",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Retinol Facial Mask (tela) · 25 g",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "unidades",
+   "cantidad": 2
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Anti-Aging Facial Mask (tela) · 25 g",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Hyaluronic Acid Facial Mask (tela) · 25 g",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Collagen Serum en sobre · sobre 5 ml",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 20
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Azelac Serum en sobre · sobre 5 ml",
+   "marca": "Professional Spa",
+   "cat": "Muestras y regalos",
+   "unidad": "sobres",
+   "cantidad": 7
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Aceite de masaje corporal Harmony · 500 ml",
+   "marca": "Professional Spa",
+   "cat": "Corporales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Aceite esencial de Vainilla",
+   "marca": "Roots",
+   "cat": "Corporales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Contorno de ojos (cabina)",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Tónico de Malva · 100 ml",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Lactobio gel exfoliante · 250 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Hydrating Foaming Cleanser (cabina) · 200 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Máscara Secante",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Loción Antibacterial Natural · 250 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Crema para masaje facial · 200 g",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Control Balance loción secante · 80 cc",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Espuma Limpiadora · 200 ml",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Resveratrol · 120 g",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Diamond Facial Scrub · 250 g",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "PTI Gel · 250 g",
+   "marca": "Natural Center",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Vitamin K Clarifying Gel · 250 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Hyaluronic Acid Jelly Mask · 650 g",
+   "marca": "",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Mascarilla hidroplástica Pure Radiance · 280 g",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1,
+   "foto": "codex/diseno/fotos/pureradiance.jpg"
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Mascarilla hidroplástica Seaweed Secret · 280 g",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Arcilla Blanca · 125 g",
+   "marca": "Green Harmony",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Carbón activado de coco · 70 g",
+   "marca": "Chakra Seeds",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Loción Pre-depilatoria · 120 ml",
+   "marca": "Professional Spa",
+   "cat": "Corporales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Loción Post-depilatoria · 120 ml",
+   "marca": "Professional Spa",
+   "cat": "Corporales",
+   "unidad": "frascos",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Agujas 30G x 1/2\" · caja",
+   "marca": "Nipro",
+   "cat": "Descartables",
+   "unidad": "cajas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Agujas 18G x 1\" · caja 100",
+   "marca": "Vanaguja",
+   "cat": "Descartables",
+   "unidad": "cajas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Agujas 21G x 1\" · caja",
+   "marca": "Vanaguja",
+   "cat": "Descartables",
+   "unidad": "cajas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Agujas 34G · caja 100",
+   "marca": "Sungshim",
+   "cat": "Descartables",
+   "unidad": "cajas",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Cotonetes · 100 u",
+   "marca": "Baby's",
+   "cat": "Descartables",
+   "unidad": "paquetes",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Algodón hidrófilo · 30 g",
+   "marca": "Domesano",
+   "cat": "Descartables",
+   "unidad": "paquetes",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Mascarillas comprimidas · 50 u",
+   "marca": "",
+   "cat": "Descartables",
+   "unidad": "paquetes",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Syndet Espuma Calmante (cabina) · 150 ml",
+   "marca": "Professional Spa",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Protector Sebo-Oil Control FPS 60+ (cabina) · 120 g",
+   "marca": "Imagcev",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Reduce Hot Cream (cabina)",
+   "marca": "Professional Spa",
+   "cat": "Corporales",
+   "unidad": "unidades",
+   "cantidad": 1
+  },
+  {
+   "tipo": "uso",
+   "nombre": "Mascarilla aclarante (tapa plateada)",
+   "marca": "",
+   "cat": "Faciales",
+   "unidad": "unidades",
+   "cantidad": 1
+  }
+ ]
+}
