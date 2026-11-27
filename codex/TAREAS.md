@@ -57,7 +57,7 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
 - Copia la versión 1 a `prueba/` y cambia lo siguiente:
   - clave `sparati_prueba_v2`, quién `sparati_prueba_yo` y base de fotos `sparati_prueba_fotos`;
   - caché del service worker con prefijo `spp-`;
-  - manifiesto con el nombre «SPARATI Prueba», `start_url` y `scope` `./`, e ícono con una franja que diga PRUEBA.
+  - manifiesto con el nombre «SPARATI Prueba», `start_url` y `scope` `./`, e íconos hechos con los de `codex/marca/`, más una franja que diga PRUEBA. El `theme_color` es `#C2207F`.
 - Agrega una franja fina arriba que diga «Versión de prueba · los datos no son los reales».
 - Agrega el botón «Cargar datos de ejemplo» en Ajustes. Debe cargar `codex/catalogo.json` (104 productos reales, con las cantidades y las fotos que hay) con:
   - los precios de ejemplo;
@@ -79,7 +79,7 @@ Según `Main.png`:
 - tarjeta ciruela con las ventas del mes, la comparación con el mes anterior, la ganancia y barras de los últimos 7 días (SVG o div propios, sin bibliotecas);
 - tres contadores: por terminarse, vencen pronto y pacientes por recordar;
 - lista «Necesita atención», que junta el stock bajo, los vencimientos o el tiempo después de abierto (PAO) que se cumple, las pacientes por recordar y «Jonathan no tiene tus cambios» si pasaron más de 7 días sin enviar. Cada fila lleva su botón de acción.
-- **Hecha cuando:** con los datos de ejemplo se ve como el diseño y cada acción lleva a su pantalla.
+- **Hecha cuando:** con los datos de ejemplo se ve como el diseño, con el logo en la cabecera, y cada acción lleva a su pantalla.
 
 ## T3 · Inventario  [ ]
 Según `Inventario.png`:
@@ -163,7 +163,7 @@ Según `Reportes.png`:
 - **Ventas**: lo vendido, la ganancia, el número de ventas, la venta promedio, las barras por semana, lo más vendido y las formas de pago;
 - **Cabina**: el gasto en cabina (costo de los `uso`), los frascos terminados y los productos que más se gastan;
 - **Inventario**: el valor a costo y a precio, lo que no se movió en 60 días y lo que vence en 90 días;
-- **Descargar PDF**: una vista de impresión con el logo de texto SPARATI, `@media print` y `window.print()`. En el iPhone se guarda como PDF desde «Compartir»;
+- **Descargar PDF**: una vista de impresión con el logo completo de `codex/marca/` en el encabezado, `@media print` y `window.print()`. En el iPhone se guarda como PDF desde «Compartir»;
 - **Excel**: un CSV con `;` como separador, UTF-8 con BOM y coma decimal;
 - **Enviar por WhatsApp**: un resumen en texto.
 - **Hecha cuando:** las cifras de los reportes cuadran con las ventas del mes, con una prueba que lo verifica.
@@ -184,7 +184,7 @@ Según `Reportes.png`:
 - **Hecha cuando:** se puede hacer el ciclo pedir → llegó, que actualiza el stock y el costo.
 
 ## T12 · Etiquetas QR propias  [ ]
-- Para los productos sin código: genera un código `SP-` + 5 caracteres, guardado en `codigo`, y una hoja A4 para imprimir con 24 etiquetas de 3×8, cada una con su QR y el nombre.
+- Para los productos sin código: genera un código `SP-` + 5 caracteres, guardado en `codigo`, y una hoja A4 para imprimir con 24 etiquetas de 3×8, cada una con su QR, el nombre y el emblema pequeño.
   - Usa una biblioteca de QR guardada en `prueba/vendor/`.
 - El escáner reconoce estos códigos.
 - **Hecha cuando:** imprimir a PDF da una hoja ordenada y el escáner lee el QR generado.
@@ -197,7 +197,7 @@ Según `Reportes.png`:
 - **Hecha cuando:** un archivo enviado desde `prueba/` lo puede abrir la versión 1 sin errores (prueba automática que carga la raíz con ese archivo), y al revés.
 
 ## T14 · Pulido final  [ ]
-- Primera vez: una bienvenida de 3 pasos.
+- Primera vez: una bienvenida de 3 pasos que empieza como `Bienvenida.png`, con el logo completo.
 - Estados vacíos amables.
 - Animaciones de `DISENO.md`.
 - Revisión de accesibilidad: etiquetas, foco y contraste.
