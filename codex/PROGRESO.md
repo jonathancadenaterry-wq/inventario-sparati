@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T13
-- Última corrida: 27-nov-2026, 18:49 (Ecuador) · T12 completada
+- Tarea actual: T14
+- Última corrida: 27-nov-2026, 19:10 (Ecuador) · T13 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -253,3 +253,21 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Pasaron 38 pruebas en Chromium a 390×844 y 35 con su perfil iPhone 14 Pro. Se verificó una página A4 para 24 etiquetas y dos para 25, el reintento de guardado, la lectura sin conexión y la compatibilidad con los archivos v1. El lector local también reconoció un QR extraído del PDF.
 - Revisé ocho capturas T12 de 390×844 en claro y oscuro. Inventario conserva las tarjetas de cifras, los grupos y las filas de `Inventario.png`, con dos filas de acciones y orden antes del catálogo. El escáner conserva el encuadre menta y la tarjeta inferior de `Escaner.png`. La vista previa queda en blanco en ambos temas para representar el papel. En Inventario todavía se alcanzan a ver fragmentos de filas bajo la barra translúcida.
 - Sigue T13, Ajustes, envío y respaldo. Queda comprobar la impresión y la lectura de una etiqueta física en Safari del iPhone de Elba, también desde la pantalla de inicio.
+
+### 27-nov-2026 · 18:52–19:10 (Ecuador) · T13
+
+**Revisión de las ocho capturas T12 adjuntas**
+
+- **Inventario en claro y oscuro.** El filtro siguiente asoma cortado a la derecha. Las dos filas de acciones debajo de las cifras bajan el primer grupo frente a `Inventario.png`. El botón central y la barra translúcida dejan una fila a medias y permiten entrever texto debajo de las pestañas.
+- **Selección en claro y oscuro.** «Preparar etiquetas» queda al alcance en el pie. La última fila visible pasa por debajo de ese pie y su detalle se corta. La casilla de «Ácido Mandélico» tiene un tono magenta más oscuro que las demás casillas seleccionadas y puede parecer otro estado.
+- **Vista previa en claro y oscuro.** El bloque blanco y los QR conservan contraste en ambos temas. Al llegar al botón de imprimir se ve solo parte de la quinta fila. Los nombres de varias etiquetas ocupan tres líneas y los códigos quedan en letra pequeña.
+- **Escáner en claro y oscuro.** Frente a `Escaner.png`, el QR de la simulación y la línea menta se cruzan en el centro. La instrucción blanca cae sobre una zona clara del fondo. Al ofrecer también «Escanear otro», el acceso manual ocupa menos espacio y pierde el centrado del diseño.
+
+**Trabajo completado**
+
+- Ajustes reúne quién usa el celular, el tema, el tamaño de letra, los días de aviso y los datos de ejemplo. Se pueden consultar y agregar categorías en los dos inventarios y editar el recordatorio de compra y la despedida del comprobante de WhatsApp.
+- «Enviar» conserva el `.txt` de la versión 1. Se prepara antes de abrir el menú Compartir o de descargarlo. Inicio mantiene el aviso de más de siete días cuando hay cambios pendientes. «Recibir» mezcla los registros por su identificador y fecha de modificación y conserva las fotos.
+- «Respaldo completo» guarda un `.json` con las fotos, las preferencias, el conteo en curso y los pedidos. «Restaurar respaldo» requiere confirmar el reemplazo y conserva el nombre elegido en el celular que lo recibe. La invitación de Inicio muestra cómo agregar la app a la pantalla de inicio y dónde guardar una copia con fotos.
+- Pasaron 43 pruebas en Chromium a 390×844 y 39 con el perfil iPhone 14 Pro, ejecutadas por tandas. La prueba de intercambio abrió en la raíz un `.txt` de `prueba/` con foto, QR y movimientos, registró allí una entrada y la leyó de vuelta en `prueba/`. También se comprobó la importación repetida del archivo v1, la cancelación de Compartir, la descarga y restauración sin conexión y la conservación de las cachés de las otras apps.
+- Revisé 14 capturas T13 de 390×844 en claro y oscuro. Como Ajustes carece de una imagen propia en el diseño aprobado, usé las tarjetas y jerarquía de `Main.png`, el segmentado de `Inventario.png` y la hoja inferior de `Vender.png`. Envío y respaldo se abren en una hoja inferior. En Ajustes, los controles de inventario y plantillas se ven al desplazar.
+- Sigue T14, pulido final. En el iPhone real de Elba queda comprobar que el menú Compartir permita guardar el respaldo en Archivos o Drive y abrirlo de nuevo, desde Safari y desde la app instalada. Los cambios quedaron en `prueba/` y `codex/`.

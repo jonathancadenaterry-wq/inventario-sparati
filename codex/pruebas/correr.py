@@ -2,6 +2,7 @@
 """Pruebas de SPARATI Prueba con Playwright. Los archivos se sirven por rutas, sin red."""
 
 import argparse
+import base64
 import csv
 import json
 import mimetypes
@@ -331,6 +332,296 @@ def prueba_envio_v1(navegador):
         assert datos_guardados(pagina) == primero
     finally:
         sitio.cerrar()
+
+
+def prueba_envio_entre_versiones(navegador):
+    v2 = Sitio(navegador)
+    v1 = Sitio(navegador)
+    try:
+        foto = RAIZ / 'codex/diseno/fotos/sunscreen.jpg'
+        base = ESTADO_V1['productos'][0]
+        producto = {**base, 'foto': 'foto-intercambio', 'codigo': 'SP-KBC49', 'max': 8}
+        movimiento = {**ESTADO_V1['movs'][0], 'id': 'apertura-intercambio', 'prod': 'p3',
+                      'tipo': 'apertura', 'cant': 0}
+        venta = {**ESTADO_V1['ventas'][0], 'descuento': 2, 'pago': 'efectivo'}
+        estado = {**ESTADO_V1, 'productos': [producto, *ESTADO_V1['productos'][1:]],
+                  'movs': [*ESTADO_V1['movs'], movimiento], 'ventas': [venta]}
+        nueva = v2.abrir(estado=estado, quien='Elba')
+        nueva.evaluate("""async ruta => {
+          await FDB.put('foto-intercambio', await (await fetch(ruta)).blob());
+        }""", '../codex/diseno/fotos/sunscreen.jpg')
+        nueva.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
+        ajustes = abrir_ajustes(nueva)
+        ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+        envio = nueva.get_by_role('dialog', name='Enviar a Jonathan')
+        expect(envio.get_by_role('status')).to_have_text('Archivo listo · 1 foto')
+        with nueva.expect_download() as descarga:
+            envio.get_by_role('button', name='Descargar archivo').click()
+        archivo_v2 = descarga.value
+        assert archivo_v2.suggested_filename.endswith('.txt')
+        paquete = json.loads(archivo_v2.path().read_text(encoding='utf-8'))
+        assert paquete['app'] == 'sparati-inventario' and paquete['v'] == 1 and paquete['de'] == 'Elba'
+        assert paquete['datos']['productos'] == estado['productos']
+        assert paquete['datos']['movs'] == estado['movs'] and paquete['datos']['ventas'] == [venta]
+        assert set(paquete['datos']) == {'productos', 'movs', 'ventas', 'cats', 'pacientes'}
+        assert base64.b64decode(paquete['fotos']['foto-intercambio'].split(',')[1]) == foto.read_bytes()
+
+        # Abrir el código de la raíz en otro contexto, con almacenamiento y fotos ficticios.
+        anterior = v1.pagina
+        anterior.route('https://fonts.googleapis.com/**', lambda ruta: ruta.fulfill(content_type='text/css', body=''))
+        anterior.add_init_script("""localStorage.setItem('sparati_inventario_yo', '{"quien":"Jonathan"}');
+          Object.defineProperty(navigator, 'canShare', {value: () => false});""")
+        anterior.goto(ORIGEN + PREFIJO)
+        with anterior.expect_file_chooser() as selector:
+            anterior.get_by_role('button', name='Recibir el inventario de Elba').click()
+        selector.value.set_files(archivo_v2.path())
+        expect(anterior.locator('#toast')).to_contain_text('Recibido de Elba')
+        assert anterior.evaluate("['p1', 'p2', 'p3'].map(stockDe)") == [5, 4, 1]
+        assert anterior.evaluate('E.productos') == estado['productos']
+        assert anterior.evaluate('E.movs') == estado['movs'] and anterior.evaluate('E.ventas') == [venta]
+        assert anterior.evaluate("FDB.get('foto-intercambio').then(b => b?.size)") == foto.stat().st_size
+
+        anterior.locator('.nav [data-tab=venta]').click()
+        anterior.locator('.prod').filter(has_text=base['nombre']).get_by_role('button', name='Llegó más').click()
+        anterior.locator('input[data-f=cant]').fill('2')
+        anterior.locator('[data-act=guardarF]').click()
+        expect(anterior.locator('#toast')).to_contain_text('+2 unidades')
+        anterior.locator('.nav [data-tab=inicio]').click()
+        anterior.get_by_role('button', name='Ajustes').click()
+        with anterior.expect_download() as regreso:
+            anterior.locator('[data-tipo=ajustes] [data-act=enviar]').click()
+        assert regreso.value.suggested_filename == 'inventario-sparati-jonathan-2026-11-27.txt'
+        with nueva.expect_file_chooser() as selector:
+            ajustes.get_by_role('button', name='Recibir', exact=True).click()
+        selector.value.set_files(regreso.value.path())
+        expect(nueva.locator('#toast')).to_contain_text('Recibido de Jonathan')
+        assert nueva.evaluate("['p1', 'p2', 'p3'].map(stockDe)") == [7, 4, 1]
+        assert nueva.evaluate("prodPorId('p1').codigo") == producto['codigo']
+        assert datos_guardados(nueva)['ventas'] == [venta]
+        assert v1.pagina.evaluate("localStorage.getItem('sparati_prueba_v2')") is None
+        assert v2.pagina.evaluate("localStorage.getItem('sparati_inventario_v1')") is None
+    finally:
+        v1.cerrar()
+        v2.cerrar()
+
+
+def prueba_ajustes_v2(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1, quien='Elba')
+        ajustes = abrir_ajustes(pagina)
+        ajustes.get_by_role('button', name='Jonathan', exact=True).click()
+        expect(ajustes.get_by_role('button', name='Enviar a Elba')).to_be_visible()
+        expect(ajustes.get_by_role('button', name='Jonathan', exact=True)).to_be_focused()
+        letra = ajustes.get_by_role('group', name='Tamaño de letra')
+        letra.get_by_role('button', name='Grande').click()
+        expect(letra.get_by_role('button', name='Grande')).to_have_attribute('aria-pressed', 'true')
+        expect(letra.get_by_role('button', name='Grande')).to_be_focused()
+        assert pagina.locator('body').evaluate('el => parseFloat(getComputedStyle(el).fontSize)') > 15
+        assert ajustes.locator('.hoja-cuerpo').evaluate('el => el.scrollWidth === el.clientWidth')
+        ajustes.get_by_role('button', name='90 días').click()
+        for tema in ('Claro', 'Oscuro'):
+            ajustes.get_by_role('button', name=tema).click()
+            razones = contrastes(pagina, [['.fechas-envio dt', '.fechas-envio > div'],
+                                          ['.ajustes-in [data-act=respaldo]'],
+                                          ['.ajustes-in [data-act=enviar]'],
+                                          ['.ajustes-in [data-act=restaurar]', '.ajustes-in [aria-labelledby=ajustesRespaldo]']])
+            assert min(razones) >= 4.5, (tema, razones)
+        categorias = ajustes.get_by_role('button', name='Categorías')
+        categorias.click()
+        hoja = pagina.get_by_role('dialog', name='Categorías')
+        nueva = hoja.get_by_label('Nueva categoría')
+        hoja.get_by_role('button', name='Uso en spa').click()
+        nueva.fill('  mascarillas   calmantes  ')
+        agregar = hoja.get_by_role('button', name='Agregar categoría')
+        agregar.click()
+        expect(hoja.get_by_role('list')).to_contain_text('Mascarillas calmantes')
+        assert 'Mascarillas calmantes' in datos_guardados(pagina)['cats']['uso']
+        nueva.fill('MASCARILLAS CALMÁNTES')
+        agregar.click()
+        assert nueva.evaluate('el => el.validationMessage') == 'Esa categoría ya existe.'
+        hoja.get_by_role('button', name='Para vender').click()
+        expect(hoja.get_by_role('list')).not_to_contain_text('Mascarillas calmantes')
+        cerrar_hoja(pagina)
+        expect(categorias).to_be_focused()
+
+        ajustes.get_by_role('button', name='Plantillas de WhatsApp').click()
+        plantillas = pagina.get_by_role('dialog', name='Plantillas de WhatsApp')
+        despedida = 'Gracias por venir a SPARATI.\nQue tengas un lindo día.'
+        plantillas.get_by_label('Despedida del comprobante').fill(despedida)
+        plantillas.get_by_role('button', name='Guardar despedida').click()
+        expect(pagina.locator('#toast')).to_have_text('Despedida guardada')
+        pagina.reload()
+        expect(pagina.locator('html')).to_have_attribute('data-letra', 'grande')
+        expect(pagina.locator('html')).to_have_attribute('data-theme', 'dark')
+        expect(pagina.get_by_role('heading', name=re.compile('Jonathan'))).to_be_visible()
+        assert datos_guardados(pagina)['ajustes']['diasVence'] == 90
+        inventario(pagina, 'uso')
+        assert pagina.locator('#qProd').evaluate('el => getComputedStyle(el).fontSize') == '18px'
+        pagina.get_by_role('button', name='Producto', exact=True).click()
+        expect(pagina.get_by_role('button', name='Mascarillas calmantes')).to_be_visible()
+        cerrar_hoja(pagina)
+        inventario(pagina, 'ventas')
+        pagina.locator('.venta').first.click()
+        editar = pagina.get_by_role('dialog', name='Editar venta')
+        enlace = editar.get_by_role('link', name='Abrir comprobante en WhatsApp')
+        mensaje = parse_qs(urlsplit(enlace.get_attribute('href')).query)['text'][0]
+        assert mensaje.endswith(despedida) and 'Comprobante SPARATI' in mensaje and 'Total: $ 42,00' in mensaje
+    finally:
+        sitio.cerrar()
+
+
+def prueba_envio_compartido(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1, quien='Elba')
+        pagina.evaluate("""() => {
+          window.compartidos = [];
+          Object.defineProperty(navigator, 'canShare', {value: ({files}) => files[0].type === 'text/plain'});
+          Object.defineProperty(navigator, 'share', {value: ({files}) => {
+            compartidos.push({archivo:files[0], activacion:navigator.userActivation.isActive});
+            return new Promise((ok, mal) => { window.finCompartir = {ok, mal}; });
+          }});
+        }""")
+        ajustes = abrir_ajustes(pagina)
+        ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+        envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
+        compartir = envio.get_by_role('button', name='Compartir archivo')
+        compartir.click()
+        assert pagina.evaluate('compartidos[0].activacion') is True
+        pagina.evaluate("finCompartir.mal(new DOMException('Cerrado', 'AbortError'))")
+        expect(compartir).to_be_enabled()
+        assert pagina.evaluate('E.sync.envio') == ESTADO_V1['sync']['envio']
+        compartir.click()
+        pagina.evaluate("finCompartir.mal(new DOMException('Menú no disponible', 'NotAllowedError'))")
+        expect(envio.get_by_role('status')).to_contain_text('Puedes descargar el archivo')
+        with pagina.expect_download():
+            envio.get_by_role('button', name='Descargar archivo').click()
+        expect(envio).to_have_count(0)
+        assert datos_guardados(pagina)['sync']['envio'] > 0
+
+        ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+        compartir.click()
+        pagina.clock.fast_forward(2000)
+        # Representa una entrada registrada por otra pestaña mientras el menú está abierto.
+        pagina.evaluate("""() => {
+          const estado = JSON.parse(localStorage.getItem(CLAVE));
+          estado.movs.push({id:'otra-pestana', prod:'p1', tipo:'entrada', cant:2, fecha:hoyISO(), mod:ahora(), por:quien()});
+          localStorage.setItem(CLAVE, JSON.stringify(estado));
+        }""")
+        pagina.evaluate('finCompartir.ok()')
+        expect(envio).to_have_count(0)
+        assert pagina.evaluate("stockDe('p1')") == 7
+        assert not pagina.evaluate("""async () =>
+          JSON.parse(await compartidos.at(-1).archivo.text()).datos.movs.some(m => m.id === 'otra-pestana')""")
+        sync = datos_guardados(pagina)['sync']
+        assert sync['envio'] > sync['hastaEnvio']
+        cerrar_hoja(pagina)
+        pagina.clock.fast_forward(8 * 86400000)
+        pagina.evaluate('render()')
+        expect(pagina.locator('.atencion-inicio')).to_contain_text('Jonathan no tiene tus cambios')
+    finally:
+        sitio.cerrar()
+
+
+def prueba_respaldo_completo(navegador, perfil=None):
+    origen = Sitio(navegador, perfil=perfil)
+    destino = Sitio(navegador, perfil=perfil)
+    try:
+        estado = {**ESTADO_V1,
+                  'productos': [{**ESTADO_V1['productos'][0], 'foto': 'foto-respaldo'}, *ESTADO_V1['productos'][1:]],
+                  'pedidos': [{'id': 'pedido-local', 'proveedor': 'Proveedor', 'fecha': '2026-11-27', 'items': []}],
+                  'conteo': {'ids': ['p1'], 'cantidades': {'p1': '3'}, 'paso': 'p1'},
+                  'ajustes': {'tema': 'dark', 'letraGrande': True, 'diasVence': 90}}
+        pagina = origen.abrir(estado=estado, quien='Elba')
+        pagina.evaluate("""async () => {
+          const foto = await (await fetch('../codex/diseno/fotos/sunscreen.jpg')).blob();
+          await FDB.put('foto-respaldo', foto);
+          guardar();
+          Object.defineProperty(navigator, 'canShare', {value: () => false});
+        }""")
+        antes = datos_guardados(pagina)
+        origen.contexto.set_offline(True)
+        origen.sin_red = True
+        ajustes = abrir_ajustes(pagina)
+        ajustes.get_by_role('button', name='Respaldo completo', exact=True).click()
+        respaldo = pagina.get_by_role('dialog', name='Respaldo completo')
+        expect(respaldo.get_by_role('status')).to_have_text('Archivo listo · 1 foto')
+        expect(respaldo).to_contain_text('Archivos o Drive')
+        with pagina.expect_download() as descarga:
+            respaldo.get_by_role('button', name='Descargar archivo').click()
+        archivo = descarga.value
+        assert archivo.suggested_filename == 'respaldo-sparati-prueba-2026-11-27.json'
+        contenido = json.loads(archivo.path().read_text(encoding='utf-8'))
+        assert contenido['app'] == 'sparati-respaldo' and contenido['estado'] == antes
+        assert datos_guardados(pagina) == antes
+
+        nueva = destino.abrir(estado={**ESTADO_V1, 'movs': [], 'ventas': []}, quien='Jonathan')
+        destino.contexto.set_offline(True)
+        destino.sin_red = True
+        ajustes = abrir_ajustes(nueva)
+        entrada = ajustes.get_by_role('button', name='Restaurar respaldo', exact=True)
+        with nueva.expect_file_chooser() as selector:
+            ajustes.get_by_role('button', name='Recibir', exact=True).click()
+        selector.value.set_files(archivo.path())
+        expect(nueva.locator('#toast')).to_have_text('Ese archivo no es un envío de inventario de SPARATI.')
+        with nueva.expect_file_chooser() as selector:
+            entrada.click()
+        selector.value.set_files(FIXTURE_ENVIO)
+        expect(nueva.locator('#toast')).to_have_text('Ese archivo no es un respaldo completo de SPARATI.')
+        assert nueva.evaluate('FDB.claves()') == [] and nueva.evaluate("stockDe('p1')") == 0
+
+        with nueva.expect_file_chooser() as selector:
+            entrada.click()
+        selector.value.set_files(archivo.path())
+        confirmar = nueva.get_by_role('dialog', name='¿Restaurar este respaldo?')
+        expect(confirmar).to_contain_text('reemplazará el inventario')
+        confirmar.get_by_role('button', name='Cancelar').click()
+        expect(confirmar).to_have_count(0)
+        assert nueva.evaluate('FDB.claves()') == [] and nueva.evaluate("stockDe('p1')") == 0
+        with nueva.expect_file_chooser() as selector:
+            entrada.click()
+        selector.value.set_files(archivo.path())
+        confirmar.get_by_role('button', name='Restaurar respaldo').click()
+        expect(nueva.locator('#toast')).to_have_text('Respaldo restaurado')
+        expect(nueva.locator('html')).to_have_attribute('data-theme', 'dark')
+        expect(nueva.locator('html')).to_have_attribute('data-letra', 'grande')
+        assert datos_guardados(nueva) == antes
+        assert nueva.evaluate('quien()') == 'Jonathan'
+        assert nueva.evaluate("stockDe('p1')") == 5
+        foto = nueva.evaluate("FDB.get('foto-respaldo').then(fotoADataURL)")
+        assert foto == contenido['fotos']['foto-respaldo']
+    finally:
+        destino.cerrar()
+        origen.cerrar()
+
+
+def prueba_invitacion_instalar(navegador, perfil=None):
+    for instalada in (False, True):
+        sitio = Sitio(navegador, perfil=perfil)
+        try:
+            sitio.pagina.add_init_script(f"""Object.defineProperties(navigator, {{
+              userAgent: {{value: 'iPhone'}}, standalone: {{value: {str(instalada).lower()}}}
+            }});""")
+            pagina = sitio.abrir(estado=ESTADO_V1)
+            invitacion = pagina.get_by_role('region', name='SPARATI en tu pantalla de inicio')
+            if instalada:
+                expect(invitacion).to_have_count(0)
+                continue
+            expect(invitacion).to_contain_text('copia con fotos')
+            invitacion.get_by_role('button', name='Cerrar invitación').click()
+            expect(invitacion).to_have_count(0)
+            pagina.reload()
+            expect(invitacion).to_have_count(0)
+            pagina.evaluate("localStorage.removeItem('sparati_prueba_instalacion')")
+            pagina.reload()
+            invitacion.get_by_role('button', name='Agregar a pantalla de inicio').click()
+            instrucciones = pagina.get_by_role('dialog', name='Agregar a pantalla de inicio')
+            expect(instrucciones).to_contain_text('En Safari, toca Compartir')
+            instrucciones.get_by_role('button', name='Entendido').click()
+            expect(invitacion).to_have_count(0)
+        finally:
+            sitio.cerrar()
 
 
 def verificar_ejemplo(pagina):
@@ -2088,8 +2379,10 @@ def prueba_inicio_avisos(navegador, perfil=None):
 
         # Descargar el envío de prueba quita el aviso sin abrir ninguna aplicación externa.
         pagina.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
+        previa.get_by_role('button', name='Enviar · Jonathan no tiene tus cambios').click()
+        envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
         with pagina.expect_download() as descarga:
-            previa.get_by_role('button', name='Enviar · Jonathan no tiene tus cambios').click()
+            envio.get_by_role('button', name='Descargar archivo').click()
         archivo = descarga.value
         assert archivo.suggested_filename == 'inventario-sparati-prueba-elba-2026-11-27.txt'
         assert json.loads(archivo.path().read_text(encoding='utf-8'))['app'] == 'sparati-inventario'
@@ -2216,10 +2509,12 @@ def prueba_recordatorios_paciente(navegador, perfil=None):
         ]}, quien='Elba')
         ajustes = abrir_ajustes(pagina)
         plantilla = 'Hola, {nombre}. ¿Te guardo {producto}?\nElba & SPARATI'
-        campo = ajustes.get_by_label('Mensaje base para WhatsApp')
+        ajustes.get_by_role('button', name='Plantillas de WhatsApp').click()
+        plantillas = pagina.get_by_role('dialog', name='Plantillas de WhatsApp')
+        campo = plantillas.get_by_label('Mensaje base para WhatsApp')
         expect(campo).to_have_value(re.compile(r'\{nombre\}.*\{producto\}'))
         campo.fill(plantilla)
-        ajustes.get_by_role('button', name='Guardar mensaje base').click()
+        plantillas.get_by_role('button', name='Guardar mensaje base').click()
         expect(pagina.locator('#toast')).to_have_text('Mensaje base guardado')
         assert datos_guardados(pagina)['ajustes']['plantillaRecordatorio'] == plantilla
         pagina.reload()
@@ -3037,6 +3332,8 @@ def capturar(navegador, tarea):
         try:
             if tarea in ('T4', 'T6', 'T7', 'T10', 'T12'):
                 simular_camara(sitio.pagina)
+            if tarea == 'T13':
+                sitio.pagina.add_init_script("Object.defineProperty(navigator, 'userAgent', {value: 'iPhone'});")
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
                 'v': 1, 'productos': [], 'movs': [], 'ventas': [],
@@ -3048,6 +3345,36 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
+            if tarea == 'T13':
+                pagina.evaluate("""() => {
+                  guardar({...E, sync:{...E.sync, recibo:ahora() - 86400000, de:'Jonathan'}});
+                  Object.defineProperty(navigator, 'canShare', {value: () => false});
+                  render();
+                }""")
+                ajustes = abrir_ajustes(pagina)
+                guardar(sitio, 'ajustes', tema)
+                ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+                hoja_envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
+                expect(hoja_envio.get_by_role('status')).to_have_text('Archivo listo · 15 fotos')
+                guardar(sitio, 'envio', tema)
+                cerrar_hoja(pagina)
+                ajustes.get_by_role('button', name='Respaldo completo').click()
+                respaldo = pagina.get_by_role('dialog', name='Respaldo completo')
+                expect(respaldo.get_by_role('status')).to_have_text('Archivo listo · 15 fotos')
+                guardar(sitio, 'respaldo', tema)
+                cerrar_hoja(pagina)
+                ajustes.get_by_role('region', name='Este celular').evaluate("el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'preferencias', tema)
+                ajustes.get_by_role('button', name='Categorías').click()
+                guardar(sitio, 'categorias', tema)
+                cerrar_hoja(pagina)
+                ajustes.get_by_role('button', name='Plantillas de WhatsApp').click()
+                guardar(sitio, 'plantillas', tema)
+                cerrar_hoja(pagina)
+                cerrar_hoja(pagina)
+                pagina.get_by_role('button', name='Agregar a pantalla de inicio').click()
+                guardar(sitio, 'instalacion', tema)
+                continue
             if tarea == 'T12':
                 inventario(pagina, 'venta')
                 guardar(sitio, 'inventario', tema)
@@ -3460,8 +3787,9 @@ def capturar(navegador, tarea):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T12', choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'],
-                        help='guardar capturas en modo claro y oscuro (T12 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T13',
+                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13'],
+                        help='guardar capturas en modo claro y oscuro (T13 por omisión)')
     args = parser.parse_args()
     with sync_playwright() as p:
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
@@ -3476,12 +3804,13 @@ def main():
                         prueba_reporte_ventas, prueba_reporte_cabina_inventario,
                         prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner,
                         prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas,
-                        prueba_etiquetas_qr, prueba_impresion_etiquetas, prueba_etiquetas_dos_pestanas]
+                        prueba_etiquetas_qr, prueba_impresion_etiquetas, prueba_etiquetas_dos_pestanas,
+                        prueba_ajustes_v2, prueba_envio_compartido, prueba_respaldo_completo, prueba_invitacion_instalar]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue
             with motor.launch() as navegador:
-                pruebas = [*principales, prueba_envio_v1, prueba_ejemplo]
+                pruebas = [*principales, prueba_envio_v1, prueba_envio_entre_versiones, prueba_ejemplo]
                 if motor.name == 'chromium':
                     pruebas.append(prueba_sin_conexion)
                 for prueba in pruebas:

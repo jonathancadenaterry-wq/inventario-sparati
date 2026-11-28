@@ -43,7 +43,8 @@ El estado se guarda en `localStorage` como un JSON con esta forma:
   - Paciente, en la lista nueva `pacientes:[{id, nombre, tel, notas, creado, mod, por, borrado}]`.
     - Las ventas siguen guardando `pac` y `tel` como texto para seguir siendo compatibles.
     - Al recibir un archivo de la versión 1, la lista de pacientes se arma a partir de los nombres de las ventas.
-  - Ajustes: `plantillaRecordatorio` guarda el mensaje base de WhatsApp en este celular.
+  - En Ajustes, `plantillaRecordatorio` guarda el mensaje base de WhatsApp, `plantillaComprobante` la despedida del comprobante y `letraGrande` el tamaño de letra de este celular.
+  - En `sync`, `hastaEnvio` indica cuándo se preparó el archivo del último envío y `categoriasMod` cuándo se agregó una categoría en este celular.
   - Estado local: `conteo` guarda el borrador del conteo guiado. El archivo de envío solo lleva los movimientos de ajuste después de confirmar el conteo.
   - Estado local: `pedidos:[{id, proveedor, fecha, items:[{prod, nombre, unidad, cant}], creado, mod, por, borrado}]`. El archivo de envío lleva las entradas registradas y los costos actualizados.
 - Los mismos `id` se mantienen siempre. Todo cambio pone `mod = Date.now()` y `por = quien()`.
@@ -193,7 +194,7 @@ Según `Reportes.png`:
 - El escáner reconoce estos códigos.
 - **Hecha cuando:** imprimir a PDF da una hoja ordenada y el escáner lee el QR generado.
 
-## T13 · Ajustes, envío y respaldo  [ ]
+## T13 · Ajustes, envío y respaldo  [x]
 - Rediseña Ajustes:
   - quién usa el celular, tema (claro, oscuro o automático), letra grande y plantillas de WhatsApp;
   - categorías, días de aviso de vencimiento y «Cargar datos de ejemplo».

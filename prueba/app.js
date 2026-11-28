@@ -7,6 +7,7 @@
 const VERSION_APP = 2;
 const CLAVE = 'sparati_prueba_v2';
 const CLAVE_YO = 'sparati_prueba_yo';
+const CLAVE_INSTALACION = 'sparati_prueba_instalacion';
 const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const DIAS_C = ['dom','lun','mar','mié','jue','vie','sáb'];
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -19,6 +20,7 @@ const UNIDADES = ['unidades','frascos','cajas','ampollas','jeringas','sobres','m
 const PAGOS = ['Efectivo','Transferencia','Tarjeta'];
 const MOTIVOS = {conteo:'Conteo', dañado:'Se dañó', vencido:'Se venció', regalo:'Regalo', otro:'Otro'};
 const PLANTILLA_RECORDATORIO = 'Hola, {nombre}. Te escribe Elba de SPARATI. Tu {producto} ya debe estar por terminarse. ¿Te separo uno?';
+const PLANTILLA_COMPROBANTE = 'Gracias por tu compra.';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -81,21 +83,25 @@ function haceTxt(ms){
 // ---------- Estado ----------
 function estadoInicial(){
   return {v:1, productos:[], movs:[], ventas:[], pacientes:[], pedidos:[], cats:{venta:[], uso:[]},
-    ajustes:{diasVence:60, tema:'auto', plantillaRecordatorio:PLANTILLA_RECORDATORIO},
+    ajustes:{diasVence:60, tema:'auto', letraGrande:false,
+      plantillaRecordatorio:PLANTILLA_RECORDATORIO, plantillaComprobante:PLANTILLA_COMPROBANTE},
     sync:{envio:0, recibo:0, de:''}, creado:ahora()};
 }
 let E, YO, estadoGuardado;
+function completarEstado(estado){
+  const base = estadoInicial();
+  for(const k of ['movs','ventas','pacientes','pedidos']) if(!Array.isArray(estado[k])) estado[k] = [];
+  estado.cats = {...base.cats, ...estado.cats};
+  estado.ajustes = {...base.ajustes, ...estado.ajustes};
+  estado.sync = {...base.sync, ...estado.sync};
+  return estado;
+}
 function cargar(){
   try{
     estadoGuardado = localStorage.getItem(CLAVE);
     E = JSON.parse(estadoGuardado);
   }catch(e){ E = null; }
-  if(!E || !Array.isArray(E.productos)) E = estadoInicial();
-  const b = estadoInicial();
-  for(const k of ['movs','ventas','pacientes','pedidos']) if(!Array.isArray(E[k])) E[k] = [];
-  E.cats = Object.assign(b.cats, E.cats || {});
-  E.ajustes = Object.assign(b.ajustes, E.ajustes || {});
-  E.sync = Object.assign(b.sync, E.sync || {});
+  E = E && Array.isArray(E.productos) ? completarEstado(E) : estadoInicial();
   try{ YO = JSON.parse(localStorage.getItem(CLAVE_YO)); }catch(e){ YO = null; }
   completarPacientes();
 }
@@ -136,6 +142,7 @@ function completarPacientes(estado = E){
 let STOCK = new Map(), CONSUMO = new Map();
 const vivos = l => l.filter(x => !x.borrado);
 const productos = tipo => vivos(E.productos).filter(p => !tipo || p.tipo === tipo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+const categoriasDe = tipo => [...new Set([...CATS[tipo], ...(E.cats[tipo] || []), ...productos(tipo).map(p => p.cat)].filter(Boolean))];
 const prodPorId = id => E.productos.find(p => p.id === id);
 const stockDe = id => red(STOCK.get(id) || 0);
 function calcular(){
@@ -281,7 +288,7 @@ const FDB = {
   claves(){ return this.tx('readonly', s => s.getAllKeys()); },
   vaciar(){ return this.tx('readwrite', s => s.clear()); },
 };
-const URLS = {};
+const URLS = Object.create(null);
 async function urlFoto(id){
   if(URLS[id]) return URLS[id];
   const b = await FDB.get(id).catch(() => null);
@@ -665,11 +672,11 @@ function avisosInicio(){
     porPaciente.get(nombre).push(r);
   }
   const envio = E.sync.envio;
-  const pendiente = quien() && ultimoCambio() > envio && ahora() - (envio || E.creado) > 7 * 86400000;
+  const pendiente = quien() && ultimoCambio() > (E.sync.hastaEnvio ?? envio) && ahora() - (envio || E.creado) > 7 * 86400000;
   return {stock, fecha:[...porProducto.values()], paciente:[...porPaciente.values()], envio:pendiente ? [envio] : []};
 }
 function ultimoCambio(){
-  let ultimo = 0;
+  let ultimo = E.sync.categoriasMod || 0;
   for(const k of ['productos','movs','ventas','pacientes'])
     for(const x of E[k]) if(x.por === quien() && x.mod > ultimo) ultimo = x.mod;
   return ultimo;
@@ -789,6 +796,7 @@ function vInicio(){
       <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">${IC.mas} Para vender</button>
         <button class="btn gold" data-act="nuevoProd" data-tipo="uso">${IC.mas} Uso en spa</button></div>
       ${nombre === 'Jonathan' ? '<button class="btn ghost" data-act="recibir">Recibir el inventario de Elba</button>' : ''}</section>` : ''}
+    ${invitacionInstalar()}
     <button class="link ajustes-inicio" data-act="ajustes">${IC.ajustes} Ajustes</button>
   </div>`;
 }
@@ -1540,7 +1548,7 @@ function formProd(id, tipo, codigo = ''){
 }
 function pintarFormProd(){
   const cu = $('#fCuerpo');
-  const cats = [...new Set([...CATS[F.tipo], ...(E.cats[F.tipo] || []), F.cat].filter(Boolean))];
+  const cats = [...new Set([...categoriasDe(F.tipo), F.cat].filter(Boolean))];
   const provs = Array.from(new Set(vivos(E.productos).map(p => p.prov).filter(Boolean)));
   const fotoId = F.fotoNueva || F.foto;
   cu.classList.add('form-producto');
@@ -2297,10 +2305,11 @@ document.addEventListener('input', e => {
 });
 function enlaceComprobante(v){
   const lineas = v.items.map(it => `${fCant(it.cant)} × ${it.nombre} · ${dinero(importeItemVenta(it))}`);
+  const despedida = E.ajustes.plantillaComprobante || PLANTILLA_COMPROBANTE;
   return waLink(v.tel, ['Comprobante SPARATI', fDia(v.fecha) + ' de ' + v.fecha.slice(0, 4),
     ...(v.pac ? [v.pac] : []), '', ...lineas,
     ...(v.descuento ? ['Descuento: ' + dinero(v.descuento)] : []),
-    'Total: ' + dinero(totalVenta(v)), v.cobrado ? 'Cobrado · ' + cap(v.pago) : 'Queda pendiente', '', 'Gracias por tu compra.'].join('\n'));
+    'Total: ' + dinero(totalVenta(v)), v.cobrado ? 'Cobrado · ' + cap(v.pago) : 'Queda pendiente', '', despedida].join('\n'));
 }
 function cantidadesPorProducto(items){
   const cantidades = new Map();
@@ -3453,32 +3462,156 @@ function descargarArchivo(archivo, nombre){
   enlace.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
-async function enviar(){
-  if(!quien()){ elegirQuien(); return; }
-  toast('Preparando el archivo…');
-  const fotos = {};
-  for(const p of vivos(E.productos)) if(p.foto){ const b = await FDB.get(p.foto).catch(() => null); if(b) fotos[p.foto] = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }
-  const paquete = {app:'sparati-inventario', v:1, de:quien(), generado:new Date().toISOString(),
-    datos:{productos:E.productos, movs:E.movs, ventas:E.ventas, cats:E.cats, pacientes:E.pacientes}, fotos};
-  const texto = JSON.stringify(paquete);
-  const nombre = `inventario-sparati-prueba-${quien().toLowerCase()}-${hoyISO()}.txt`;
-  let hecho = false;
-  try{
-    const f = new File([texto], nombre, {type:'text/plain'});
-    if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:'SPARATI Prueba'}); hecho = true; }
-  }catch(e){ if(e && e.name === 'AbortError'){ toast('Envío cancelado'); return; } }
-  if(!hecho){
-    descargarArchivo(new Blob([texto], {type:'text/plain'}), nombre);
-    toast('Archivo guardado en Descargas: ' + nombre);
-  } else toast(`Listo. Si lo mandaste por WhatsApp, ${otro()} lo abre con «Recibir».`);
-  E.sync.envio = ahora(); guardar(); refrescar(); pintarAjustes();
+function fotoADataURL(blob){
+  return new Promise((ok, mal) => {
+    const lector = new FileReader();
+    lector.onload = () => ok(lector.result);
+    lector.onerror = () => mal(lector.error);
+    lector.readAsDataURL(blob);
+  });
 }
-function recibir(){ const i = $('#inArchivo'); i.value = ''; i.click(); }
+async function adjuntarFotos(productos, incluirBorrados){
+  const ids = new Set(productos.filter(p => p.foto && (incluirBorrados || !p.borrado)).map(p => p.foto));
+  const fotos = Object.create(null);
+  await Promise.all([...ids].map(async id => {
+    const blob = await FDB.get(id);
+    if(blob) fotos[id] = await fotoADataURL(blob);
+  }));
+  const faltan = new Set(productos.filter(p => !p.borrado && p.foto && !fotos[p.foto]).map(p => p.foto));
+  return {fotos, faltan:faltan.size};
+}
+function puedeCompartirArchivo(archivo){
+  try{ return Boolean(navigator.share && navigator.canShare?.({files:[archivo]})); }
+  catch(e){ return false; }
+}
+function abrirArchivoParaGuardar(respaldo = false){
+  if(!quien()){ elegirQuien(); return; }
+  const titulo = respaldo ? 'Respaldo completo' : 'Enviar a ' + otro();
+  const d = abrirCapa(`<section class="dlg hoja-inferior archivo-ajustes" role="dialog">
+    <span class="tirador" aria-hidden="true"></span>
+    <header class="archivo-ajustes-cab"><span class="archivo-ajustes-icono">${respaldo ? IC.pdf : IC.sync}</span>
+      <h3>${esc(titulo)}</h3><button class="icon-btn" data-act="cerrar" aria-label="Cerrar">${IC.x}</button></header>
+    <p class="muted" data-instruccion-archivo>${respaldo
+      ? 'Incluye el inventario, las fotos guardadas y los ajustes de este celular.'
+      : `Mándaselo a ${esc(otro())} por WhatsApp. En su celular lo abre con «Recibir».`}</p>
+    <p role="status" data-estado-archivo></p>
+    <button class="btn" data-guardar-archivo disabled>Preparando archivo…</button>
+  </section>`, {tipo:respaldo ? 'respaldo' : 'envio', cls:'dlg-fondo'});
+  const boton = $('[data-guardar-archivo]', d), estado = $('[data-estado-archivo]', d);
+  let archivo, autor, corte, compartir;
+  async function preparar(){
+    boton.disabled = true;
+    boton.textContent = 'Preparando archivo…';
+    estado.textContent = '';
+    delete estado.dataset.nivel;
+    try{
+      recargarEstadoSiCambio();
+      autor = quien();
+      corte = ahora();
+      const {productos, movs, ventas, cats, pacientes} = E;
+      const comun = {v:1, de:autor, generado:new Date(corte).toISOString()};
+      // Congela los datos antes de leer las fotos, mientras se puede seguir usando otra pestaña.
+      const paquete = JSON.parse(JSON.stringify(respaldo
+        ? {app:'sparati-respaldo', ...comun, estado:E}
+        : {app:'sparati-inventario', ...comun, datos:{productos, movs, ventas, cats, pacientes}}));
+      const {fotos, faltan} = await adjuntarFotos((respaldo ? paquete.estado : paquete.datos).productos, respaldo);
+      if(!d.isConnected) return;
+      paquete.fotos = fotos;
+      const nombre = respaldo ? `respaldo-sparati-prueba-${hoyISO()}.json`
+        : `inventario-sparati-prueba-${autor.toLowerCase()}-${hoyISO()}.txt`;
+      archivo = new File([JSON.stringify(paquete)], nombre, {type:respaldo ? 'application/json' : 'text/plain'});
+      compartir = puedeCompartirArchivo(archivo);
+      if(respaldo) $('[data-instruccion-archivo]', d).textContent = compartir
+        ? 'Guarda el archivo en Archivos o Drive desde el menú Compartir. Podrás abrirlo con «Restaurar respaldo».'
+        : 'Descarga el archivo y guárdalo en Archivos o Drive. Podrás abrirlo con «Restaurar respaldo».';
+      const cantidad = Object.keys(fotos).length;
+      estado.textContent = `Archivo listo · ${cantidad} ${cantidad === 1 ? 'foto' : 'fotos'}`;
+      if(faltan) estado.textContent += `. ${faltan === 1 ? 'Una foto ya no está en este celular.' : faltan + ' fotos ya no están en este celular.'}`;
+      boton.textContent = compartir ? 'Compartir archivo' : 'Descargar archivo';
+    }catch(e){
+      estado.dataset.nivel = 'error';
+      estado.textContent = 'No se pudo preparar el archivo. Vuelve a intentar.';
+      boton.textContent = 'Volver a preparar';
+    }finally{ boton.disabled = false; }
+  }
+  boton.addEventListener('click', async () => {
+    if(!archivo){ preparar(); return; }
+    boton.disabled = true;
+    try{
+      // El menú nativo necesita el toque directo, con el archivo ya preparado.
+      if(compartir) await navigator.share({files:[archivo], title:respaldo ? 'Respaldo SPARATI Prueba' : 'Inventario SPARATI Prueba'});
+      else descargarArchivo(archivo, archivo.name);
+    }catch(e){
+      if(e?.name !== 'AbortError'){
+        estado.dataset.nivel = 'error';
+        estado.textContent = compartir ? 'No se pudo abrir el menú Compartir. Puedes descargar el archivo.'
+          : 'No se pudo descargar el archivo. Vuelve a intentar.';
+        compartir = false;
+        boton.textContent = 'Descargar archivo';
+      }
+      boton.disabled = false;
+      if(d === pila.at(-1)?.el) boton.focus({preventScroll:true});
+      return;
+    }
+    recargarEstadoSiCambio();
+    if(!respaldo && quien() === autor){
+      const sync = {...E.sync, envio:ahora(), hastaEnvio:Math.max(E.sync.hastaEnvio ?? E.sync.envio, corte)};
+      if(!guardar({...E, sync})){ boton.disabled = false; return; }
+      refrescar();
+      pintarAjustes();
+    }
+    if(d === pila.at(-1)?.el) await cerrarCapa();
+    toast(respaldo ? (compartir ? 'Respaldo listo para guardar' : 'Respaldo guardado en Descargas')
+      : (compartir ? `${otro()} puede abrir el archivo con «Recibir».` : 'Archivo guardado en Descargas'));
+  });
+  preparar();
+}
+function elegirArchivo(id){ const i = $(id); i.value = ''; i.click(); }
+
 function dataURLaBlob(u){
-  const [cab, b64] = u.split(','); const tipo = (cab.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
-  const bin = atob(b64), arr = new Uint8Array(bin.length);
-  for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], {type:tipo});
+  const partes = /^data:([^;,]*);base64,(.*)$/.exec(u);
+  if(!partes) throw new Error('Foto inválida');
+  const bin = atob(partes[2]);
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], {type:partes[1] || 'image/jpeg'});
+}
+const esObjeto = v => Boolean(v && typeof v === 'object' && !Array.isArray(v));
+function inventarioDeArchivo(datos){
+  const listaConId = (lista, valida) => Array.isArray(lista) && lista.every(x =>
+    esObjeto(x) && typeof x.id === 'string' && x.id && valida(x));
+  const fecha = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  return esObjeto(datos) &&
+    listaConId(datos.productos, p => typeof p.nombre === 'string' && Object.hasOwn(CATS, p.tipo)) &&
+    listaConId(datos.movs, m => typeof m.prod === 'string' && Number.isFinite(m.cant) && fecha(m.fecha)) &&
+    listaConId(datos.ventas, v => fecha(v.fecha) && (v.pac == null || typeof v.pac === 'string') &&
+      Array.isArray(v.items) && v.items.every(it => esObjeto(it) && typeof it.nombre === 'string')) &&
+    (datos.pacientes == null || listaConId(datos.pacientes, p => typeof p.nombre === 'string')) &&
+    (datos.cats == null || (esObjeto(datos.cats) && ['venta','uso'].every(tipo =>
+      datos.cats[tipo] == null || (Array.isArray(datos.cats[tipo]) && datos.cats[tipo].every(c => typeof c === 'string')))));
+}
+async function leerArchivoInventario(file, respaldo){
+  const paquete = JSON.parse(await file.text());
+  if(!paquete || paquete.v !== 1 || paquete.app !== (respaldo ? 'sparati-respaldo' : 'sparati-inventario') ||
+    !inventarioDeArchivo(respaldo ? paquete.estado : paquete.datos) ||
+    (paquete.fotos != null && !esObjeto(paquete.fotos))) return null;
+  const fotos = Object.entries(paquete.fotos || {}).map(([id, url]) => [id, dataURLaBlob(url)]);
+  return {paquete, fotos};
+}
+async function guardarFotosDeArchivo(fotos){
+  if(!fotos.length) return 0;
+  let nuevas = 0;
+  await FDB.tx('readwrite', almacen => {
+    for(const [id, foto] of fotos){
+      const consulta = almacen.getKey(id);
+      consulta.onsuccess = () => {
+        if(consulta.result !== undefined) return;
+        almacen.add(foto, id);
+        nuevas++;
+      };
+    }
+  });
+  return nuevas;
 }
 // Junta lo recibido con lo de este celular: gana la versión más reciente de cada registro
 function mezclar(datos){
@@ -3503,25 +3636,59 @@ function mezclar(datos){
   return {estado, nuevos, cambiados, categoriasNuevas};
 }
 async function recibirArchivo(file){
-  let p;
-  try{ p = JSON.parse(await file.text()); }catch(e){ toast('Ese archivo no es del inventario de SPARATI'); return; }
-  if(!p || p.app !== 'sparati-inventario' || !p.datos){ toast('Ese archivo no es del inventario de SPARATI'); return; }
-  let fotosNuevas = false;
-  for(const [id, u] of Object.entries(p.fotos || {})){
-    const ya = await FDB.get(id).catch(() => null);
-    if(!ya) try{ await FDB.put(id, dataURLaBlob(u)); fotosNuevas = true; }catch(e){}
-  }
-  const r = mezclar(p.datos);
+  let leido;
+  try{ leido = await leerArchivoInventario(file, false); }catch(e){}
+  if(!leido){ toast('Ese archivo no es un envío de inventario de SPARATI.'); return; }
+  const {paquete, fotos} = leido;
+  let fotosNuevas;
+  try{ fotosNuevas = await guardarFotosDeArchivo(fotos); }
+  catch(e){ toast('No se pudieron guardar las fotos del envío. Vuelve a intentar.'); return; }
+  recargarEstadoSiCambio();
+  const r = mezclar(paquete.datos);
   r.nuevos += completarPacientes(r.estado);
   const huboCambios = r.nuevos || r.cambiados || r.categoriasNuevas || fotosNuevas;
+  const de = typeof paquete.de === 'string' ? paquete.de : '';
   if(huboCambios || !E.sync.recibo){
     r.estado.sync.recibo = ahora();
-    if(p.de && p.de !== quien()) r.estado.sync.de = p.de;
+    if(de && de !== quien()) r.estado.sync.de = de;
     if(!guardar(r.estado)) return;
     refrescar(); pintarAjustes();
   }
-  const de = p.de ? ' de ' + p.de : '';
-  toast(huboCambios ? `Recibido${de}: ${r.nuevos} registros nuevos y ${r.cambiados} actualizados` : `Recibido${de}: ya tenías todo, no hubo cambios`);
+  const origen = de ? ' de ' + de : '';
+  toast(huboCambios ? `Recibido${origen}: ${r.nuevos} registros nuevos y ${r.cambiados} actualizados`
+    : `Recibido${origen}: ya tenías todo, no hubo cambios`);
+}
+async function restaurarArchivo(file){
+  const ajustes = capaArriba('ajustes');
+  let leido;
+  try{ leido = await leerArchivoInventario(file, true); }catch(e){}
+  if(!leido){ toast('Ese archivo no es un respaldo completo de SPARATI.'); return; }
+  if(!ajustes?.isConnected || ajustes !== pila.at(-1)?.el) return;
+  recargarEstadoSiCambio();
+  const {paquete, fotos} = leido;
+  const anterior = estadoGuardado;
+  const cantidad = vivos(paquete.estado.productos).length;
+  const fecha = new Date(paquete.generado);
+  const detalle = `${cantidad} ${cantidad === 1 ? 'producto' : 'productos'}${Number.isFinite(+fecha) ? ' · ' + fCorta(iso(fecha)) : ''}`;
+  if(!await confirmar('¿Restaurar este respaldo?',
+    `${detalle}. El respaldo reemplazará el inventario y los ajustes actuales de este celular.`, 'Restaurar respaldo', true)) return;
+  try{
+    const estado = completarEstado(paquete.estado);
+    completarPacientes(estado);
+    // Los identificadores de las fotos se conservan al restaurar la misma copia.
+    await guardarFotosDeArchivo(fotos);
+    if(recargarEstadoSiCambio() || estadoGuardado !== anterior){
+      toast('El inventario cambió. Vuelve a elegir el respaldo.');
+      return;
+    }
+    if(!guardar(estado)) return;
+  }catch(e){
+    toast('No se pudo restaurar el respaldo. Vuelve a intentar.');
+    return;
+  }
+  aplicarApariencia();
+  refrescar(); pintarAjustes();
+  toast('Respaldo restaurado');
 }
 
 // ---------- Datos de ejemplo ----------
@@ -3615,64 +3782,188 @@ async function cargarEjemplo(boton){
 }
 
 // ---------- Ajustes ----------
-function abrirAjustes(){ const d = abrirCapa('', {tipo:'ajustes'}); pintarAjustes(d); }
+function abrirAjustes(){ const d = abrirCapa('', {tipo:'ajustes', cls:'hoja hoja-ajustes'}); pintarAjustes(d); }
 function pintarAjustes(d = capaArriba('ajustes')){
   if(!d) return;
-  const cu = $('.hoja-cuerpo', d), sc = cu ? cu.scrollTop : 0;
-  const activo = document.activeElement;
-  const badge = 'setAppBadge' in navigator;
-  const permiso = window.Notification ? Notification.permission : 'no';
-  d.innerHTML = cabecera('Ajustes') + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <section class="card"><h3>¿Quién usa este celular?</h3>
-      <div class="seg" role="group" aria-label="Quién usa el celular">${['Elba', 'Jonathan'].map(n => opcion('ponQuien', n, n, quien() === n)).join('')}</div>
-      <div class="peq muted">Cada venta y movimiento queda con el nombre de quien lo registró.</div></section>
-    <section class="card"><h3>Datos de ejemplo</h3>
-      <div class="peq">Agrega 104 productos con sus cantidades y fotos disponibles, precios de ejemplo y ventas y usos ficticios.</div>
-      <button class="btn full" data-act="cargarEjemplo" ${cargandoEjemplo || hayEjemplo() ? 'disabled' : ''}>${cargandoEjemplo ? 'Cargando los datos…' : 'Cargar datos de ejemplo'}</button>
-      ${hayEjemplo() ? '<div class="peq muted">Ya están cargados en este inventario de prueba.</div>' : ''}</section>
-    <section class="card"><h3>Compartir entre los dos celulares</h3>
-      <div class="peq">El inventario vive en cada celular. Para que el otro vea lo último, toca <b>Enviar</b> y mándale el archivo por WhatsApp. En el otro celular se abre con <b>Recibir</b>: la app junta todo sin borrar nada.</div>
-      <div class="acc-grid"><button class="btn" data-act="enviar">Enviar a ${esc(otro())}</button><button class="btn soft" data-act="recibir">Recibir</button></div>
-      <div class="peq muted">Último envío: ${haceTxt(E.sync.envio)} · Último recibido: ${haceTxt(E.sync.recibo)}</div>
-      <div class="peq muted">Ese mismo archivo es tu copia de seguridad: si se borra la app o cambias de celular, con «Recibir» vuelve todo.</div></section>
-    <section class="card"><h3>Avisos</h3>
-      <div class="campo"><span class="lbl">Avisar del vencimiento con</span><div class="seg" role="group" aria-label="Días de aviso">${[30,60,90].map(n => opcion('diasVence', n, n + ' días', E.ajustes.diasVence === n)).join('')}</div></div>
-      ${badge ? (permiso === 'granted' ? '<div class="peq">✓ El ícono de la app muestra cuántos productos tienen avisos.</div>'
-        : `<button class="btn sm soft" data-act="permisoBadge">Mostrar el número de avisos en el ícono</button><div class="peq muted">El celular te pedirá permiso de notificaciones; solo se usa para el número del ícono.</div>`)
-        : '<div class="peq muted">Los avisos aparecen al abrir la app, en Inicio y con un número rojo junto a Inventario.</div>'}</section>
-    <form class="card" id="formPlantillaRecordatorio">
-      <h3>Recordatorios de compra</h3>
-      <div class="campo"><label for="plantillaRecordatorio">Mensaje base para WhatsApp</label>
-        <textarea id="plantillaRecordatorio" rows="4" required aria-describedby="ayudaPlantilla">${esc(E.ajustes.plantillaRecordatorio || PLANTILLA_RECORDATORIO)}</textarea>
-        <span class="ayuda" id="ayudaPlantilla">Usa {nombre} y {producto} para poner esos datos en cada mensaje.</span></div>
-      <button type="submit" class="btn soft">Guardar mensaje base</button></form>
-    <section class="card"><h3>Apariencia</h3><div class="seg" role="group" aria-label="Tema">${[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([v, n]) => opcion('aTema', v, n, E.ajustes.tema === v)).join('')}</div></section>
-    <details class="card"><summary style="font-weight:800;cursor:pointer">Avanzado</summary>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
-      <button class="btn ghost" data-act="actualizar">Actualizar la app ahora</button>
-      <div class="peq muted">Úsalo si después de una mejora algo no responde. No borra tus datos.</div>
-      <div class="campo"><label for="aBorrarTxt">Borrar todo el inventario de ESTE celular (productos, ventas y fotos). Escribe BORRAR para confirmar:</label><input type="text" id="aBorrarTxt" autocomplete="off" autocapitalize="characters"></div>
-      <button class="btn danger" data-act="borrarTodo" id="aBorrar" disabled>Borrar todo</button>
-      <div class="peq muted" style="text-align:center">SPARATI · Inventario · versión ${VERSION_APP}</div></div></details>
+  const desplazamiento = $('.hoja-cuerpo', d)?.scrollTop || 0;
+  const avanzadoAbierto = $('details', d)?.open;
+  const activo = d.contains(document.activeElement) ? document.activeElement : null;
+  const badge = 'setAppBadge' in navigator && window.Notification;
+  const permiso = badge ? Notification.permission : '';
+  const {envio, recibo, de} = E.sync;
+  d.innerHTML = cabecera('Ajustes', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in ajustes-in">
+    <section class="card" aria-labelledby="ajustesCelulares">
+      <h3 id="ajustesCelulares">Entre celulares</h3>
+      <dl class="fechas-envio">
+        <div><dt>Último envío</dt><dd>${cap(haceTxt(envio))}</dd></div>
+        <div><dt>Último recibido</dt><dd>${cap(haceTxt(recibo))}${de ? ' · ' + esc(de) : ''}</dd></div>
+      </dl>
+      <div class="acc-grid">
+        <button class="btn" data-act="enviar">${IC.sync} Enviar a ${esc(otro())}</button>
+        <button class="btn ghost" data-act="recibir">${IC.entrada} Recibir</button>
+      </div>
+    </section>
+    <section class="card" aria-labelledby="ajustesRespaldo">
+      <h3 id="ajustesRespaldo">Copia de seguridad</h3>
+      <p class="muted">Guarda una copia con fotos en Archivos o Drive, por si cambias de celular.</p>
+      <button class="btn gold" data-act="respaldo">${IC.pdf} Respaldo completo</button>
+      <button class="link" data-act="restaurar">Restaurar respaldo</button>
+    </section>
+    <section class="card" aria-labelledby="ajustesCelular">
+      <h3 id="ajustesCelular">Este celular</h3>
+      <div class="campo">
+        <span class="lbl" id="ajustesQuien">¿Quién usa este celular?</span>
+        <div class="seg" role="group" aria-labelledby="ajustesQuien">${['Elba', 'Jonathan'].map(n => opcion('ponQuien', n, n, quien() === n)).join('')}</div>
+      </div>
+      <div class="campo"><span class="lbl" id="ajustesTema">Tema</span>
+        <div class="seg" role="group" aria-labelledby="ajustesTema">${[['auto','Automático'],['light','Claro'],['dark','Oscuro']].map(([v, n]) => opcion('aTema', v, n, E.ajustes.tema === v)).join('')}</div></div>
+      <div class="campo"><span class="lbl" id="ajustesLetra">Tamaño de letra</span>
+        <div class="seg" role="group" aria-labelledby="ajustesLetra">${opcion('aLetra', 'normal', 'Normal', !E.ajustes.letraGrande)}${opcion('aLetra', 'grande', 'Grande', E.ajustes.letraGrande)}</div></div>
+    </section>
+    <section class="card" aria-labelledby="ajustesInventario">
+      <h3 id="ajustesInventario">Inventario</h3>
+      <div class="campo"><span class="lbl">Avisar del vencimiento con</span>
+        <div class="seg" role="group" aria-label="Días de aviso">${[30,60,90].map(n => opcion('diasVence', n, n + ' días', E.ajustes.diasVence === n)).join('')}</div></div>
+      ${badge && permiso === 'default' ? '<button class="btn sm soft" data-act="permisoBadge">Mostrar el número de avisos en el ícono</button>' : ''}
+      ${permiso === 'granted' ? '<p class="muted">El ícono de la app muestra cuántos productos tienen avisos.</p>' : ''}
+      <button class="fila-ajustes" data-act="categoriasAjustes"><span>${IC.etiqueta} Categorías</span>${IC.siguiente}</button>
+      <button class="fila-ajustes" data-act="plantillasAjustes"><span>${IC.chat} Plantillas de WhatsApp</span>${IC.siguiente}</button>
+    </section>
+    <section class="card" aria-labelledby="ajustesEjemplo">
+      <h3 id="ajustesEjemplo">Datos de ejemplo</h3>
+      <p class="muted">${hayEjemplo() ? 'Ya están cargados en este inventario de prueba.'
+        : 'Agrega 104 productos con las fotos disponibles, más ventas y usos de ejemplo.'}</p>
+      <button class="btn soft" data-act="cargarEjemplo" ${cargandoEjemplo || hayEjemplo() ? 'disabled' : ''}>${cargandoEjemplo ? 'Cargando los datos…' : 'Cargar datos de ejemplo'}</button>
+    </section>
+    <details class="card ajustes-avanzado"${avanzadoAbierto ? ' open' : ''}><summary>Avanzado</summary>
+      <div>
+        <button class="btn ghost" data-act="actualizar">Actualizar la app ahora</button>
+        <div class="campo"><label for="aBorrarTxt">Para borrar el inventario y las fotos de este celular, escribe BORRAR.</label>
+          <input type="text" id="aBorrarTxt" autocomplete="off" autocapitalize="characters"></div>
+        <button class="btn danger" data-act="borrarTodo" id="aBorrar" disabled>Borrar todo</button>
+        <p class="muted">SPARATI Prueba · Versión ${VERSION_APP}</p>
+      </div>
+    </details>
   </div></div>`;
-  $('.hoja-cuerpo', d).scrollTop = sc;
-  if(!activo.isConnected) enfocarControl(activo, d);
-  const bt = $('#aBorrarTxt', d);
-  bt.addEventListener('input', () => { $('#aBorrar', d).disabled = bt.value.trim().toUpperCase() !== 'BORRAR'; });
-  const campo = $('#plantillaRecordatorio', d);
+  $('.hoja-cuerpo', d).scrollTop = desplazamiento;
+  if(activo) enfocarControl(activo, d);
+  const texto = $('#aBorrarTxt', d);
+  texto.addEventListener('input', () => { $('#aBorrar', d).disabled = texto.value.trim().toUpperCase() !== 'BORRAR'; });
+}
+function agregarCategoria(tipo, nombre){
+  const existente = categoriasDe(tipo).find(c => norm(c) === norm(nombre));
+  if(existente) return existente;
+  const cats = {...E.cats, [tipo]:[...(E.cats[tipo] || []), nombre]};
+  return guardar({...E, cats, sync:{...E.sync, categoriasMod:ahora()}}) ? nombre : null;
+}
+function abrirCategorias(){
+  const d = abrirCapa(cabecera('Categorías', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in ajustes-in">
+    <div class="seg" role="group" aria-label="Tipo de inventario">
+      ${opcion('tipoCategoria', 'venta', 'Para vender', true)}
+      ${opcion('tipoCategoria', 'uso', 'Uso en spa', false)}
+    </div>
+    <form class="card ajustes-nueva-categoria">
+      <div class="campo"><label for="nuevaCategoriaAjustes">Nueva categoría</label>
+        <input type="text" id="nuevaCategoriaAjustes" required></div>
+      <button class="btn" type="submit">${IC.mas} Agregar categoría</button>
+    </form>
+    <section class="card" aria-labelledby="tituloCategorias"><h3 id="tituloCategorias"></h3>
+      <ul class="lista-categorias-ajustes" role="list"></ul>
+    </section>
+  </div></div>`, {tipo:'categorias'});
+  const campo = $('#nuevaCategoriaAjustes', d);
   campo.addEventListener('input', () => campo.setCustomValidity(''));
-  $('#formPlantillaRecordatorio', d).addEventListener('submit', e => {
+  $('form', d).addEventListener('submit', e => {
     e.preventDefault();
-    const plantillaRecordatorio = campo.value.trim();
-    if(!plantillaRecordatorio){
-      campo.setCustomValidity('Escribe un mensaje base.');
+    const tipo = d.dataset.inventario, nombre = cap(campo.value.trim().replace(/\s+/g, ' '));
+    recargarEstadoSiCambio();
+    const equivalente = categoriasDe(tipo).some(c => norm(c) === norm(nombre));
+    if(!nombre || equivalente){
+      campo.setCustomValidity(equivalente ? 'Esa categoría ya existe.' : 'Escribe el nombre de la categoría.');
       campo.reportValidity();
       return;
     }
-    if(!guardar({...E, ajustes:{...E.ajustes, plantillaRecordatorio}})) return;
-    campo.value = plantillaRecordatorio;
-    toast('Mensaje base guardado');
+    if(!agregarCategoria(tipo, nombre)) return;
+    campo.value = '';
+    pintarCategorias(d, tipo);
+    refrescar();
+    toast('Categoría agregada');
   });
+  pintarCategorias(d, 'venta');
+}
+function pintarCategorias(d, tipo){
+  d.dataset.inventario = tipo;
+  $('#tituloCategorias', d).textContent = tipo === 'venta' ? 'Para vender' : 'Uso en spa';
+  const nombres = categoriasDe(tipo).sort((a, b) => a.localeCompare(b, 'es'));
+  $('.lista-categorias-ajustes', d).innerHTML = nombres.map(c => `<li>${esc(c)}</li>`).join('');
+}
+const PLANTILLAS_AJUSTES = {
+  plantillaRecordatorio:{titulo:'Recordatorio de compra', etiqueta:'Mensaje base para WhatsApp',
+    ayuda:'Usa {nombre} y {producto} para poner esos datos en cada mensaje.', defecto:PLANTILLA_RECORDATORIO,
+    boton:'Guardar mensaje base', guardado:'Mensaje base guardado'},
+  plantillaComprobante:{titulo:'Comprobante de venta', etiqueta:'Despedida del comprobante',
+    ayuda:'Este texto va después de los productos, el total y la forma de pago.', defecto:PLANTILLA_COMPROBANTE,
+    boton:'Guardar despedida', guardado:'Despedida guardada'},
+};
+function abrirPlantillas(){
+  const d = abrirCapa(cabecera('Plantillas de WhatsApp', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in ajustes-in">
+    ${Object.entries(PLANTILLAS_AJUSTES).map(([id, p]) => `<form class="card" data-plantilla="${id}" aria-labelledby="titulo-${id}">
+      <h3 id="titulo-${id}">${p.titulo}</h3>
+      <div class="campo"><label for="${id}">${p.etiqueta}</label>
+        <textarea id="${id}" rows="3" required aria-describedby="ayuda-${id}">${esc(E.ajustes[id] || p.defecto)}</textarea>
+        <span class="ayuda" id="ayuda-${id}">${p.ayuda}</span></div>
+      <button type="submit" class="btn soft">${p.boton}</button></form>`).join('')}
+  </div></div>`, {tipo:'plantillas'});
+  for(const form of $$('form', d)){
+    const id = form.dataset.plantilla, campo = $('textarea', form);
+    campo.addEventListener('input', () => campo.setCustomValidity(''));
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const mensaje = campo.value.trim();
+      if(!mensaje){ campo.setCustomValidity('Escribe un mensaje.'); campo.reportValidity(); return; }
+      if(!guardarPreferencias({[id]:mensaje})) return;
+      campo.value = mensaje;
+      toast(PLANTILLAS_AJUSTES[id].guardado);
+    });
+  }
+}
+function guardarPreferencias(cambios){
+  recargarEstadoSiCambio();
+  return guardar({...E, ajustes:{...E.ajustes, ...cambios}});
+}
+
+let instalacionVista = false;
+function plataformaParaInstalar(){
+  const agente = navigator.userAgent;
+  if(/iPhone|iPad|iPod/i.test(agente) || (/Macintosh/i.test(agente) && navigator.maxTouchPoints > 1)) return 'ios';
+  return /Android/i.test(agente) ? 'android' : '';
+}
+function invitacionInstalar(){
+  if(!quien() || !plataformaParaInstalar() || instalacionVista || navigator.standalone ||
+    window.matchMedia?.('(display-mode: standalone)').matches) return '';
+  try{ if(localStorage.getItem(CLAVE_INSTALACION)) return ''; }catch(e){}
+  return `<section class="card invitacion-instalar" aria-labelledby="invitacionInstalar">
+    <header class="card-cab"><h3 id="invitacionInstalar">SPARATI en tu pantalla de inicio</h3>
+      <button class="icon-btn" data-act="cerrarInstalacion" aria-label="Cerrar invitación">${IC.x}</button></header>
+    <p class="muted">Ten el inventario a mano y guarda una copia con fotos desde Ajustes.</p>
+    <button class="btn soft" data-act="verInstalacion">Agregar a pantalla de inicio</button>
+  </section>`;
+}
+function cerrarInvitacion(){
+  instalacionVista = true;
+  try{ localStorage.setItem(CLAVE_INSTALACION, '1'); }catch(e){}
+  $('.invitacion-instalar')?.remove();
+  $('.ajustes-inicio')?.focus({preventScroll:true});
+}
+function verInstalacion(){
+  const ayuda = plataformaParaInstalar() === 'ios'
+    ? 'En Safari, toca Compartir y elige «Agregar a pantalla de inicio». Luego toca «Agregar».'
+    : 'En Chrome, abre el menú de tres puntos y elige «Agregar a pantalla de inicio». Sigue los pasos que te muestra el celular.';
+  const d = abrirCapa(`<section class="dlg hoja-inferior" role="dialog">
+    <span class="tirador" aria-hidden="true"></span><h3>Agregar a pantalla de inicio</h3>
+    <p>${ayuda}</p><button class="btn">Entendido</button>
+  </section>`, {cls:'dlg-fondo'});
+  $('button', d).addEventListener('click', async () => { await cerrarCapa(); cerrarInvitacion(); });
 }
 function elegirQuien(){
   const d = abrirCapa(`<div class="hoja-cuerpo"><div class="hoja-in bienvenida">
@@ -3687,6 +3978,10 @@ function aplicarTema(){
   const v = E.ajustes.tema;
   const oscuro = v === 'dark' || (v !== 'light' && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
   document.documentElement.dataset.theme = oscuro ? 'dark' : 'light';
+}
+function aplicarApariencia(){
+  aplicarTema();
+  document.documentElement.dataset.letra = E.ajustes.letraGrande ? 'grande' : 'normal';
 }
 function seleccionarOpcion(b){
   for(const opcion of $$('[aria-pressed]', b.parentElement)){
@@ -3790,7 +4085,7 @@ const ACT = {
     const f = b.dataset.f, v = b.dataset.v;
     if(f === 'tipo' && v === F.tipo) return;
     F[f] = (f === 'cat' && F[f] === v) ? '' : v;
-    if(f === 'tipo' && F.cat && !CATS[v].concat(E.cats[v] || []).includes(F.cat)) F.cat = '';
+    if(f === 'tipo' && F.cat && !categoriasDe(v).includes(F.cat)) F.cat = '';
     repintar();
   },
   paso(b){
@@ -3807,12 +4102,12 @@ const ACT = {
     inp.value = fCant(siguiente);
     inp.dispatchEvent(new Event('input', {bubbles:true}));
   },
-  async nuevaCat(){
+  nuevaCat(){
     const n = prompt('Nombre de la nueva categoría:');
     if(!n || !n.trim()) return;
-    const c = cap(n.trim());
-    E.cats[F.tipo] = Array.from(new Set((E.cats[F.tipo] || []).concat(c)));
-    F.cat = c; guardar(); repintar();
+    recargarEstadoSiCambio();
+    const categoria = agregarCategoria(F.tipo, cap(n.trim().replace(/\s+/g, ' ')));
+    if(categoria){ F.cat = categoria; repintar(); }
   },
   fFoto(){ if(!F.cargandoFoto){ const i = $('#inFoto'); i.value = ''; i.click(); } },
   fSinFoto(){ if(F.fotoNueva){ FDB.del(F.fotoNueva).catch(() => {}); F.fotoNueva = null; } F.foto = ''; repintar(); },
@@ -3870,20 +4165,41 @@ const ACT = {
   },
   recompra(b){ abrirRecordatorio(b.dataset.v, b.dataset.p); },
   // Compartir y ajustes
-  enviar(){ enviar(); },
-  recibir(){ recibir(); },
+  enviar(){ abrirArchivoParaGuardar(); },
+  recibir(){ elegirArchivo('#inArchivo'); },
+  respaldo(){ abrirArchivoParaGuardar(true); },
+  restaurar(){ elegirArchivo('#inRespaldo'); },
+  categoriasAjustes(){ abrirCategorias(); },
+  plantillasAjustes(){ abrirPlantillas(); },
+  tipoCategoria(b){
+    seleccionarOpcion(b);
+    $('#nuevaCategoriaAjustes', b.closest('.hoja')).setCustomValidity('');
+    pintarCategorias(b.closest('.hoja'), b.dataset.v);
+  },
+  verInstalacion,
+  cerrarInstalacion(){ cerrarInvitacion(); },
   cargarEjemplo,
   ponQuien(b){
-    YO = {quien:b.dataset.v}; localStorage.setItem(CLAVE_YO, JSON.stringify(YO));
+    const identidad = {quien:b.dataset.v};
+    try{ localStorage.setItem(CLAVE_YO, JSON.stringify(identidad)); }
+    catch(e){ toast('No se pudo guardar quién usa el celular.'); return; }
+    YO = identidad;
     if(b.dataset.cerrar){ pila[pila.length-1].fija = false; cerrarCapa(); }
     pintarAjustes(); render();
   },
   diasVence(b){
-    if(guardar({...E, ajustes:{...E.ajustes, diasVence:Number(b.dataset.v)}})) refrescar();
-    pintarAjustes();
+    if(guardarPreferencias({diasVence:Number(b.dataset.v)})){
+      seleccionarOpcion(b);
+      refrescar();
+    }
   },
   async permisoBadge(){ try{ await Notification.requestPermission(); }catch(e){} actualizarAvisos(); pintarAjustes(); },
-  aTema(b){ E.ajustes.tema = b.dataset.v; guardar(); aplicarTema(); pintarAjustes(); },
+  aTema(b){
+    if(guardarPreferencias({tema:b.dataset.v})){ aplicarApariencia(); seleccionarOpcion(b); }
+  },
+  aLetra(b){
+    if(guardarPreferencias({letraGrande:b.dataset.v === 'grande'})){ aplicarApariencia(); seleccionarOpcion(b); }
+  },
   async actualizar(){
     if(navigator.serviceWorker){
       const r = await navigator.serviceWorker.getRegistration('./').catch(() => null);
@@ -3894,8 +4210,10 @@ const ACT = {
   async borrarTodo(){
     if(cargandoEjemplo) return;
     if((($('#aBorrarTxt') || {}).value || '').trim().toUpperCase() !== 'BORRAR') return;
-    const aj = E.ajustes; E = estadoInicial(); E.ajustes = aj;
-    guardar(); await FDB.vaciar().catch(() => {});
+    recargarEstadoSiCambio();
+    if(!guardar({...estadoInicial(), ajustes:E.ajustes})) return;
+    await FDB.vaciar().catch(() => {});
+    for(const [id, url] of Object.entries(URLS)){ URL.revokeObjectURL(url); delete URLS[id]; }
     pintarAjustes(); render(); toast('Se borró todo el inventario de este celular');
   },
 };
@@ -3928,10 +4246,11 @@ $('#inFoto').addEventListener('change', async e => {
   }
 });
 $('#inArchivo').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) recibirArchivo(f); });
+$('#inRespaldo').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) restaurarArchivo(f); });
 
 // ---------- Arranque ----------
 cargar();
-aplicarTema();
+aplicarApariencia();
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); }catch(e){}
 if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', aplicarTema);
 history.scrollRestoration = 'manual';
