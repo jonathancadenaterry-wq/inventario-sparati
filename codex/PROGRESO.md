@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 00:42–00:57 (Ecuador) · T16 y revisión de las capturas de T15
+- Última corrida: 28-nov-2026, 03:40–03:45 (Ecuador) · Revisión de las ocho capturas de T16
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -455,3 +455,20 @@ Revisé las ocho capturas oscuras del perfil iPhone 14 Pro antes de editar la in
 
 - Pasaron las 61 pruebas en Chromium a 390×844 y las 61 con el perfil iPhone 14 Pro. También pasaron las comprobaciones a 360×800 del buscador de Inicio y las de T15. La ejecución continua se interrumpió y se completó por tandas con un navegador a la vez. Se verificaron ambos archivos de la versión 1, el intercambio en los dos sentidos, la recarga sin conexión y la migración simulada.
 - T16 queda marcada como completa. Queda por comprobar en los celulares físicos la guía de Safari y la invitación en Chrome, el final de Ajustes con la zona segura del iPhone y el crecimiento de Plantillas con el teclado abierto. Siguen pendientes los recorridos de envío, respaldo y vencimientos anotados en T14 y T15.
+
+### 28-nov-2026 · 03:40–03:45 (Ecuador) · Revisión de las ocho capturas de T16
+
+Revisé las ocho capturas adjuntas en oscuro. Bienvenida mide 390×844, Inicio mide 360×800 y las seis restantes muestran el área visible de 393×660 del perfil iPhone 14 Pro en Chromium. Comparé con `Bienvenida.png`, `Main.png`, `Reportes.png` y el selector de `Inventario.png`. Ajustes usa los componentes de la guía de diseño.
+
+- **Bienvenida.** El mensaje ocupa tres líneas y deja «lugar» solo en la última. En `Bienvenida.png` ocupa dos. El logo, el indicador de paso y los dos botones se ven completos.
+- **Inicio a 360 px.** «Buscar en SPARATI» cabe completo. El saludo se parte antes de «Elba» y la comparación del mes cae debajo de su título. La invitación se ve completa antes de los avisos. Con ella abierta, la primera vista del resumen mensual termina en el monto y la línea siguiente queda detrás de la navegación.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas. El primer campo y su botón se ven completos. Al comienzo de la pantalla, «Guardar despedida» queda cortado por el borde de la captura. Conviene comprobar ese botón con el teclado abierto en el iPhone.
+- **Categorías.** El campo y «Agregar categoría» se ven completos. El segmentado distingue «Uso en spa» y la lista empieza directamente por los nombres. «Muestras y regalos» aparece junto al borde inferior, donde continúa la lista.
+- **Preferencias.** La opción elegida se distingue con un contraste de 5,80:1 frente al fondo del selector oscuro. «Plantillas de WhatsApp» queda junto al borde inferior en este punto del desplazamiento.
+- **Ajustes › Avanzado.** El último bloque queda completo al final del desplazamiento. «Borrar todo» se ve tenue mientras está desactivado, con un contraste aproximado de 2,77:1 sobre la tarjeta. El texto encima indica que hay que escribir «BORRAR» para habilitarlo.
+- **Ajustes, primera vista.** Envío y respaldo quedan completos. La captura termina en medio del selector «Elba / Jonathan», dentro de la tarjeta siguiente. Hace falta desplazar para ver el resto de las preferencias.
+- **Historial de ventas.** Cada producto de Clara empieza en su propia línea y se conserva el punto medio antes de la presentación. En el punto de desplazamiento elegido para la captura, la franja superior corta el borde de las acciones de exportación. Abajo, la barra fija tapa parte de la tercera venta.
+
+Pasaron las 61 pruebas de Chromium a 390×844 y las 61 con el perfil iPhone 14 Pro. También pasaron las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. El primer intento se interrumpió y el registro final contiene los 122 resultados aprobados.
+
+T0–T16 figuran como completas en `TAREAS.md`. El único archivo editado fue esta bitácora. Sigue la validación en los celulares físicos, en especial la zona segura y el teclado de Safari, la invitación de instalación de Chrome y los recorridos de envío y respaldo de T14 y T15.
