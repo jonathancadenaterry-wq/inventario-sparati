@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 07:34–07:41 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 07:45–07:54 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -701,3 +701,22 @@ Las seis capturas etiquetadas como iPhone usan un área de 393×660. En Chromium
 El registro de `python3 -u codex/pruebas/correr.py` contiene las 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro. Incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión. La corrida solo actualizó esta bitácora.
 
 Sigue la revisión en los celulares físicos. En Safari quedan por comprobar las zonas seguras y el teclado al editar Plantillas. En ambos equipos quedan por comprobar la instalación, el envío, la recepción y el respaldo.
+
+### 28-nov-2026 · 07:45–07:54 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+T0–T16 figuran completas en `TAREAS.md`. La corrida se dedicó a la revisión visual.
+
+- **Bienvenida (390×844).** El mensaje principal ocupa tres líneas a 29 px y deja «lugar» solo. La maqueta usa 22 px y dos líneas. La prueba de títulos de T16 exige 28–30 px también para este mensaje.
+- **Inicio (360×800).** El saludo de 29 px deja «Elba» en la segunda línea y «Sin ventas en octubre» baja debajo del título del resumen. En la maqueta, el saludo usa 25 px y el encabezado del resumen comparte fila con la comparación. Con la invitación abierta, la barra inferior cubre 11 px de la línea de ganancia a 360 px. A 390 px, el saludo sigue en dos líneas, la comparación comparte fila con el título y la ganancia queda completa. El buscador cabe en ambos anchos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y, a 393×660, quedan 14 px de «Guardar despedida» fuera de la primera vista. Al desplazar aparece entero. En Chromium pude guardar una despedida y verificarla al volver a abrir Plantillas.
+- **Categorías.** El borde inferior corta la fila «Muestras y regalos» y «Otros» queda debajo. El selector distingue «Uso en spa» en oscuro.
+- **Preferencias.** La posición capturada deja 7 px de la fila «Plantillas de WhatsApp» fuera de la vista. La fila abre Plantillas al tocarla.
+- **Ajustes › Avanzado.** «Borrar todo» se ve tenue mientras está desactivado. El texto tiene un contraste aproximado de 2,76:1 sobre la tarjeta oscura. La instrucción y el botón caben completos al final del desplazamiento.
+- **Ajustes.** La primera vista de 393×660 corta los últimos 12 px del selector «Elba / Jonathan». Envío y respaldo caben completos.
+- **Historial de ventas.** La franja de prueba cubre la parte alta de WhatsApp y Excel en la posición capturada y el botón flotante tapa parte de la tercera venta. Al final del historial, la última venta queda 45 px por encima de la barra. Los productos de una venta se leen en líneas separadas.
+
+Las seis capturas con perfil iPhone miden 393×660. Al repetir las mismas vistas en Chromium a 393×852, quedan completos Excel, la tercera venta, el selector de persona, la fila de Plantillas, las dos últimas categorías y «Guardar despedida».
+
+`python3 -u codex/pruebas/correr.py` completó las 61 pruebas a 390×844. La sesión terminó al pasar al perfil iPhone 14 Pro. Las mismas 61 pruebas pasaron con ese perfil al ejecutarlas por tandas. Para los reintentos abrí una instancia de Chromium por prueba tras los cierres del navegador y los fallos de cámara simulada. Pasaron también las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y el funcionamiento sin conexión. El único cambio de la corrida fue esta bitácora.
+
+Sigue la comprobación en los celulares físicos. En el iPhone de Elba quedan las zonas seguras y la edición de Plantillas con el teclado abierto. En ambos quedan la instalación, el envío, la recepción y el respaldo.
