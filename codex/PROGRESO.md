@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 19:46 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 19:54 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -313,3 +313,14 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - `TAREAS.md` tiene T0–T14 marcadas como completas. La corrida se limitó a revisar las capturas, documentar los hallazgos y verificar la versión de prueba.
 - Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con su perfil de iPhone 14 Pro. La ejecución continua se interrumpió después de las primeras 20 pruebas aprobadas y se completó la misma suite por tandas. Pasaron los archivos v1 en ambos sentidos, la migración simulada y la recarga sin conexión.
 - Sigue la revisión en los celulares de Elba y Jonathan con los recorridos de T14.
+
+### 27-nov-2026 · 19:50–19:54 (Ecuador) · Revisión de las capturas de T14
+
+Se revisaron las ocho capturas adjuntas en oscuro a 390×844. Inicio conserva la jerarquía de avisos de `Main.png`. Para las vistas de Ajustes, se usó como referencia el selector de `Inventario.png` y la hoja inferior de `Vender.png`.
+
+- **Invitación e instalación.** La invitación queda después de todos los avisos, por debajo de la primera vista. El texto menciona dos acciones y «Ver los pasos» abre la guía para instalar la app. En la guía de Safari falta una referencia visual para encontrar «Compartir». «Entendido» oculta la invitación en las próximas visitas. Los contadores cortados arriba se deben al desplazamiento de las capturas.
+- **Ajustes y preferencias.** El selector de tamaño de letra queda al borde inferior al abrir Ajustes. En la vista desplazada, «Cargar datos de ejemplo» se ve tenue y cortado. El mensaje inmediatamente anterior ya informa que los datos están cargados.
+- **Categorías y plantillas.** En Categorías, el fondo de la opción activa y el del selector tienen un contraste de 1,1:1 en oscuro. El texto ayuda a distinguir la selección y su nombre se repite como título de la lista. En Plantillas, los tiradores diagonales de los campos quedan muy cerca del borde redondeado. La ayuda explica los marcadores `{nombre}` y `{producto}` y el mensaje final se ve al preparar un recordatorio.
+- **Envío y respaldo.** Las dos hojas muestran la alternativa de descarga. En Envío falta indicar que, después de descargar, hay que adjuntar el archivo al chat. El código actual ya actualiza «Último envío» al descargar, antes de ese paso manual. Respaldo sí indica dónde guardar la copia y cómo volver a abrirla.
+
+`TAREAS.md` tiene T0–T14 completas. El único archivo editado en esta corrida es este registro. Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro. Queda por probar en los celulares el menú Compartir de Safari y Chrome, la entrega por WhatsApp y la restauración de la copia.
