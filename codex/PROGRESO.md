@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 06:55–07:02 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 07:06–07:17 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -646,3 +646,20 @@ T0–T16 figuran completas en `TAREAS.md`. Esta corrida documenta la revisión d
 Las seis capturas del perfil de iPhone tienen un área visible de 393×660. Al repetir los recorridos a 393×852, quedaron completos «Guardar despedida», «Muestras y regalos», la fila de Plantillas, el selector de persona y Excel en las mismas posiciones. Sigue pendiente la comprobación de las zonas seguras y el teclado en el Safari de Elba, y de la instalación y el intercambio de archivos en ambos celulares.
 
 La primera ejecución de `python3 -u codex/pruebas/correr.py` se interrumpió tras 27 pruebas aprobadas. Completé por tandas las mismas pruebas de la suite. Pasaron 61 a 390×844 y 61 con el perfil de iPhone 14 Pro en Chromium. Quedaron verificadas las comprobaciones a 360×800, la compatibilidad de archivos con la versión 1 en ambos sentidos y la recarga sin conexión. El único cambio de la corrida fue esta bitácora.
+
+### 28-nov-2026 · 07:06–07:17 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+`TAREAS.md` tiene T0–T16 marcadas como completas. La corrida se dedica a revisar las capturas oscuras y verificar la versión de prueba.
+
+- **Bienvenida, 390×844.** El mensaje de bienvenida ocupa tres líneas a 29 px y deja «lugar» solo en la última. La referencia lo muestra en dos líneas y su HTML especifica 22 px para esa frase. El logo y las dos acciones se ven enteros.
+- **Inicio, 360×800.** «Elba» pasa a la segunda línea y «Sin ventas en octubre» baja del encabezado del resumen. La referencia muestra una línea para el saludo y una fila para el título del resumen y la comparación. Con la invitación abierta, la barra inferior cubre unos 11 px de la línea de ganancia en la primera vista. El buscador y la invitación se leen completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y los últimos 14 px de «Guardar despedida» quedan debajo del borde a 393×660. Pude desplazar el formulario, editar la despedida y guardar el cambio en Chromium.
+- **Categorías.** La captura termina al ras de «Muestras y regalos» y queda una categoría por debajo. La selección de «Uso en spa» se distingue en el tema oscuro.
+- **Preferencias.** Los últimos 7 px de la fila «Plantillas de WhatsApp» quedan fuera de la vista en la posición capturada. Las opciones activas se distinguen en los tres selectores visibles.
+- **Ajustes › Avanzado.** El texto «Borrar todo» se ve tenue en su estado desactivado, con un contraste aproximado de 2,77:1 sobre la tarjeta. El bloque y la instrucción para habilitarlo se ven completos.
+- **Ajustes.** La primera vista de 393×660 corta los últimos 12 px del selector «Elba / Jonathan». Las acciones de envío y respaldo quedan completas.
+- **Historial de ventas.** La franja superior recorta unos 8 px del borde de WhatsApp y Excel en la posición capturada y la bolsa flotante se superpone a la tercera venta. Al desplazar se puede alcanzar Excel. Al final, la última venta queda 45 px por encima de la barra. Los dos productos de la primera venta se leen en líneas separadas y Excel usa un ícono de hoja de cálculo.
+
+Las seis capturas del perfil iPhone 14 Pro usan un área visible de 393×660. Al repetir el recorrido en Chromium a 393×852 se ven enteros «Guardar despedida», la lista de categorías, la fila de Plantillas, el selector de persona y Excel en las mismas posiciones. Queda por comprobar el teclado y las zonas seguras en Safari del iPhone de Elba, y la instalación, el envío, la recepción y el respaldo en ambos celulares.
+
+El registro de `python3 -u codex/pruebas/correr.py` confirma 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil de iPhone 14 Pro. Volví a ejecutar por tandas las pruebas que todavía estaban pendientes cuando se cerró la sesión del comando. La suite incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 y la recarga sin conexión. El único archivo editado fue esta bitácora.
