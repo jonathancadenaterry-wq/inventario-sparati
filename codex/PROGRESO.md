@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 04:21–04:32 (Ecuador) · Revisión de las ocho capturas de T16
+- Última corrida: 28-nov-2026, 04:35–04:42 (Ecuador) · Revisión de las ocho capturas de T16
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -536,5 +536,24 @@ T0–T16 figuran completas en `TAREAS.md`. Esta corrida actualiza la bitácora. 
 - **Historial de ventas.** La franja de prueba cubre 8 px del borde superior de la fila de WhatsApp y Excel en la posición capturada. Abajo, el botón flotante se superpone a la tercera venta. Las exportaciones se ven completas al desplazar. Al final del historial, la última venta queda 45 px por encima de la barra y 20 px por encima del botón flotante. Los dos productos de la primera venta se leen en líneas separadas.
 
 Pasaron las 61 pruebas a 390×844 y las 61 con el perfil iPhone 14 Pro en Chromium con `python3 -u codex/pruebas/correr.py`. Se verificaron las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión.
+
+Sigue la revisión en los celulares físicos de la zona segura y el teclado de Safari, la invitación en Chrome y los recorridos de envío, recepción y respaldo.
+
+### 28-nov-2026 · 04:35–04:42 (Ecuador) · Revisión de las ocho capturas de T16
+
+T0–T16 están completas en `TAREAS.md`. Esta corrida actualiza la bitácora. Comparé las ocho capturas oscuras con `Bienvenida.png`, `Main.png`, `Reportes.png` y el selector de `Inventario.png`, según la pantalla.
+
+- **Bienvenida (390×844).** La frase ocupa tres líneas y deja «lugar» solo. La referencia la compone en dos con letra de 22 px, frente a los 29 px de la app. El logo y las dos acciones se ven completos.
+- **Inicio (360×800).** El saludo deja «Elba» en otra línea y la comparación del mes baja debajo del título del resumen. La referencia dispone el saludo en una línea y la comparación junto al título. El buscador y la invitación se leen completos. La barra fija cubre 11 px de la línea de ganancia en la primera vista y la línea se ve completa al bajar.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y el borde inferior corta 14 px de «Guardar despedida». El botón entero aparece al desplazar. Sigue pendiente verlo con el teclado de Safari abierto.
+- **Categorías.** «Muestras y regalos» queda al borde inferior mientras la lista continúa. El campo, «Agregar categoría» y la opción activa «Uso en spa» se distinguen en oscuro.
+- **Preferencias.** Los últimos 7 px de la fila «Plantillas de WhatsApp» quedan debajo del borde inferior en la posición capturada. La fila se puede abrir al desplazar y los tres selectores visibles distinguen su opción activa.
+- **Ajustes › Avanzado.** «Borrar todo» queda muy tenue mientras está desactivado, con un contraste de 2,76:1. La instrucción para habilitarlo se lee y al final del desplazamiento aparece el bloque entero. Escribir «BORRAR» habilita la acción.
+- **Ajustes.** La primera vista corta la parte baja del selector «Elba / Jonathan». Los controles de envío y respaldo caben completos y el selector se ve entero al desplazar.
+- **Historial de ventas.** La franja de prueba cubre el borde superior de las acciones de exportación y el botón flotante se superpone a la tercera venta en esa posición. WhatsApp y Excel se ven completos al desplazar. Al final, la última venta queda 45 px por encima de la barra. Los productos de la primera venta se leen en líneas separadas.
+
+Las seis capturas con el perfil de iPhone muestran 393×660. Repetí las mediciones con ese perfil en Chromium y un área de 393×852. En esa altura adicional se ven completos «Guardar despedida», «Muestras y regalos» y el selector de persona en la primera vista.
+
+`python3 -u codex/pruebas/correr.py` registró 61 pruebas aprobadas en Chromium a 390×844 y 61 con el perfil de iPhone 14 Pro. Esto incluye las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión.
 
 Sigue la revisión en los celulares físicos de la zona segura y el teclado de Safari, la invitación en Chrome y los recorridos de envío, recepción y respaldo.
