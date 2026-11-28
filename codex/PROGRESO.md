@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 06:30–06:41 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 06:45–06:51 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -612,3 +612,20 @@ Las tareas T0–T16 figuran completas en `TAREAS.md`. La corrida se concentra en
 Las seis capturas del perfil iPhone 14 Pro usan un área visible de 393×660 en Chromium. Al repetir a 393×852, los controles de Ajustes, la fila de Plantillas, «Guardar despedida», «Muestras y regalos» y Excel quedan completos en las mismas vistas. Queda por probar «Guardar despedida» con el teclado abierto y las zonas seguras en el iPhone de Elba. En ambos equipos siguen pendientes la instalación y los recorridos de envío, recepción y respaldo.
 
 `python3 -u codex/pruebas/correr.py` terminó con 61 pruebas aprobadas en Chromium a 390×844 y 61 con el perfil iPhone 14 Pro. La suite incluye comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión. La corrida actualizó esta bitácora.
+
+### 28-nov-2026 · 06:45–06:51 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+T0–T16 figuran completas en `TAREAS.md`. La corrida se dedicó a revisar las capturas y repetir las comprobaciones en Chromium. Bienvenida e Inicio tienen pantallas de referencia propias. Para Ajustes e Historial usé los componentes del diseño y los criterios de T16.
+
+- **Bienvenida, 390×844.** «Tus productos, ventas y pacientes en un solo lugar» ocupa tres líneas a 29 px y deja «lugar» solo. `Bienvenida.png` lo muestra en dos líneas y su HTML especifica 22 px para esa frase.
+- **Inicio, 360×800.** El saludo deja «Elba» en una segunda línea. «Sin ventas en octubre» baja del título de ventas y la barra cubre 11 px de la línea de ganancia con la invitación abierta. Se lee completa al desplazar. La referencia muestra el saludo en una línea y la comparación junto al título. El buscador y la invitación caben completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas. En la primera vista de 393×660 quedan fuera los últimos 14 px de «Guardar despedida». El botón cabe de entrada a 393×852. Pude editar y guardar la despedida desplazando la hoja con el campo enfocado, incluso en un área reducida a 393×390 en Chromium.
+- **Categorías.** La vista termina junto a «Muestras y regalos», con el resto de la lista bajo el borde. Al desplazar hasta abajo se ve «Otros» completo. El selector de «Uso en spa» distingue bien la opción activa en oscuro.
+- **Preferencias.** Los últimos 7 px de la fila «Plantillas de WhatsApp» quedan fuera de la vista de 393×660 en la posición capturada. Se alcanza al desplazar y entra completa a 393×852.
+- **Ajustes › Avanzado.** «Borrar todo» queda tenue mientras está desactivado, con un contraste de aproximadamente 2,76:1 sobre la tarjeta. La instrucción queda visible y escribir «BORRAR» habilita el botón.
+- **Ajustes, primera vista.** A 393×660 quedan fuera los últimos 12 px del selector «Elba / Jonathan». A 393×852 se ve entero. Envío y respaldo caben en ambas alturas.
+- **Historial de ventas.** A 393×660 la franja de prueba cubre unos 8 px del borde superior de las acciones de exportación en la posición capturada. El botón flotante se superpone a la tercera venta. Se puede alcanzar Excel al desplazar y aparece entero en la misma posición a 393×852. La última venta queda 45 px por encima de la barra al final del historial. Los productos de la primera venta se leen en líneas separadas.
+
+Las seis capturas de iPhone muestran un área de 393×660. La comprobación a 393×390 redujo el área disponible para el formulario en Chromium. Queda pendiente probar el teclado real de Safari y las zonas seguras en el iPhone de Elba, además de instalación, envío, recepción y respaldo en los dos celulares.
+
+El registro de `python3 -u codex/pruebas/correr.py` confirmó 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil de iPhone 14 Pro. Incluyen comprobaciones a 360×800, intercambio de archivos con la versión 1 y recarga sin conexión. El único archivo modificado en esta corrida fue esta bitácora.
