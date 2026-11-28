@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 20:00–20:05 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 20:10–20:15 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -337,3 +337,16 @@ Se revisaron las ocho capturas oscuras de 390×844. `Main.png` sirvió de refere
 Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro. El proceso inicial terminó tras 27 pruebas aprobadas. Las restantes pasaron por tandas, incluidos el intercambio con la versión 1, la migración simulada y la recarga sin conexión. Solo se editó este registro.
 
 Quedan pendientes los recorridos de T14 en los celulares físicos, en especial compartir y adjuntar el archivo por WhatsApp y abrir el respaldo desde Archivos o Drive.
+
+### 27-nov-2026 · 20:10–20:15 (Ecuador) · Revisión de T14
+
+Las 15 tareas de `TAREAS.md`, de T0 a T14, figuran como completas. Revisé las ocho capturas adjuntas en oscuro a 390×844. Comparé los avisos con `Main.png`, los selectores con `Inventario.png` y las hojas inferiores con `Vender.png`.
+
+- **Ajustes y preferencias.** El selector de letra aparece al pie de la primera vista y el botón desactivado «Cargar datos de ejemplo» queda parcialmente visible en la captura desplazada. El texto de ese botón tiene un contraste de 2,23:1 en oscuro. El párrafo de la tarjeta informa que los datos ya se cargaron.
+- **Categorías y plantillas.** «Para vender» se lee tanto en el selector como en el encabezado de la lista. El fondo de la opción activa apenas se diferencia del resto del selector (1,10:1), igual que en Preferencias. Los textos de ambas opciones superan 4,5:1. El borde de los campos alcanza 3,29:1. En Plantillas, el tirador para cambiar la altura coincide con la esquina redondeada.
+- **Invitación y guía de instalación.** La invitación aparece después de «Necesita atención» y menciona el respaldo junto con la instalación. «Ver los pasos» abre únicamente la guía. En la hoja, «Compartir» se nombra por escrito y falta una referencia visual para encontrar el botón de Safari. Los contadores de Inicio cortados arriba corresponden al desplazamiento de las capturas.
+- **Envío y respaldo.** En la hoja de Envío, «Manda el envío por WhatsApp» y «Descargar envío» dejan implícito que luego hay que adjuntar el archivo al chat. El código registra «Último envío» al iniciar la descarga. La hoja de Respaldo indica dónde guardar la copia y con qué opción volver a abrirla. El tirador de las dos hojas sigue el diseño y puede sugerir que se cierran al arrastrar.
+
+Pasaron las 49 pruebas en Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro, incluidas la compatibilidad con los archivos de la versión 1, la migración simulada y la recarga sin conexión. El proceso inicial terminó tras 23 pruebas aprobadas. Las demás pasaron en tandas sucesivas con un solo navegador abierto. Solo se editó este registro.
+
+Sigue la revisión en los celulares de Elba y Jonathan, especialmente la instalación en Safari, el envío por WhatsApp y la restauración desde Archivos o Drive.
