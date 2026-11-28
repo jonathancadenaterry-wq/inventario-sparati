@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 07:21–07:30 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 07:34–07:41 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -682,3 +682,22 @@ La prueba de títulos de T16 aplica el rango de 28 a 30 px también a Bienvenida
 El perfil de iPhone 14 Pro instalado en Playwright usa un área de 393×660. La verificación adicional a 393×852 se hizo en Chromium con ese mismo perfil. Sigue pendiente revisar las zonas seguras y el teclado de Plantillas en el Safari del iPhone de Elba, y los recorridos de instalación, envío, recepción y respaldo en ambos celulares.
 
 El registro de `python3 -u codex/pruebas/correr.py` confirma 61 pruebas aprobadas en Chromium a 390×844 y 61 con el perfil de iPhone 14 Pro. Incluyen las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. El único archivo editado fue esta bitácora.
+
+### 28-nov-2026 · 07:34–07:41 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+Revisé `TAREAS.md`. T0–T16 están marcadas como completas y no hay otra tarea en la lista. Comparé las capturas con las maquetas aprobadas y repetí los recorridos con datos de ejemplo en Chromium.
+
+- **Bienvenida (390×844).** El mensaje de 29 px ocupa tres líneas y deja «lugar» solo. `Bienvenida.png` lo muestra en dos líneas con 22 px. El logo y las dos acciones caben en la primera vista.
+- **Inicio (360×800).** «Elba» baja a la segunda línea del saludo y «Sin ventas en octubre» queda debajo del título de la tarjeta. `Main.png` muestra el saludo en una línea y la comparación junto al título. Con la invitación abierta, la barra inferior cubre 11 px de la línea de ganancia. El buscador y la invitación se leen completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas. En la primera vista de 393×660 quedan 14 px de «Guardar despedida» debajo del borde. Pude desplazar el formulario, guardar la despedida y verificar que el cambio seguía guardado al volver a abrir Plantillas.
+- **Categorías.** «Muestras y regalos» llega al borde inferior a 393×660 y «Otros» queda más abajo. Al desplazar se ven ambas filas completas.
+- **Preferencias.** En la posición capturada quedan 7 px de la fila «Plantillas de WhatsApp» debajo del borde. La fila abre Plantillas y entra completa a 393×852.
+- **Ajustes › Avanzado.** «Borrar todo» se ve tenue. El contraste del texto desactivado sobre la tarjeta es de aproximadamente 2,77:1. La instrucción para habilitarlo se lee completa.
+- **Ajustes.** El selector «Elba / Jonathan» termina a 672 px y se corta en la primera vista de 660 px. Envío y respaldo caben completos.
+- **Historial de ventas.** La franja de prueba cubre los 8 px superiores de WhatsApp y Excel en la posición capturada a 393×660. La bolsa flotante se superpone a la tercera venta. Excel queda entero al desplazar y la última venta termina a 45 px de la barra al final de la lista. Los productos de una misma venta aparecen en líneas separadas.
+
+Las seis capturas etiquetadas como iPhone usan un área de 393×660. En Chromium a 393×852, la fila de Excel y los controles recortados de Ajustes, Preferencias y Plantillas caben en las mismas posiciones. También se ven completas «Muestras y regalos» y «Otros». La prueba de títulos de T16 aplica 28–30 px al mensaje de Bienvenida y al saludo de Inicio. Sus maquetas especifican 22 y 25 px respectivamente.
+
+El registro de `python3 -u codex/pruebas/correr.py` contiene las 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro. Incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión. La corrida solo actualizó esta bitácora.
+
+Sigue la revisión en los celulares físicos. En Safari quedan por comprobar las zonas seguras y el teclado al editar Plantillas. En ambos equipos quedan por comprobar la instalación, el envío, la recepción y el respaldo.
