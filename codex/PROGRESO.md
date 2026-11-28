@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, desde las 13:26 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, desde las 13:39 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -909,3 +909,20 @@ T0–T16 figuran completas en `TAREAS.md`. La corrida abarcó la revisión visua
 El registro de `python3 -u codex/pruebas/correr.py` contiene 61 pruebas aprobadas a 390×844 y las mismas 61 con el perfil de iPhone 14 Pro. Incluye las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. El seguimiento inicial devolvió el código 143. Confirmé por tandas las dos pruebas sin conexión a 390×844 y las 61 del perfil de iPhone.
 
 Queda por verificar en el Safari de Elba el espacio de la muesca y la barra inferior, y la edición de Plantillas con el teclado abierto. Sigue la revisión de instalación, envío, recepción y respaldo en ambos celulares.
+
+### 28-nov-2026 · 13:39–13:48 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+T0–T16 siguen marcadas como completas en `TAREAS.md`. Esta corrida registra la revisión visual. Comparé Bienvenida e Inicio con las maquetas y repetí las tomas oscuras en Chromium. Las seis capturas con el perfil de iPhone 14 Pro miden 393×660. Repetí las mismas posiciones de desplazamiento a 393×852 para distinguir los recortes de la primera vista.
+
+- **Bienvenida (390×844).** El mensaje de 29 px ocupa tres líneas y deja «lugar» sola. La maqueta usa 22 px y dos líneas. La prueba de títulos de T16 incluye este mensaje en el rango de 28–30 px.
+- **Inicio (360×800).** El saludo de 29 px deja «Elba» en la segunda línea. La maqueta usa un saludo de 25 px en una línea. «Sin ventas en octubre» cae debajo del encabezado de ventas. Con la invitación abierta, la barra inferior tapa los últimos 11 px de la línea de ganancia hasta desplazar. El texto del buscador cabe entero. A 390×844, la comparación comparte fila con el encabezado y se ve toda la ganancia.
+- **Plantillas de WhatsApp.** El encabezado ocupa dos líneas en ambas alturas. A 393×660 quedan 14 px de «Guardar despedida» debajo del borde visible. El botón queda completo a 393×852. Guardé una despedida de dos líneas y la recuperé al volver a abrir Plantillas en ambas alturas.
+- **Categorías.** En la primera vista a 393×660 quedan 2 px de «Muestras y regalos» y toda la fila «Otros» debajo del borde. Las dos filas quedan completas a 393×852.
+- **Preferencias.** En la posición capturada faltan 7 px de «Plantillas de WhatsApp» a 393×660. La fila cabe completa a 393×852.
+- **Ajustes › Avanzado.** «Borrar todo» se ve tenue mientras está desactivado. Su contraste sobre la tarjeta oscura es de aproximadamente 2,8:1. La instrucción para habilitarlo se lee completa.
+- **Ajustes.** Envío y respaldo caben completos. A 393×660 quedan 12 px del selector «Elba / Jonathan» debajo del borde. A 393×852 el selector cabe entero.
+- **Historial de ventas.** En la posición capturada a 393×660, la franja superior cubre 8 px de las acciones de WhatsApp y Excel. La barra inferior y el botón «Vender» se superponen a la tercera tarjeta. A 393×852 se ven completas las acciones y la tercera tarjeta. Al final del desplazamiento, la última venta queda 45 px por encima de la barra en ambas alturas.
+
+Pasaron las 61 pruebas de `correr.py` en Chromium a 390×844 y las mismas 61 con el perfil emulado de iPhone 14 Pro. La ejecución continua salió con código 143 después de aprobar las 61 a 390×844. Completé las del iPhone en tres tandas en serie después de que el intento en paralelo agotó los recursos de Chromium. Pasaron las verificaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión.
+
+El único cambio de la corrida es esta bitácora. Sigue la revisión en el Safari del iPhone de Elba de las zonas seguras y de Plantillas con el teclado abierto. Queda por validar la instalación, el envío, la recepción y el respaldo en ambos teléfonos.
