@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 08:31–08:37 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 08:40–08:49 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -792,3 +792,20 @@ T0–T16 figuran completas en `TAREAS.md`. La corrida se limitó a revisar las c
 Las seis capturas etiquetadas como iPhone usan 393×660. Repetí los recorridos a 393×852 en Chromium con el mismo perfil. A esa altura caben completos los controles y las filas recortados, incluida la tercera venta. Sigue pendiente comprobar las zonas seguras y el teclado de Plantillas en el Safari de Elba. En ambos celulares queda por probar la instalación, el envío, la recepción y el respaldo.
 
 Verifiqué 61 pruebas de `python3 -u codex/pruebas/correr.py` en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro, con una tanda adicional para completar el seguimiento del perfil de iPhone. Pasaron las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión.
+
+### 28-nov-2026 · 08:40–08:49 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+En `TAREAS.md` están completas T0–T16. Contrasté las capturas oscuras con las maquetas y repetí los recorridos con datos de ejemplo en Chromium.
+
+- **Bienvenida, 390×844.** El mensaje de 29 px ocupa tres líneas y deja «lugar» solo. La maqueta usa 22 px y dos líneas. La prueba de títulos de T16 incluye esta frase y el saludo de Inicio en el rango de 28–30 px.
+- **Inicio, 360×800.** «Elba» queda en una segunda línea y «Sin ventas en octubre» baja debajo del título del resumen. La maqueta muestra el saludo en una línea a 25 px y la comparación al lado del título. Con la invitación abierta, la barra inferior tapa parte del renglón de ganancia en la primera vista. El buscador y la invitación se leen completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y quedan 14 px de «Guardar despedida» debajo del borde en la primera vista. Comprobé que se puede desplazar, guardar una despedida de dos líneas y recuperarla al volver a abrir Plantillas.
+- **Categorías.** El borde corta los últimos 2 px de «Muestras y regalos». La fila «Otros» aparece al desplazar.
+- **Preferencias.** La posición de la captura deja 7 px de «Plantillas de WhatsApp» debajo del borde. La fila abre el formulario al tocarla.
+- **Ajustes › Avanzado.** «Borrar todo» se ve tenue mientras está desactivado, con un contraste aproximado de 2,76:1 sobre la tarjeta oscura. El texto que indica cómo habilitarlo se lee completo.
+- **Ajustes.** La primera vista corta el borde inferior del selector «Elba / Jonathan». Envío y respaldo se ven completos.
+- **Historial de ventas.** La franja superior cubre 8 px de «Enviar por WhatsApp» y «Excel» en la posición capturada. El botón flotante se superpone a la tercera venta. Las acciones se ven completas al desplazar hacia arriba. La última venta queda 45 px por encima de la barra al final de la lista.
+
+Los seis PNG etiquetados como iPhone 14 Pro miden 393×660. En la repetición a 393×852 en Chromium se ven completos los controles y filas cortados en esas capturas. La corrida se limita a esta bitácora. Sigue la revisión física de las zonas seguras y el teclado de Plantillas en el Safari de Elba y de los recorridos de instalación, envío, recepción y respaldo en ambos celulares.
+
+El registro de `python3 -u codex/pruebas/correr.py` contiene 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro. También completé por tandas la verificación de iPhone tras perder el seguimiento de la ejecución continua. Pasaron las comprobaciones a 360×800, el intercambio en ambos sentidos con la versión 1 y la recarga sin conexión.
