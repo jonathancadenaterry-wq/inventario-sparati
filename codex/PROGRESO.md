@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 04:00–04:08 (Ecuador) · Revisión de las ocho capturas de T16
+- Última corrida: 28-nov-2026, 04:12–04:17 (Ecuador) · Revisión de las ocho capturas de T16
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -504,3 +504,20 @@ Revisé las capturas oscuras adjuntas y las comparé con `Bienvenida.png`, `Main
 Pasaron las 61 pruebas de Chromium a 390×844 y las 61 con el perfil de iPhone 14 Pro. Esto incluye las comprobaciones a 360×800, el intercambio en ambos sentidos con la versión 1 y la recarga sin conexión. La ejecución de `python3 codex/pruebas/correr.py` se interrumpió tras 59 pruebas aprobadas. Completé por tandas las pruebas restantes y comprobé los 122 resultados.
 
 T0–T16 figuran completas en `TAREAS.md`. La revisión actualiza esta bitácora. Sigue la comprobación en los celulares físicos de la zona segura y el teclado de Safari, la invitación en Chrome y los recorridos de envío, recepción y respaldo.
+
+### 28-nov-2026 · 04:12–04:17 (Ecuador) · Revisión de las ocho capturas de T16
+
+Las ocho capturas son del tema oscuro. Comparé Bienvenida (390×844) e Inicio (360×800) con sus referencias y revisé las seis vistas restantes en el perfil iPhone 14 Pro de Chromium (área visible de 393×660). El listado de tareas tiene T0–T16 marcadas como completas. Esta corrida actualiza la bitácora de revisión.
+
+- **Bienvenida.** La frase ocupa tres líneas y deja «lugar» solo en la última. El diseño la compone en dos líneas. El HTML de referencia usa 22 px para esa frase y la app la muestra como título de 29 px, según la regla general de T16.
+- **Inicio.** «Elba» baja a la segunda línea también a 390 px. El HTML de referencia usa 25 px para el saludo y la app usa 29 px. A 360 px, «Sin ventas en octubre» baja debajo de «Ventas de noviembre». Con la invitación abierta, la barra cubre 11 px de la línea de ganancia y el botón flotante tapa parte de la misma línea. La línea se ve completa al bajar. El buscador y la invitación se leen completos en la primera vista.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y los últimos 14 px de «Guardar despedida» quedan debajo de la primera vista del perfil iPhone. Al desplazar, el botón queda completo y se puede tocar. Falta comprobarlo con el teclado de Safari abierto.
+- **Categorías.** Se distingue «Uso en spa» como opción elegida. «Muestras y regalos» queda junto al borde inferior de la captura. La lista continúa y se puede desplazar hasta la última categoría.
+- **Preferencias.** Los tres selectores visibles distinguen la opción elegida. «Plantillas de WhatsApp» queda al borde inferior en esa posición de desplazamiento y abre su pantalla al tocarla.
+- **Ajustes › Avanzado.** El bloque se ve entero al bajar. «Borrar todo» tiene un contraste de 2,76:1 sobre su tarjeta mientras está desactivado. Comprobé que escribir «BORRAR» habilita el botón.
+- **Ajustes, primera vista.** Envío y respaldo caben completos. El selector «Elba / Jonathan» queda cortado abajo y se ve completo al desplazar.
+- **Historial de ventas.** Cada producto de la primera venta ocupa su propia línea. La franja de prueba cubre los 8 px superiores de la fila con Excel en la posición de la captura. Abajo, el botón flotante se superpone a la tercera venta. Al desplazar hacia arriba, las acciones de exportación se ven completas. Al llegar al final, la última venta queda 45 px por encima de la barra y 20 px por encima del botón flotante.
+
+`python3 codex/pruebas/correr.py` terminó en una sola ejecución. Pasaron 61 pruebas en Chromium a 390×844 y 61 en Chromium con el perfil iPhone 14 Pro, incluidas las comprobaciones a 360×800, la compatibilidad con la versión 1 y la recarga sin conexión.
+
+Sigue la comprobación en los celulares físicos de la zona segura y el teclado de Safari, la invitación en Chrome y los recorridos de envío, recepción y respaldo.
