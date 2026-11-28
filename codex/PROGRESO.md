@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 19:54 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 20:00–20:05 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -324,3 +324,16 @@ Se revisaron las ocho capturas adjuntas en oscuro a 390×844. Inicio conserva la
 - **Envío y respaldo.** Las dos hojas muestran la alternativa de descarga. En Envío falta indicar que, después de descargar, hay que adjuntar el archivo al chat. El código actual ya actualiza «Último envío» al descargar, antes de ese paso manual. Respaldo sí indica dónde guardar la copia y cómo volver a abrirla.
 
 `TAREAS.md` tiene T0–T14 completas. El único archivo editado en esta corrida es este registro. Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro. Queda por probar en los celulares el menú Compartir de Safari y Chrome, la entrega por WhatsApp y la restauración de la copia.
+
+### 27-nov-2026 · 20:00–20:05 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+Se revisaron las ocho capturas oscuras de 390×844. `Main.png` sirvió de referencia para Inicio, `Inventario.png` para el selector y `Vender.png` para las hojas inferiores. `TAREAS.md` tiene marcadas las 15 tareas, de T0 a T14. La corrida se dedicó a la revisión y a las pruebas de la versión de prueba.
+
+- **Invitación e instalación.** La tarjeta se descubre al bajar después de los cuatro avisos. Su texto reúne el acceso desde la pantalla de inicio y la copia de seguridad, aunque «Ver los pasos» explica solo la instalación. La guía de Safari podría mostrar el ícono de Compartir junto al nombre. El tirador tenue de la hoja parece un control para arrastrar. El cierre desde la hoja se hace con «Entendido», que también oculta la invitación en próximas visitas. Las cifras a medias en el borde superior corresponden al punto de desplazamiento de ambas capturas.
+- **Ajustes y preferencias.** Al abrir Ajustes, «Tamaño de letra» empieza justo en el borde inferior. En la captura desplazada, el botón desactivado «Cargar datos de ejemplo» pierde legibilidad y queda a medias. El texto de la misma tarjeta ya indica que los datos están cargados.
+- **Categorías y plantillas.** En Categorías, «Para vender» aparece dos veces y el fondo seleccionado apenas se distingue del resto del selector en oscuro. El mismo efecto se ve en los selectores de Ajustes. En Plantillas, los tiradores diagonales coinciden con la curva inferior de los campos. Los bordes, la ayuda y los botones de guardado se leen completos.
+- **Envío y respaldo.** En la vista de descarga, la hoja de Envío deja implícito que hay que adjuntar el `.txt` al chat de WhatsApp. Confirmé en el código que Ajustes actualiza «Último envío» al iniciar la descarga, antes de adjuntar el archivo. La hoja de respaldo indica dónde guardar la copia y con qué acción volver a abrirla. Las dos hojas comparten un tirador decorativo con la guía de instalación.
+
+Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro. El proceso inicial terminó tras 27 pruebas aprobadas. Las restantes pasaron por tandas, incluidos el intercambio con la versión 1, la migración simulada y la recarga sin conexión. Solo se editó este registro.
+
+Quedan pendientes los recorridos de T14 en los celulares físicos, en especial compartir y adjuntar el archivo por WhatsApp y abrir el respaldo desde Archivos o Drive.
