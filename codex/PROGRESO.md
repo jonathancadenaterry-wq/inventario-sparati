@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T14
-- Última corrida: 27-nov-2026, 19:10 (Ecuador) · T13 completada
+- Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
+- Última corrida: 27-nov-2026, 19:37 (Ecuador) · T14 completada
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -271,3 +271,29 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - Pasaron 43 pruebas en Chromium a 390×844 y 39 con el perfil iPhone 14 Pro, ejecutadas por tandas. La prueba de intercambio abrió en la raíz un `.txt` de `prueba/` con foto, QR y movimientos, registró allí una entrada y la leyó de vuelta en `prueba/`. También se comprobó la importación repetida del archivo v1, la cancelación de Compartir, la descarga y restauración sin conexión y la conservación de las cachés de las otras apps.
 - Revisé 14 capturas T13 de 390×844 en claro y oscuro. Como Ajustes carece de una imagen propia en el diseño aprobado, usé las tarjetas y jerarquía de `Main.png`, el segmentado de `Inventario.png` y la hoja inferior de `Vender.png`. Envío y respaldo se abren en una hoja inferior. En Ajustes, los controles de inventario y plantillas se ven al desplazar.
 - Sigue T14, pulido final. En el iPhone real de Elba queda comprobar que el menú Compartir permita guardar el respaldo en Archivos o Drive y abrirlo de nuevo, desde Safari y desde la app instalada. Los cambios quedaron en `prueba/` y `codex/`.
+
+### 27-nov-2026 · 19:13–19:37 (Ecuador) · T14
+
+**Revisión de las ocho capturas T13 adjuntas**
+
+- **Instalación, claro y oscuro.** El título y la guía de Safari caben en la hoja. La tarjeta que abrió la guía queda parcialmente tapada y su botón repite el título de la hoja. En la captura clara, el fondo oscurecido conserva bastante contraste y las acciones de avisos todavía compiten con la guía.
+- **Plantillas y categorías, oscuro.** El borde de los campos casi se pierde sobre el fondo de las tarjetas. En Categorías, el campo vacío se distingue sobre todo por el texto «Nueva categoría». En Plantillas, el botón para guardar y el texto de ayuda se leen completos.
+- **Ajustes y preferencias, oscuro.** En la captura desplazada se ve una línea residual de la tarjeta anterior bajo el encabezado. El botón de datos de ejemplo se corta en el borde inferior. En la primera vista completa, la opción de letra grande queda justo al pie y las opciones de Inventario requieren desplazar.
+- **Envío y respaldo, oscuro.** Las dos hojas presentan «Archivo listo · 15 fotos» y «Descargar archivo». La diferencia entre compartir con Jonathan y guardar una copia queda solo en el título y la instrucción. Es la vista de descarga de respaldo del navegador cuando Compartir con archivo no está disponible.
+
+**Trabajo completado**
+
+- La bienvenida empieza con el logo completo de `Bienvenida.png`, permite elegir quién usa el celular y ofrece entrar o recibir un envío antes de empezar. El botón Volver y Atrás del navegador recorren los pasos. La recepción usa la mezcla habitual y avisa si el archivo es inválido o si falta espacio para guardarlo.
+- Los inventarios y la lista de pacientes explican qué hacer cuando aún están vacíos. Reportes indica por qué el mes está vacío y omite las barras sin ventas. Se reforzó el borde de los campos en los dos temas y la navegación de teclado conserva el foco al abrir y cerrar hojas. Las transiciones y el rebote se desactivan con movimiento reducido.
+- Comparé 30 capturas T14 de 390×844 en claro y oscuro con `Bienvenida.png`, `Main.png`, `Inventario.png` y `Reportes.png`. Ajusté el salto de línea de la bienvenida, la separación del encabezado de Ajustes y el fondo de la guía de instalación. Los botones de Envío y Respaldo dicen qué archivo se guarda o comparte. La barra translúcida desenfoca el contenido que pasa por debajo.
+- La mediana de arranque fue 429 ms para la bienvenida y 729 ms para Inicio con 300 productos y 2300 movimientos. Fueron cinco aperturas por caso, con recursos locales en Chromium, perfil iPhone 14 Pro y CPU ralentizada cuatro veces. Falta medir el arranque en los celulares reales.
+- `MIGRACION.md` incluye la función probada, la copia automática exacta del estado v1 antes de escribir los campos nuevos y los pasos para el pase a producción que hará Claude tras la aprobación de Jonathan. La versión de prueba sigue bajo su propia clave, base de fotos y service worker.
+- Pasaron 49 pruebas en Chromium a 390×844 y 43 con su perfil iPhone 14 Pro, ejecutadas por tandas. Se verificaron la recepción con fotos y el reintento tras un error de almacenamiento, el arranque y la lectura sin conexión, los formatos v1, la conservación de las cachés ajenas y el respaldo ante los dos posibles fallos de escritura de la migración. Los cambios quedaron en `prueba/` y `codex/` para que los guarde el bucle.
+
+**Recorridos para Elba y Jonathan en sus celulares**
+
+- **Ambos, en `prueba/`.** Si ya tienen un nombre guardado, usen un perfil nuevo del navegador para recorrer la bienvenida y verificar el saludo. Agreguen la app a la pantalla de inicio, carguen los datos de ejemplo desde Ajustes y abran de nuevo con el modo avión activo después de que termine la carga. Revisen Inventario y sus fotos, hagan una venta de ejemplo, desháganla y retomen un conteo. Repitan en tema oscuro y con letra grande.
+- **Elba, iPhone 14 Pro.** En Safari y desde la pantalla de inicio, pruebe el teclado de cantidades y fechas, y compruebe que la isla, la barra inferior y el teclado dejen tocar los controles. Con VoiceOver, recorra la bienvenida, los nombres de los botones del escáner y el cierre de una hoja. Pruebe permitir y rechazar la cámara, leer un código impreso y usar la escritura manual. Guarde también un PDF desde Reportes.
+- **Jonathan, Android.** En Chrome y desde la pantalla de inicio, pruebe Atrás al recorrer la bienvenida, cerrar el escáner y volver de una ficha. Compruebe la lectura de un código con cámara y la linterna si el teléfono la ofrece. Imprima una hoja de QR, lea una etiqueta y compruebe que abra su producto.
+- **Entre los dos.** Hagan un envío con fotos por WhatsApp, ábranlo con «Recibir» y repitan la recepción para comprobar que no se duplique. Abran el comprobante y un recordatorio de ejemplo para revisar el texto antes de enviar. Guarden un respaldo completo en Archivos o Drive, confirmen que se puede volver a elegir y restauren solo en un inventario de prueba.
+- Estos recorridos quedan pendientes en equipos físicos. El perfil iPhone de Playwright permite comprobar el tamaño y los toques en Chromium.

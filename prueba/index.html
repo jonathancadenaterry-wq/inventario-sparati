@@ -13,18 +13,18 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icono-192.png">
 <link rel="apple-touch-icon" href="icono-180.png">
-<link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="estilos.css?v=2.14.0">
 </head>
 <body>
 <div class="franja-prueba">Versión de prueba · los datos no son los reales</div>
 <main id="app"></main>
-<nav class="nav" aria-label="Principal"></nav>
+<nav class="nav" aria-label="Principal" hidden></nav>
 <div id="capas"></div>
 <div id="anuncio" class="solo-lectura" role="status"></div>
 <input type="file" id="inFoto" accept="image/*" hidden>
 <input type="file" id="inArchivo" accept=".txt,.json,text/plain,application/json" hidden>
 <input type="file" id="inRespaldo" accept=".json,application/json" hidden>
-<script src="app.js?v=2.13.0"></script>
+<script src="app.js?v=2.14.0" defer></script>
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{

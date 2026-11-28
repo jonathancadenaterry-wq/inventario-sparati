@@ -9,6 +9,7 @@ import mimetypes
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from statistics import median
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
@@ -27,7 +28,8 @@ CATALOGO = json.loads((RAIZ / 'codex/catalogo.json').read_text(encoding='utf-8')
 
 
 class Sitio:
-    def __init__(self, navegador, *, color='light', trabajador=False, perfil=None):
+    def __init__(self, navegador, *, color='light', trabajador=False, perfil=None,
+                 movimiento='reduce', reloj=True):
         dispositivo = {'viewport': {'width': 390, 'height': 844}}
         if perfil:
             dispositivo = {k: v for k, v in perfil.items() if k != 'default_browser_type'}
@@ -36,7 +38,7 @@ class Sitio:
             color_scheme=color,
             locale='es-EC',
             timezone_id='America/Guayaquil',
-            reduced_motion='reduce',
+            reduced_motion=movimiento,
             service_workers='allow' if trabajador else 'block',
         )
         self.pagina = self.contexto.new_page()
@@ -48,7 +50,8 @@ class Sitio:
         # Las solicitudes del service worker llegan al contexto en Chromium.
         self.contexto.route('**/*', self.responder)
         self.pagina.route('**/*', self.responder)
-        self.pagina.clock.install(time=FECHA)
+        if reloj:
+            self.pagina.clock.install(time=FECHA)
 
     def responder(self, ruta):
         url = urlsplit(ruta.request.url)
@@ -232,8 +235,8 @@ def contrastes(pagina, pares):
         });
         return canales[0] * .2126 + canales[1] * .7152 + canales[2] * .0722;
       };
-      return pares.map(([texto, fondo = texto]) => {
-        const color = getComputedStyle(document.querySelector(texto)).color;
+      return pares.map(([texto, fondo = texto, propiedad = 'color']) => {
+        const color = getComputedStyle(document.querySelector(texto))[propiedad];
         const background = getComputedStyle(document.querySelector(fondo)).backgroundColor;
         const [a, b] = [luminancia(color), luminancia(background)].sort((a, b) => a - b);
         return (b + .05) / (a + .05);
@@ -356,7 +359,7 @@ def prueba_envio_entre_versiones(navegador):
         envio = nueva.get_by_role('dialog', name='Enviar a Jonathan')
         expect(envio.get_by_role('status')).to_have_text('Archivo listo · 1 foto')
         with nueva.expect_download() as descarga:
-            envio.get_by_role('button', name='Descargar archivo').click()
+            envio.get_by_role('button', name='Descargar envío').click()
         archivo_v2 = descarga.value
         assert archivo_v2.suggested_filename.endswith('.txt')
         paquete = json.loads(archivo_v2.path().read_text(encoding='utf-8'))
@@ -486,7 +489,7 @@ def prueba_envio_compartido(navegador, perfil=None):
         ajustes = abrir_ajustes(pagina)
         ajustes.get_by_role('button', name='Enviar a Jonathan').click()
         envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
-        compartir = envio.get_by_role('button', name='Compartir archivo')
+        compartir = envio.get_by_role('button', name='Compartir envío')
         compartir.click()
         assert pagina.evaluate('compartidos[0].activacion') is True
         pagina.evaluate("finCompartir.mal(new DOMException('Cerrado', 'AbortError'))")
@@ -496,7 +499,7 @@ def prueba_envio_compartido(navegador, perfil=None):
         pagina.evaluate("finCompartir.mal(new DOMException('Menú no disponible', 'NotAllowedError'))")
         expect(envio.get_by_role('status')).to_contain_text('Puedes descargar el archivo')
         with pagina.expect_download():
-            envio.get_by_role('button', name='Descargar archivo').click()
+            envio.get_by_role('button', name='Descargar envío').click()
         expect(envio).to_have_count(0)
         assert datos_guardados(pagina)['sync']['envio'] > 0
 
@@ -549,7 +552,7 @@ def prueba_respaldo_completo(navegador, perfil=None):
         expect(respaldo.get_by_role('status')).to_have_text('Archivo listo · 1 foto')
         expect(respaldo).to_contain_text('Archivos o Drive')
         with pagina.expect_download() as descarga:
-            respaldo.get_by_role('button', name='Descargar archivo').click()
+            respaldo.get_by_role('button', name='Descargar respaldo').click()
         archivo = descarga.value
         assert archivo.suggested_filename == 'respaldo-sparati-prueba-2026-11-27.json'
         contenido = json.loads(archivo.path().read_text(encoding='utf-8'))
@@ -615,13 +618,167 @@ def prueba_invitacion_instalar(navegador, perfil=None):
             expect(invitacion).to_have_count(0)
             pagina.evaluate("localStorage.removeItem('sparati_prueba_instalacion')")
             pagina.reload()
-            invitacion.get_by_role('button', name='Agregar a pantalla de inicio').click()
+            invitacion.get_by_role('button', name='Ver los pasos').click()
             instrucciones = pagina.get_by_role('dialog', name='Agregar a pantalla de inicio')
             expect(instrucciones).to_contain_text('En Safari, toca Compartir')
             instrucciones.get_by_role('button', name='Entendido').click()
             expect(invitacion).to_have_count(0)
         finally:
             sitio.cerrar()
+
+
+def prueba_bienvenida(navegador, perfil=None):
+    sitio = Sitio(navegador, color='dark', perfil=perfil, movimiento='no-preference')
+    try:
+        pagina = sitio.abrir(quien=None)
+        original = pagina.get_by_role('heading', name='Tus productos, ventas y pacientes en un solo lugar')
+        expect(original).to_be_visible()
+        expect(pagina.get_by_role('img', name='SPARATI')).to_be_visible()
+        expect(pagina.get_by_role('navigation')).to_have_count(0)
+        expect(pagina.locator('.bienvenida')).to_have_css('animation-duration', '0.18s')
+        pagina.keyboard.press('Tab')
+        empezar = pagina.get_by_role('button', name='Empezar')
+        expect(empezar).to_be_focused()
+        pagina.keyboard.press('Enter')
+        identidad = pagina.get_by_role('heading', name='¿Quién usa este celular?')
+        expect(identidad).to_be_focused()
+        pagina.get_by_role('button', name='Elba', exact=True).click()
+        expect(pagina.get_by_role('heading', name='Prepara tu inventario, Elba')).to_be_focused()
+        assert pagina.evaluate('localStorage.getItem(CLAVE_YO)') is None
+        pagina.reload()
+        expect(pagina.get_by_role('heading', name='Prepara tu inventario, Elba')).to_be_visible()
+        pagina.go_back()
+        expect(identidad).to_be_focused()
+        pagina.get_by_role('button', name='Volver').click()
+        expect(original).to_be_focused()
+
+        pagina.emulate_media(reduced_motion='reduce')
+        expect(pagina.locator('.bienvenida')).to_have_css('animation-name', 'none')
+        empezar.click()
+        pagina.get_by_role('button', name='Jonathan', exact=True).click()
+        expect(pagina.get_by_role('button', name='Recibir datos de Elba')).to_be_visible()
+        pagina.get_by_role('button', name='Ir a Inicio').click()
+        expect(pagina.get_by_role('heading', name=re.compile('Jonathan'))).to_be_focused()
+        expect(pagina.get_by_role('navigation', name='Principal')).to_be_visible()
+        assert pagina.evaluate('JSON.parse(localStorage.getItem(CLAVE_YO)).quien') == 'Jonathan'
+        assert datos_guardados(pagina) is None
+        pagina.reload()
+        expect(pagina.locator('.bienvenida')).to_have_count(0)
+    finally:
+        sitio.cerrar()
+
+
+def verificar_recepcion_bienvenida(pagina):
+    pagina.get_by_role('button', name='Recibir datos de Jonathan').click()
+    pagina.get_by_role('button', name='Jonathan', exact=True).click()
+    recibir = pagina.get_by_role('button', name='Recibir datos de Elba')
+    with pagina.expect_file_chooser() as selector:
+        recibir.click()
+    selector.value.set_files({'name': 'archivo.txt', 'mimeType': 'text/plain', 'buffer': b'{?}'})
+    estado_recepcion = pagina.locator('.bienvenida').get_by_role('status')
+    expect(estado_recepcion).to_have_text('Ese archivo no es un envío de inventario de SPARATI.')
+    expect(recibir).to_be_focused()
+    pagina.evaluate("""() => {
+      window.guardarOriginal = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => { throw new DOMException('Memoria llena', 'QuotaExceededError'); };
+    }""")
+    with pagina.expect_file_chooser() as selector:
+        recibir.click()
+    selector.value.set_files(FIXTURE_ENVIO)
+    expect(estado_recepcion).to_have_text('No se pudo guardar: la memoria del navegador está llena.')
+    assert datos_guardados(pagina) is None
+    expect(recibir).to_be_focused()
+    pagina.evaluate('() => { Storage.prototype.setItem = window.guardarOriginal; }')
+    with pagina.expect_file_chooser() as selector:
+        recibir.click()
+    envio = json.loads(FIXTURE_ENVIO.read_text(encoding='utf-8'))
+    foto = (RAIZ / 'codex/diseno/fotos/sunscreen.jpg').read_bytes()
+    envio['datos']['productos'][0]['foto'] = 'foto-bienvenida'
+    envio['fotos']['foto-bienvenida'] = 'data:image/jpeg;base64,' + base64.b64encode(foto).decode('ascii')
+    selector.value.set_files({'name': 'inventario.txt', 'mimeType': 'text/plain', 'buffer': json.dumps(envio).encode()})
+    listo = pagina.get_by_role('heading', name='Tu inventario está listo')
+    expect(listo).to_be_focused()
+    assert datos_guardados(pagina)['sync']['de'] == 'Elba'
+    pagina.reload()
+    expect(listo).to_be_visible()
+    pagina.get_by_role('button', name='Ir a Inicio').click()
+    expect(pagina.get_by_role('heading', name=re.compile('Jonathan'))).to_be_focused()
+    estado = datos_guardados(pagina)
+    assert any(not p.get('borrado') for p in estado['productos'])
+    assert estado['pacientes'] and all(p['por'] == 'Jonathan' for p in estado['pacientes'])
+    assert pagina.evaluate("FDB.get('foto-bienvenida').then(blob => blob.size)") == len(foto)
+
+
+def prueba_recepcion_bienvenida(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        verificar_recepcion_bienvenida(sitio.abrir(quien=None))
+    finally:
+        sitio.cerrar()
+
+
+def prueba_bienvenida_sin_conexion(navegador):
+    sitio = Sitio(navegador, trabajador=True)
+    try:
+        pagina = sitio.abrir(quien=None)
+        pagina.wait_for_function('navigator.serviceWorker.controller !== null')
+        sitio.sin_red = True
+        sitio.contexto.set_offline(True)
+        pagina.reload()
+        assert pagina.get_by_role('img', name='SPARATI').evaluate('async img => {await img.decode(); return img.naturalWidth;}') == 480
+        verificar_recepcion_bienvenida(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_migracion(navegador):
+    sitio = Sitio(navegador)
+    try:
+        pagina = sitio.abrir()
+        documento = (RAIZ / 'codex/MIGRACION.md').read_text(encoding='utf-8')
+        funcion = re.search(r'```js\n(function migrarAV2\(.*?\n})\n```', documento, re.S).group(1)
+        resultado = pagina.evaluate(f"""original => {{
+          {funcion}
+          const respaldo = 'sparati_inventario_respaldo_v1';
+          const crearAlmacen = (valor, fallar) => {{
+            const datos = new Map([[CLAVE_YO, '{{"quien":"Elba"}}']]);
+            if(valor != null) datos.set(CLAVE, valor);
+            return {{getItem:k => datos.get(k) ?? null, setItem(k, valor) {{
+              if(k === fallar) throw new DOMException('Sin espacio', 'QuotaExceededError');
+              datos.set(k, valor);
+            }}}};
+          }};
+          const almacen = crearAlmacen(original);
+          const hizo = migrarAV2(almacen);
+          const copia = almacen.getItem(respaldo);
+          const migrado = JSON.parse(almacen.getItem(CLAVE));
+          migrado.ajustes.tema = 'dark';
+          const editado = JSON.stringify(migrado);
+          almacen.setItem(CLAVE, editado);
+          const repite = migrarAV2(almacen);
+          const conserva = almacen.getItem(CLAVE) === editado && almacen.getItem(respaldo) === original;
+          const vacio = crearAlmacen(null);
+          const omiteVacio = migrarAV2(vacio) === false && vacio.getItem(respaldo) === null;
+          const casos = [[original, respaldo], [original, CLAVE], ['{{?', null], ['{{"v":1,"productos":[]}}', null]];
+          const errores = casos.map(([valor, fallo]) => {{
+            const almacen = crearAlmacen(valor, fallo);
+            try{{ migrarAV2(almacen); return false; }}
+            catch(e){{ return almacen.getItem(CLAVE) === valor && almacen.getItem(respaldo) === (fallo === CLAVE ? original : null); }}
+          }});
+          return {{hizo, copia, repite, migrado, conserva, omiteVacio, errores}};
+        }}""", FIXTURE_ESTADO.read_text(encoding='utf-8'))
+        assert resultado['hizo'] and resultado['repite'] is False
+        assert resultado['conserva'] and resultado['omiteVacio'] and all(resultado['errores'])
+        assert resultado['copia'] == FIXTURE_ESTADO.read_text(encoding='utf-8')
+        migrado = resultado['migrado']
+        for campo in ('v', 'productos', 'movs', 'ventas', 'cats', 'sync', 'creado'):
+            assert migrado[campo] == ESTADO_V1[campo], campo
+        assert migrado['ajustes']['letraGrande'] is False
+        assert migrado['pacientes'][0]['nombre'] == ESTADO_V1['ventas'][0]['pac']
+        assert migrado['pacientes'][0]['por'] == 'Elba'
+        assert datos_guardados(pagina) is None
+    finally:
+        sitio.cerrar()
 
 
 def verificar_ejemplo(pagina):
@@ -666,10 +823,10 @@ def prueba_ejemplo(navegador):
         pagina = sitio.abrir(quien=None, datos_extra={
             'sparati_inventario_v1': ESTADO_V1, 'sparati_inventario_yo': real_yo,
         })
-        expect(pagina.get_by_role('heading', name='¿Quién usa este celular?')).to_be_visible()
+        pagina.get_by_role('button', name='Empezar').click()
         pagina.get_by_role('button', name='Jonathan', exact=True).click()
-        expect(pagina.locator('[data-tipo=quien]')).to_have_count(0)
-        pagina.wait_for_function('!history.state?.capa')
+        pagina.get_by_role('button', name='Ir a Inicio').click()
+        expect(pagina.locator('.bienvenida')).to_have_count(0)
         assert pagina.evaluate('E.productos.length') == 0
         pagina.evaluate("""() => new Promise((ok, mal) => {
           const r = indexedDB.open('sparati_fotos', 1);
@@ -2149,6 +2306,88 @@ def prueba_apariencia(navegador, perfil=None):
         sitio.cerrar()
 
 
+def prueba_accesibilidad_final(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir()
+        inventario(pagina, 'ventas')
+        expect(pagina.get_by_text('Todavía no hay ventas este mes.', exact=False)).to_be_visible()
+        expect(pagina.locator('.semanas-reporte')).to_have_count(0)
+        inventario(pagina, 'venta')
+        expect(pagina.locator('#listaProd')).to_contain_text('Toca «Producto» para agregar el primero.')
+        buscar = pagina.get_by_role('searchbox', name='Buscar en el inventario')
+        buscar.focus()
+        pagina.evaluate('render()')
+        expect(buscar).to_be_focused()
+        inventario(pagina, 'pacientes')
+        pagina.get_by_role('button', name='Ir al inventario').click()
+        expect(buscar).to_be_visible()
+        pagina.evaluate("""({productos, movs}) => {
+          guardar({...E, productos, movs:movs.filter(m => m.tipo === 'inicial')});
+          refrescar();
+        }""", ESTADO_V1)
+        inventario(pagina, 'pacientes')
+        pagina.get_by_role('button', name='Registrar una venta').click()
+        expect(pagina.get_by_role('dialog', name='Nueva venta')).to_be_visible()
+        cerrar_hoja(pagina)
+        expect(pagina.get_by_role('button', name='Registrar una venta')).to_be_focused()
+
+        ajustes = abrir_ajustes(pagina)
+        expect(ajustes).to_be_focused()
+        pagina.keyboard.press('Tab')
+        volver = ajustes.get_by_role('button', name='Volver')
+        expect(volver).to_be_focused()
+        expect(volver).to_have_css('outline-width', '3px')
+        pagina.keyboard.press('Shift+Tab')
+        expect(ajustes.locator('summary')).to_be_focused()
+        pagina.keyboard.press('Tab')
+        expect(volver).to_be_focused()
+        pagina.get_by_role('button', name='Plantillas de WhatsApp').click()
+        plantillas = pagina.get_by_role('dialog', name='Plantillas de WhatsApp')
+        for esquema in ('light', 'dark'):
+            pagina.emulate_media(color_scheme=esquema)
+            expect(pagina.locator('html')).to_have_attribute('data-theme', esquema)
+            razones = contrastes(pagina, [
+                ['.ajustes-in textarea', '.ajustes-in textarea', 'borderTopColor'],
+                ['.ajustes-in textarea'],
+            ])
+            assert razones[0] >= 3 and razones[1] >= 4.5, razones
+        expect(plantillas.get_by_role('textbox', name='Mensaje base para WhatsApp')).to_be_visible()
+        pagina.keyboard.press('Escape')
+        expect(ajustes.get_by_role('button', name='Plantillas de WhatsApp')).to_be_focused()
+        pagina.keyboard.press('Escape')
+        expect(pagina.get_by_role('button', name='Ajustes', exact=True)).to_be_focused()
+    finally:
+        sitio.cerrar()
+
+
+def prueba_animacion_carrito(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        pagina.evaluate("""() => {
+          window.movimientoPrueba = {vibraciones:[], insignias:[]};
+          navigator.vibrate = ms => movimientoPrueba.vibraciones.push(ms);
+          const animar = Element.prototype.animate;
+          Element.prototype.animate = function(cuadros, opciones) {
+            if(this.matches('.cantidad-tarjeta-venta')) movimientoPrueba.insignias.push(opciones.duration);
+            return animar.call(this, cuadros, opciones);
+          };
+        }""")
+        pagina.get_by_role('navigation').get_by_role('button', name='Vender', exact=True).click()
+        venta = pagina.get_by_role('dialog', name='Nueva venta')
+        producto = venta.locator('[data-act=vAgregar][data-id=p1]')
+        producto.click()
+        expect(producto.locator('.cantidad-tarjeta-venta')).to_have_text('1')
+        assert pagina.evaluate('movimientoPrueba') == {'vibraciones': [], 'insignias': []}
+        pagina.emulate_media(reduced_motion='no-preference')
+        producto.click()
+        expect(producto.locator('.cantidad-tarjeta-venta')).to_have_text('2')
+        assert pagina.evaluate('movimientoPrueba') == {'vibraciones': [10], 'insignias': [180]}
+    finally:
+        sitio.cerrar()
+
+
 def prueba_inicio_resumen(navegador, perfil=None):
     sitio = Sitio(navegador, perfil=perfil)
     try:
@@ -2382,7 +2621,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
         previa.get_by_role('button', name='Enviar · Jonathan no tiene tus cambios').click()
         envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
         with pagina.expect_download() as descarga:
-            envio.get_by_role('button', name='Descargar archivo').click()
+            envio.get_by_role('button', name='Descargar envío').click()
         archivo = descarga.value
         assert archivo.suggested_filename == 'inventario-sparati-prueba-elba-2026-11-27.txt'
         assert json.loads(archivo.path().read_text(encoding='utf-8'))['app'] == 'sparati-inventario'
@@ -3328,11 +3567,28 @@ def capturar(navegador, tarea):
         pagina.screenshot(path=carpeta / f'{tarea}-{pantalla}-{tema}.png', animations='disabled')
 
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
+        if tarea == 'T14':
+            nuevo = Sitio(navegador, color=color)
+            try:
+                pagina = nuevo.abrir(quien=None)
+                guardar(nuevo, 'bienvenida', tema)
+                pagina.get_by_role('button', name='Empezar').click()
+                guardar(nuevo, 'bienvenida-identidad', tema)
+                pagina.get_by_role('button', name='Elba', exact=True).click()
+                guardar(nuevo, 'bienvenida-inventario', tema)
+                pagina.get_by_role('button', name='Ir a Inicio').click()
+                expect(pagina.locator('.bienvenida')).to_have_count(0)
+                for tab, nombre in [('venta', 'inventario-vacio'), ('pacientes', 'pacientes-vacio'),
+                                    ('ventas', 'reportes-vacio')]:
+                    inventario(pagina, tab)
+                    guardar(nuevo, nombre, tema)
+            finally:
+                nuevo.cerrar()
         sitio = Sitio(navegador, color=color)
         try:
             if tarea in ('T4', 'T6', 'T7', 'T10', 'T12'):
                 simular_camara(sitio.pagina)
-            if tarea == 'T13':
+            if tarea in ('T13', 'T14'):
                 sitio.pagina.add_init_script("Object.defineProperty(navigator, 'userAgent', {value: 'iPhone'});")
             sitio.pagina.clock.set_system_time(fecha)
             pagina = sitio.abrir(quien='Elba', estado={
@@ -3345,7 +3601,9 @@ def capturar(navegador, tarea):
             pagina.clock.fast_forward(5000)
             cerrar_hoja(pagina)
             pagina.evaluate('window.scrollTo(0, 0)')
-            if tarea == 'T13':
+            if tarea in ('T13', 'T14'):
+                if tarea == 'T14':
+                    guardar(sitio, 'inicio', tema)
                 pagina.evaluate("""() => {
                   guardar({...E, sync:{...E.sync, recibo:ahora() - 86400000, de:'Jonathan'}});
                   Object.defineProperty(navigator, 'canShare', {value: () => false});
@@ -3372,7 +3630,11 @@ def capturar(navegador, tarea):
                 guardar(sitio, 'plantillas', tema)
                 cerrar_hoja(pagina)
                 cerrar_hoja(pagina)
-                pagina.get_by_role('button', name='Agregar a pantalla de inicio').click()
+                ver_pasos = pagina.get_by_role('button', name='Ver los pasos')
+                if tarea == 'T14':
+                    ver_pasos.evaluate("el => el.closest('section').scrollIntoView({block:'end'})")
+                    guardar(sitio, 'invitacion', tema)
+                ver_pasos.click()
                 guardar(sitio, 'instalacion', tema)
                 continue
             if tarea == 'T12':
@@ -3785,13 +4047,46 @@ def capturar(navegador, tarea):
             sitio.cerrar()
 
 
+def medir_arranque(navegador, perfil):
+    productos = [{**ESTADO_V1['productos'][i % 3], 'id': f'r{i}', 'nombre': p['nombre'], 'marca': p['marca']}
+                 for i, p in enumerate((CATALOGO * 3)[:300])]
+    movs = [{**ESTADO_V1['movs'][0], 'id': f'm{i}', 'prod': productos[i % 300]['id'], 'cant': 1}
+            for i in range(2300)]
+    estado = {**ESTADO_V1, 'productos': productos, 'movs': movs}
+    for nombre, selector, perfil_estado in [('Bienvenida', '.bienvenida', None),
+                                             ('Inicio con catálogo', '.acciones-inicio', estado)]:
+        tiempos = []
+        for _ in range(5):
+            sitio = Sitio(navegador, perfil=perfil, reloj=False)
+            try:
+                cdp = sitio.contexto.new_cdp_session(sitio.pagina)
+                cdp.send('Emulation.setCPUThrottlingRate', {'rate': 4})
+                pagina = sitio.abrir(quien='Elba' if perfil_estado else None, estado=perfil_estado)
+                pagina.locator(selector).wait_for()
+                tiempos.append(pagina.evaluate("""async selector => {
+                  const logo = document.querySelector(selector + ' img, .marca-inicio .emblema');
+                  await Promise.all([logo.decode(), document.fonts.ready]);
+                  await new Promise(resolver => requestAnimationFrame(() => requestAnimationFrame(resolver)));
+                  return Math.round(performance.now());
+                }""", selector))
+            finally:
+                sitio.cerrar()
+        print(f'{nombre} · {tiempos} ms · mediana {median(tiempos)} ms')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--capturas', nargs='?', const='T13',
-                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13'],
-                        help='guardar capturas en modo claro y oscuro (T13 por omisión)')
+    parser.add_argument('--capturas', nargs='?', const='T14',
+                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14'],
+                        help='guardar capturas en modo claro y oscuro (T14 por omisión)')
+    parser.add_argument('--rendimiento', action='store_true', help='medir el arranque con CPU limitada en Chromium')
     args = parser.parse_args()
     with sync_playwright() as p:
+        modelo = 'iPhone 14 Pro' if 'iPhone 14 Pro' in p.devices else 'iPhone 13 Pro'
+        if args.rendimiento:
+            with p.chromium.launch() as navegador:
+                medir_arranque(navegador, p.devices[modelo])
+            return
         principales = [prueba_estado_v1, prueba_edicion, prueba_navegacion,
                         prueba_buscadores_y_filtros, prueba_carrito_y_deshacer,
                         prueba_venta_rapida, prueba_opciones_venta, prueba_camara_venta,
@@ -3805,19 +4100,19 @@ def main():
                         prueba_conteo_guiado, prueba_conteo_por_marca, prueba_conteo_escaner,
                         prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas,
                         prueba_etiquetas_qr, prueba_impresion_etiquetas, prueba_etiquetas_dos_pestanas,
-                        prueba_ajustes_v2, prueba_envio_compartido, prueba_respaldo_completo, prueba_invitacion_instalar]
+                        prueba_ajustes_v2, prueba_envio_compartido, prueba_respaldo_completo, prueba_invitacion_instalar,
+                        prueba_bienvenida, prueba_recepcion_bienvenida, prueba_accesibilidad_final, prueba_animacion_carrito]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue
             with motor.launch() as navegador:
-                pruebas = [*principales, prueba_envio_v1, prueba_envio_entre_versiones, prueba_ejemplo]
+                pruebas = [*principales, prueba_envio_v1, prueba_envio_entre_versiones, prueba_ejemplo, prueba_migracion]
                 if motor.name == 'chromium':
-                    pruebas.append(prueba_sin_conexion)
+                    pruebas.extend((prueba_sin_conexion, prueba_bienvenida_sin_conexion))
                 for prueba in pruebas:
                     prueba(navegador)
                     print(f'{motor.name}: {prueba.__name__} pasó')
                 if motor.name == 'chromium':
-                    modelo = 'iPhone 14 Pro' if 'iPhone 14 Pro' in p.devices else 'iPhone 13 Pro'
                     for prueba in principales:
                         prueba(navegador, perfil=p.devices[modelo])
                         print(f'{motor.name} con {modelo}: {prueba.__name__} pasó')

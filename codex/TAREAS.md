@@ -201,7 +201,7 @@ Según `Reportes.png`:
 - Mantén el envío y la recepción por archivo de la versión 1. Agrega un aviso en Inicio si pasaron más de 7 días sin enviar, y un «Respaldo completo» (archivo con fotos) que se pueda guardar en Archivos o Drive.
 - **Hecha cuando:** un archivo enviado desde `prueba/` lo puede abrir la versión 1 sin errores (prueba automática que carga la raíz con ese archivo), y al revés.
 
-## T14 · Pulido final  [ ]
+## T14 · Pulido final  [x]
 - Primera vez: una bienvenida de 3 pasos que empieza como `Bienvenida.png`, con el logo completo.
 - Estados vacíos amables.
 - Animaciones de `DISENO.md`.

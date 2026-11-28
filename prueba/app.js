@@ -105,13 +105,13 @@ function cargar(){
   try{ YO = JSON.parse(localStorage.getItem(CLAVE_YO)); }catch(e){ YO = null; }
   completarPacientes();
 }
-function guardar(estado = E, soloBorrador = false){
+function guardar(estado = E, soloBorrador = false, avisar = toast){
   try{
     const texto = JSON.stringify(estado);
     localStorage.setItem(CLAVE, texto);
     estadoGuardado = texto;
   }
-  catch(e){ toast('No se pudo guardar: la memoria del navegador está llena.'); return false; }
+  catch(e){ avisar('No se pudo guardar: la memoria del navegador está llena.'); return false; }
   E = estado;
   if(!soloBorrador){ calcular(); actualizarAvisos(); }
   return true;
@@ -120,10 +120,10 @@ const quien = () => (YO && YO.quien) || '';
 const otro = () => quien() === 'Elba' ? 'Jonathan' : 'Elba';
 const marcar = (o, nuevo) => { o.mod = ahora(); o.por = quien(); if(nuevo) o.creado = o.mod; return o; };
 
-function pacienteNuevo(nombre, tel = ''){
-  return marcar({id:'paciente:' + norm(nombre), nombre, tel, notas:''}, true);
+function pacienteNuevo(nombre, tel = '', autor = quien()){
+  return {...marcar({id:'paciente:' + norm(nombre), nombre, tel, notas:''}, true), por:autor};
 }
-function completarPacientes(estado = E){
+function completarPacientes(estado = E, autor = quien()){
   const nombres = new Set(estado.pacientes.map(p => norm(p.nombre)));
   const fichas = new Map();
   const ventas = vivos(estado.ventas).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -131,7 +131,7 @@ function completarPacientes(estado = E){
     const nombre = v.pac?.trim(), k = norm(nombre);
     if(!k || nombres.has(k)) continue;
     const ficha = fichas.get(k);
-    if(!ficha) fichas.set(k, pacienteNuevo(nombre, v.tel || ''));
+    if(!ficha) fichas.set(k, pacienteNuevo(nombre, v.tel || '', autor));
     else if(!ficha.tel && v.tel) ficha.tel = v.tel;
   }
   estado.pacientes.push(...fichas.values());
@@ -365,7 +365,7 @@ function abrirCapa(html, op = {}){
   dialogo.tabIndex = -1;
   $('#capas').appendChild(d);
   const id = ++idCapa;
-  pila.push({id, el:d, alCerrar:op.alCerrar, fija:op.fija, foco:document.activeElement});
+  pila.push({id, el:d, alCerrar:op.alCerrar, foco:document.activeElement});
   history.pushState({capa:id}, '');
   activarCapa();
   requestAnimationFrame(() => {
@@ -377,7 +377,7 @@ function abrirCapa(html, op = {}){
   return d;
 }
 function cerrarCapa(cantidad = 1){
-  if(!pila.length || pila.at(-1).fija) return Promise.resolve();
+  if(!pila.length) return Promise.resolve();
   if(!cierrePendiente){
     cierrePendiente = new Promise(res => { resolverCierre = res; });
     history.go(-cantidad);
@@ -385,13 +385,14 @@ function cerrarCapa(cantidad = 1){
   return cierrePendiente;
 }
 window.addEventListener('popstate', e => {
+  if(document.body.classList.contains('en-bienvenida')){
+    if(quien()) iniciarPantallas();
+    else pintarBienvenida(e.state?.bienvenida || {paso:1}, true);
+    return;
+  }
   let foco;
   const profundidad = pila.findIndex(c => c.id === e.state?.capa) + 1;
   while(pila.length > profundidad){
-    if(pila.at(-1).fija){
-      history.pushState({capa:pila.at(-1).id}, '', urlPantalla(U.tab));
-      return;
-    }
     const c = pila.pop();
     foco = c.foco;
     c.el.remove();
@@ -409,9 +410,27 @@ window.addEventListener('popstate', e => {
   resolver?.();
 });
 document.addEventListener('keydown', e => {
-  if(e.key !== 'Escape' || !pila.length || e.defaultPrevented) return;
-  e.preventDefault();
-  cerrarCapa();
+  const capa = pila.at(-1)?.el;
+  if(!capa || e.defaultPrevented) return;
+  if(e.key === 'Escape'){
+    e.preventDefault();
+    cerrarCapa();
+  }else if(e.key === 'Tab'){
+    const controles = 'a[href], button, input, select, textarea, summary, [tabindex]';
+    const disponibles = $$(controles, capa).concat($$('#toast button, #toast a[href]')).filter(el => {
+      if(el.matches(':disabled') || el.closest('[hidden], [inert]') || !el.getClientRects().length) return false;
+      const cerrado = el.closest('details:not([open])');
+      if(cerrado && !cerrado.querySelector(':scope > summary')?.contains(el)) return false;
+      return el.tabIndex >= 0 || el.matches('summary:not([tabindex])');
+    });
+    const destino = e.shiftKey ? disponibles.at(-1) : disponibles[0];
+    const borde = e.shiftKey ? disponibles[0] : disponibles.at(-1);
+    const activo = document.activeElement;
+    if(activo === borde || !disponibles.includes(activo)){
+      e.preventDefault();
+      (destino || $('[role="dialog"]', capa) || capa).focus();
+    }
+  }
 });
 const capaArriba = tipo => { const c = pila.slice().reverse().find(x => x.el.dataset.tipo === tipo); return c ? c.el : null; };
 function cabecera(titulo, extra = '', volver = false){
@@ -557,8 +576,10 @@ function opcion(act, valor, texto, activa, clase = '', attrs = ''){
 }
 
 function render(){
+  if(document.body.classList.contains('en-bienvenida')) return;
   calcular();
   const app = $('#app');
+  const activo = app.contains(document.activeElement) ? document.activeElement : null;
   const tira = $('.filtros-inventario', app);
   const posicionFiltros = tira?.scrollLeft;
   app.innerHTML = U.tab === 'inicio' ? vInicio() : U.tab === 'ventas' ? vReportes() : U.tab === 'pacientes' ? vPacientes() : vLista(U.tab);
@@ -596,6 +617,10 @@ function render(){
     pintarBusquedaInicio();
   });
   if(U.tab === 'inicio') pintarBusquedaInicio();
+  if(activo && !activo.isConnected){
+    if(activo.id) document.getElementById(activo.id)?.focus({preventScroll:true});
+    else enfocarControl(activo, app);
+  }
 }
 function pintarBusquedaInicio(){
   const q = norm(U.qInicio);
@@ -607,7 +632,7 @@ function pintarBusquedaInicio(){
   const pac = pacientes().filter(p => coincidePaciente(p, q)).slice(0, 10);
   resultados.innerHTML = (ps.length ? `<section class="grupo-productos"><h2>Productos</h2><div class="filas">${ps.map(p => filaProducto(p, 'verProd', true)).join('')}</div></section>` : '') +
     (pac.length ? `<section class="grupo-productos"><h2>Pacientes</h2><div class="filas">${pac.map(filaPaciente).join('')}</div></section>` : '') ||
-    '<div class="vacio">No encontré productos ni pacientes con esa búsqueda.</div>';
+    '<div class="vacio card">No encontré productos ni pacientes con esa búsqueda. Prueba con otro nombre.</div>';
   cargarFotos(resultados);
 }
 
@@ -905,7 +930,7 @@ function listaHTML(tipo, todos = productos(tipo)){
     if(!grupos.has(marca)) grupos.set(marca, []);
     grupos.get(marca).push(p);
   }
-  if(!todos.length) return '<div class="vacio">Todavía no hay productos aquí. Toca «Producto» para agregar el primero.</div>';
+  if(!todos.length) return `<div class="vacio card">${tipo === 'venta' ? 'Aquí tendrás tus productos para vender.' : 'Aquí tendrás los insumos que usas en el spa.'} Toca «Producto» para agregar el primero.</div>`;
   if(!grupos.size) return '<div class="vacio">No hay productos con ese filtro.</div>';
   const orden = U.orden[tipo];
   const ultimasVentas = orden === 'venta' ? ultimasVentasPorProducto() : null;
@@ -1042,14 +1067,15 @@ function barrasReporte(titulo, filas, nota = ''){
 function reporteVentasHTML(r){
   const maximo = Math.max(0, ...r.semanas.map(s => s.monto)) || 1;
   const actual = hoyISO().startsWith(U.mes) ? Math.floor((Number(hoyISO().slice(-2)) - 1) / 7) : -1;
-  return `<div class="cifras cifras-reporte">
+  return `${r.cantidad ? '' : `<div class="card vacio no-imprimir-reporte"><p>Todavía no hay ventas este mes. Las ventas que registres se agrupan por su fecha.</p></div>`}
+  <div class="cifras cifras-reporte">
     ${cifraReporte('Vendido', dinero(r.total))}
     ${cifraReporte('Ganancia', dinero(r.ganancia), r.total > 0 ? fCant(red(r.ganancia / r.total * 1000) / 10) + ' % del total' : '',
       r.ganancia < 0 ? 'perdida-reporte' : 'ganancia-reporte')}
     ${cifraReporte('Ventas', fCant(r.cantidad))}
     ${cifraReporte('Venta promedio', dinero(r.promedio))}
   </div>
-  <section class="card tarjeta-reporte">
+  ${r.cantidad ? `<section class="card tarjeta-reporte">
     <h2 id="ventasPorSemana">Ventas por semana</h2>
     <ul class="lista-reporte semanas-reporte" aria-labelledby="ventasPorSemana">
       ${r.semanas.map((s, i) => `<li class="${i === actual ? 'semana-actual' : ''}" title="Del ${s.inicio} al ${s.fin}">
@@ -1060,16 +1086,15 @@ function reporteVentasHTML(r){
       </li>`).join('')}
     </ul>
   </section>
-  ${barrasReporte('Lo más vendido', r.productos, r.descuentos ? 'Montos antes de los descuentos.' : '')}
+  ${barrasReporte('Lo más vendido', r.productos, r.descuentos ? 'Montos antes de los descuentos.' : '')}` : ''}
   <ul class="card lista-reporte totales-reporte" aria-label="Otros datos del mes">
     ${filaReporte('Gasto en cabina', dinero(r.gastoCabina), 'gota')}
     ${filaReporte('Pacientes que compraron', fCant(r.pacientes), 'pacientes')}
   </ul>
-  <section class="card tarjeta-reporte">
+  ${r.pagos.length ? `<section class="card tarjeta-reporte">
     <h2>Formas de pago</h2>
-    ${r.pagos.length ? `<ul class="lista-reporte totales-reporte">${r.pagos.map(p => filaReporte(p.nombre, dinero(p.monto))).join('')}</ul>` :
-      '<p class="nota-reporte">Todavía no hay ventas en este mes.</p>'}
-  </section>`;
+    <ul class="lista-reporte totales-reporte">${r.pagos.map(p => filaReporte(p.nombre, dinero(p.monto))).join('')}</ul>
+  </section>` : ''}`;
 }
 function reporteCabinaHTML(r){
   return `<div class="cifras cifras-reporte">
@@ -1199,7 +1224,7 @@ function listaVentasHTML(){
   const q = norm(U.qVentas);
   const vs = q ? vivos(E.ventas).filter(v => norm(v.pac + ' ' + v.items.map(i => i.nombre).join(' ')).includes(q)) : ventasDelMes(U.mes);
   vs.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.creado - a.creado);
-  if(!vs.length) return `<div class="vacio">${q ? 'No hay ventas con esa búsqueda.' : 'No hay ventas en este mes.'}</div>`;
+  if(!vs.length) return `<div class="vacio">${q ? 'No hay ventas con esa búsqueda. Prueba con otro nombre o producto.' : 'Las ventas que registres este mes aparecerán aquí.'}</div>`;
   let h = '', dia = '';
   for(const v of vs){
     if(v.fecha !== dia){ dia = v.fecha; h += `<div class="dia-tit">${esc(fDia(v.fecha))}${q && v.fecha.slice(0,4) !== String(new Date().getFullYear()) ? ' ' + v.fecha.slice(0,4) : ''}</div>`; }
@@ -2262,7 +2287,7 @@ function agregarALaVenta(id){
   if(!p) return;
   pintarCarrito(id);
   $('#anuncio').textContent = p.nombre + ' en el carrito. ' + $('#resumenVenta').textContent;
-  navigator.vibrate?.(10);
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches) navigator.vibrate?.(10);
 }
 async function venderProducto(id){
   const venta = capaArriba('form');
@@ -2388,7 +2413,13 @@ function vPacientes(){
 }
 function filasPacientes(q){
   const lista = pacientes().filter(p => coincidePaciente(p, q));
-  if(!lista.length) return `<div class="vacio">${q ? 'No encontré pacientes con esa búsqueda.' : 'Todavía no hay pacientes. Aparecen solas cuando registras ventas.'}</div>`;
+  if(q && !lista.length) return '<div class="vacio">No encontré pacientes con esa búsqueda. Prueba con otro nombre.</div>';
+  if(!lista.length){
+    const vender = E.productos.some(p => !p.borrado && p.tipo === 'venta' && stockDe(p.id) > 0);
+    return `<div class="vacio"><p>Cuando registres una venta a nombre de una paciente, su ficha aparecerá aquí.</p>
+      ${vender ? `<button class="btn soft" data-act="vender">${IC.bolsa} Registrar una venta</button>` :
+        `<button class="btn soft" data-act="tab" data-tab="venta">${IC.inventario} Ir al inventario</button>`}</div>`;
+  }
   return lista.map(filaPaciente).join('');
 }
 function filaPaciente(p){
@@ -3485,7 +3516,7 @@ function puedeCompartirArchivo(archivo){
   catch(e){ return false; }
 }
 function abrirArchivoParaGuardar(respaldo = false){
-  if(!quien()){ elegirQuien(); return; }
+  if(!quien()) return;
   const titulo = respaldo ? 'Respaldo completo' : 'Enviar a ' + otro();
   const d = abrirCapa(`<section class="dlg hoja-inferior archivo-ajustes" role="dialog">
     <span class="tirador" aria-hidden="true"></span>
@@ -3498,7 +3529,14 @@ function abrirArchivoParaGuardar(respaldo = false){
     <button class="btn" data-guardar-archivo disabled>Preparando archivo…</button>
   </section>`, {tipo:respaldo ? 'respaldo' : 'envio', cls:'dlg-fondo'});
   const boton = $('[data-guardar-archivo]', d), estado = $('[data-estado-archivo]', d);
+  const tipoArchivo = respaldo ? 'respaldo' : 'envío';
   let archivo, autor, corte, compartir;
+  function explicarComoGuardar(){
+    $('[data-instruccion-archivo]', d).textContent = respaldo
+      ? `${compartir ? 'Desde el menú Compartir, guarda el respaldo en Archivos o Drive.' : 'Descarga el respaldo y guárdalo en Archivos o Drive.'} Podrás abrirlo con «Restaurar respaldo».`
+      : `${compartir ? 'En Compartir, elige WhatsApp.' : 'Manda el envío por WhatsApp.'} ${otro()} lo abre con «Recibir».`;
+    boton.textContent = compartir ? `Compartir ${tipoArchivo}` : `Descargar ${tipoArchivo}`;
+  }
   async function preparar(){
     boton.disabled = true;
     boton.textContent = 'Preparando archivo…';
@@ -3521,13 +3559,10 @@ function abrirArchivoParaGuardar(respaldo = false){
         : `inventario-sparati-prueba-${autor.toLowerCase()}-${hoyISO()}.txt`;
       archivo = new File([JSON.stringify(paquete)], nombre, {type:respaldo ? 'application/json' : 'text/plain'});
       compartir = puedeCompartirArchivo(archivo);
-      if(respaldo) $('[data-instruccion-archivo]', d).textContent = compartir
-        ? 'Guarda el archivo en Archivos o Drive desde el menú Compartir. Podrás abrirlo con «Restaurar respaldo».'
-        : 'Descarga el archivo y guárdalo en Archivos o Drive. Podrás abrirlo con «Restaurar respaldo».';
+      explicarComoGuardar();
       const cantidad = Object.keys(fotos).length;
       estado.textContent = `Archivo listo · ${cantidad} ${cantidad === 1 ? 'foto' : 'fotos'}`;
       if(faltan) estado.textContent += `. ${faltan === 1 ? 'Una foto ya no está en este celular.' : faltan + ' fotos ya no están en este celular.'}`;
-      boton.textContent = compartir ? 'Compartir archivo' : 'Descargar archivo';
     }catch(e){
       estado.dataset.nivel = 'error';
       estado.textContent = 'No se pudo preparar el archivo. Vuelve a intentar.';
@@ -3547,7 +3582,7 @@ function abrirArchivoParaGuardar(respaldo = false){
         estado.textContent = compartir ? 'No se pudo abrir el menú Compartir. Puedes descargar el archivo.'
           : 'No se pudo descargar el archivo. Vuelve a intentar.';
         compartir = false;
-        boton.textContent = 'Descargar archivo';
+        explicarComoGuardar();
       }
       boton.disabled = false;
       if(d === pila.at(-1)?.el) boton.focus({preventScroll:true});
@@ -3635,28 +3670,29 @@ function mezclar(datos){
   }
   return {estado, nuevos, cambiados, categoriasNuevas};
 }
-async function recibirArchivo(file){
+async function recibirArchivo(file, destinatario = quien(), avisar = toast){
   let leido;
   try{ leido = await leerArchivoInventario(file, false); }catch(e){}
-  if(!leido){ toast('Ese archivo no es un envío de inventario de SPARATI.'); return; }
+  if(!leido){ avisar('Ese archivo no es un envío de inventario de SPARATI.'); return false; }
   const {paquete, fotos} = leido;
   let fotosNuevas;
   try{ fotosNuevas = await guardarFotosDeArchivo(fotos); }
-  catch(e){ toast('No se pudieron guardar las fotos del envío. Vuelve a intentar.'); return; }
+  catch(e){ avisar('No se pudieron guardar las fotos del envío. Vuelve a intentar.'); return false; }
   recargarEstadoSiCambio();
   const r = mezclar(paquete.datos);
-  r.nuevos += completarPacientes(r.estado);
+  r.nuevos += completarPacientes(r.estado, destinatario);
   const huboCambios = r.nuevos || r.cambiados || r.categoriasNuevas || fotosNuevas;
   const de = typeof paquete.de === 'string' ? paquete.de : '';
   if(huboCambios || !E.sync.recibo){
     r.estado.sync.recibo = ahora();
-    if(de && de !== quien()) r.estado.sync.de = de;
-    if(!guardar(r.estado)) return;
+    if(de && de !== destinatario) r.estado.sync.de = de;
+    if(!guardar(r.estado, false, avisar)) return false;
     refrescar(); pintarAjustes();
   }
   const origen = de ? ' de ' + de : '';
-  toast(huboCambios ? `Recibido${origen}: ${r.nuevos} registros nuevos y ${r.cambiados} actualizados`
+  avisar(huboCambios ? `Recibido${origen}: ${r.nuevos} registros nuevos y ${r.cambiados} actualizados`
     : `Recibido${origen}: ya tenías todo, no hubo cambios`);
+  return true;
 }
 async function restaurarArchivo(file){
   const ajustes = capaArriba('ajustes');
@@ -3946,7 +3982,7 @@ function invitacionInstalar(){
     <header class="card-cab"><h3 id="invitacionInstalar">SPARATI en tu pantalla de inicio</h3>
       <button class="icon-btn" data-act="cerrarInstalacion" aria-label="Cerrar invitación">${IC.x}</button></header>
     <p class="muted">Ten el inventario a mano y guarda una copia con fotos desde Ajustes.</p>
-    <button class="btn soft" data-act="verInstalacion">Agregar a pantalla de inicio</button>
+    <button class="btn soft" data-act="verInstalacion">Ver los pasos</button>
   </section>`;
 }
 function cerrarInvitacion(){
@@ -3962,17 +3998,90 @@ function verInstalacion(){
   const d = abrirCapa(`<section class="dlg hoja-inferior" role="dialog">
     <span class="tirador" aria-hidden="true"></span><h3>Agregar a pantalla de inicio</h3>
     <p>${ayuda}</p><button class="btn">Entendido</button>
-  </section>`, {cls:'dlg-fondo'});
+  </section>`, {cls:'dlg-fondo guia-instalacion'});
   $('button', d).addEventListener('click', async () => { await cerrarCapa(); cerrarInvitacion(); });
 }
-function elegirQuien(){
-  const d = abrirCapa(`<div class="hoja-cuerpo"><div class="hoja-in bienvenida">
-    <img src="logo-completo.png" class="logo-completo" alt="SPARATI" width="480" height="520">
-    <div class="rotulo">INVENTARIO</div>
-    <h1>¿Quién usa este celular?</h1>
-    <div class="quien"><button data-act="ponQuien" data-v="Elba" data-cerrar="1">Elba</button><button data-act="ponQuien" data-v="Jonathan" data-cerrar="1">Jonathan</button></div>
-    <div class="peq muted">Sirve para saber quién registró cada cosa. Se puede cambiar en Ajustes.</div></div></div>`, {tipo:'quien', fija:true});
-  return d;
+// ---------- Primera vez ----------
+let bienvenida, recibiendoBienvenida = false;
+function pintarBienvenida(estado, enfocar = false){
+  bienvenida = estado;
+  const {paso, recibir, nombre, recibido} = estado;
+  const remitente = nombre === 'Jonathan' ? 'Elba' : 'Jonathan';
+  const volver = paso > 1 ? `<button class="icon-btn bienvenida-volver" data-act="volverBienvenida" aria-label="Volver">${IC.volver}</button>` : '';
+  let contenido, acciones;
+  if(paso === 1){
+    contenido = `<img src="logo-completo.png" class="logo-completo" alt="SPARATI" width="480" height="520" fetchpriority="high">
+      <div><p class="rotulo">Inventario</p><h1 tabindex="-1" aria-describedby="pasoBienvenida">Tus productos, ventas y pacientes en un solo lugar</h1></div>`;
+    acciones = `<button class="btn" data-act="empezarBienvenida">Empezar</button>
+      <button class="btn ghost" data-act="empezarBienvenida" data-recibir>${IC.sync} Recibir datos de Jonathan</button>`;
+  }else if(paso === 2){
+    contenido = `<span class="icono-bienvenida">${IC.pacientes}</span><div>
+      <h1 tabindex="-1" aria-describedby="pasoBienvenida">¿Quién usa este celular?</h1><p class="muted">Así sabrás quién registró cada cosa. Puedes cambiarlo en Ajustes.</p></div>`;
+    acciones = `<div class="quien">${['Elba', 'Jonathan'].map(n => `<button class="btn ghost" data-act="quienBienvenida" data-v="${n}">${n}</button>`).join('')}</div>`;
+  }else{
+    contenido = `<span class="icono-bienvenida">${IC[recibido ? 'check' : 'inventario']}</span><div>
+      <h1 tabindex="-1" aria-describedby="pasoBienvenida">${recibido ? 'Tu inventario está listo' : `Prepara tu inventario, ${esc(nombre)}`}</h1>
+      <p class="muted">${recibido ? 'Ya puedes consultar los productos y las ventas que recibiste.' :
+        `Puedes agregar tus productos o abrir el archivo de inventario que te envió ${remitente}.`}</p></div>`;
+    const importar = `<button class="btn ${recibir ? '' : 'ghost'}" data-act="archivoBienvenida"${recibiendoBienvenida ? ' disabled' : ''}>${IC.sync} Recibir datos de ${remitente}</button>`;
+    const entrar = `<button class="btn ${recibir && !recibido ? 'ghost' : ''}" data-act="terminarBienvenida"${recibiendoBienvenida ? ' disabled' : ''}>${recibir && !recibido ? 'Entrar sin recibir datos' : 'Ir a Inicio'}</button>`;
+    acciones = recibido ? entrar : (recibir ? importar + entrar : entrar + importar);
+  }
+  const app = $('#app');
+  app.innerHTML = `<section class="bienvenida" data-paso="${paso}">${volver}
+    <div class="bienvenida-contenido">${contenido}</div>
+    <div class="bienvenida-pie">
+      <p class="estado-bienvenida" role="status"></p>
+      <div class="pasos-bienvenida"><span class="solo-lectura" id="pasoBienvenida">Paso ${paso} de 3</span>
+        ${[1, 2, 3].map(n => `<span aria-hidden="true"${n === paso ? ' class="actual"' : ''}></span>`).join('')}</div>
+      ${acciones}
+    </div></section>`;
+  window.scrollTo(0, 0);
+  if(enfocar) $('h1', app).focus({preventScroll:true});
+}
+function avanzarBienvenida(estado){
+  history.pushState({bienvenida:estado}, '', urlPantalla(U.tab));
+  pintarBienvenida(estado, true);
+}
+async function recibirEnBienvenida(archivo){
+  if(recibiendoBienvenida) return;
+  const estado = bienvenida, vista = $('.bienvenida');
+  const mensaje = $('[role="status"]', vista), abrir = $('[data-act="archivoBienvenida"]', vista);
+  recibiendoBienvenida = abrir.disabled = $('[data-act="terminarBienvenida"]', vista).disabled = true;
+  mensaje.textContent = 'Abriendo el archivo…';
+  let recibido = false;
+  try{ recibido = await recibirArchivo(archivo, estado.nombre, texto => { mensaje.textContent = texto; }); }
+  finally{
+    recibiendoBienvenida = false;
+    if(vista.isConnected && recibido){
+      const siguiente = {...estado, recibido:true};
+      history.replaceState({bienvenida:siguiente}, '', urlPantalla(U.tab));
+      pintarBienvenida(siguiente, true);
+    }else if(vista.isConnected){
+      abrir.disabled = $('[data-act="terminarBienvenida"]', vista).disabled = false;
+      abrir.focus({preventScroll:true});
+    }else if(!quien() && bienvenida.paso === 3) pintarBienvenida(bienvenida, true);
+  }
+}
+function guardarQuien(nombre){
+  const identidad = {quien:nombre};
+  try{ localStorage.setItem(CLAVE_YO, JSON.stringify(identidad)); }
+  catch(e){ toast('No se pudo guardar quién usa el celular.'); return false; }
+  YO = identidad;
+  return true;
+}
+function iniciarPantallas(){
+  const primeraVez = document.body.classList.contains('en-bienvenida');
+  document.body.classList.remove('en-bienvenida');
+  barraPrincipal.hidden = false;
+  history.replaceState(null, '', urlPantalla(U.tab));
+  prepararNav();
+  render();
+  if(primeraVez){
+    const titulo = $('#app h1');
+    titulo.tabIndex = -1;
+    titulo.focus({preventScroll:true});
+  }
 }
 function aplicarTema(){
   const v = E.ajustes.tema;
@@ -4178,13 +4287,18 @@ const ACT = {
   },
   verInstalacion,
   cerrarInstalacion(){ cerrarInvitacion(); },
+  empezarBienvenida(b){ avanzarBienvenida({paso:2, recibir:b.hasAttribute('data-recibir')}); },
+  quienBienvenida(b){ avanzarBienvenida({...bienvenida, paso:3, nombre:b.dataset.v}); },
+  volverBienvenida(){ history.back(); },
+  archivoBienvenida(){ elegirArchivo('#inArchivo'); },
+  terminarBienvenida(){
+    if(!guardarQuien(bienvenida.nombre)) return;
+    U.tab = 'inicio';
+    history.go(1 - bienvenida.paso);
+  },
   cargarEjemplo,
   ponQuien(b){
-    const identidad = {quien:b.dataset.v};
-    try{ localStorage.setItem(CLAVE_YO, JSON.stringify(identidad)); }
-    catch(e){ toast('No se pudo guardar quién usa el celular.'); return; }
-    YO = identidad;
-    if(b.dataset.cerrar){ pila[pila.length-1].fija = false; cerrarCapa(); }
+    if(!guardarQuien(b.dataset.v)) return;
     pintarAjustes(); render();
   },
   diasVence(b){
@@ -4245,7 +4359,12 @@ $('#inFoto').addEventListener('change', async e => {
     formulario.cargandoFoto = botonGuardar.disabled = false;
   }
 });
-$('#inArchivo').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) recibirArchivo(f); });
+$('#inArchivo').addEventListener('change', e => {
+  const archivo = e.target.files?.[0];
+  if(!archivo) return;
+  if(quien()) recibirArchivo(archivo);
+  else if(bienvenida.paso === 3) recibirEnBienvenida(archivo);
+});
 $('#inRespaldo').addEventListener('change', e => { const f = e.target.files?.[0]; if(f) restaurarArchivo(f); });
 
 // ---------- Arranque ----------
@@ -4256,8 +4375,9 @@ if(window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEvent
 history.scrollRestoration = 'manual';
 U.tab = pantallaDeURL();
 if(esInventario(U.tab)) U.tipo = U.tab;
-history.replaceState(null, '', urlPantalla(U.tab));
-prepararNav();
-render();
-if(!quien()) elegirQuien();
+if(quien()) iniciarPantallas();
+else{
+  document.body.classList.add('en-bienvenida');
+  pintarBienvenida(history.state?.bienvenida || {paso:1});
+}
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && !pila.length) render(); });
