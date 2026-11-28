@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 04:35–04:42 (Ecuador) · Revisión de las ocho capturas de T16
+- Última corrida: 28-nov-2026, 04:46–04:53 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -557,3 +557,22 @@ Las seis capturas con el perfil de iPhone muestran 393×660. Repetí las medicio
 `python3 -u codex/pruebas/correr.py` registró 61 pruebas aprobadas en Chromium a 390×844 y 61 con el perfil de iPhone 14 Pro. Esto incluye las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión.
 
 Sigue la revisión en los celulares físicos de la zona segura y el teclado de Safari, la invitación en Chrome y los recorridos de envío, recepción y respaldo.
+
+### 28-nov-2026 · 04:46–04:53 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+T0–T16 figuran completas en `TAREAS.md`. Revisé las ocho capturas oscuras y comparé Bienvenida e Inicio con sus diseños, el selector de Categorías y Preferencias con el de Inventario, y las acciones del historial con las de Reportes.
+
+- **Bienvenida (390×844).** El mensaje de 29 px ocupa tres líneas y deja «lugar» solo. La referencia muestra dos líneas y especifica 22 px para esa frase. El logo y las dos acciones caben completos.
+- **Inicio (360×800).** «Elba» queda en la segunda línea del saludo y «Sin ventas en octubre» baja debajo de «Ventas de noviembre». La referencia coloca el saludo en una línea y la comparación al lado del título del resumen. A 390 px la comparación comparte fila con el título y el saludo sigue en dos líneas. En la primera vista de 360 px, la barra inferior cubre unos 11 px de la línea de ganancia. La línea se lee al bajar. El buscador y la invitación caben completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas. A 393×660 los últimos 14 px de «Guardar despedida» quedan debajo del borde inferior. El botón completo aparece al bajar. Queda por verificar con el teclado de Safari abierto.
+- **Categorías.** «Muestras y regalos» queda pegado al borde inferior mientras la lista continúa. «Uso en spa» se distingue como opción activa y la lista empieza directamente con los nombres.
+- **Preferencias.** En la posición capturada, los últimos 7 px de la fila «Plantillas de WhatsApp» quedan fuera de la primera vista. La fila se puede abrir y los tres selectores visibles distinguen la opción activa.
+- **Ajustes › Avanzado.** «Borrar todo» queda tenue mientras está desactivado, con un contraste aproximado de 2,77:1 sobre la tarjeta. El bloque y la instrucción para habilitarlo caben completos al final del desplazamiento.
+- **Ajustes.** La primera vista de 393×660 corta la parte inferior del selector de persona. Las acciones de envío y respaldo se ven completas.
+- **Historial de ventas.** La franja de prueba cubre unos 8 px del borde superior de WhatsApp y Excel en la posición capturada. El botón flotante se superpone a la tercera venta. Los dos productos de la primera venta se leen en líneas separadas. Las acciones de exportación se ven completas al subir. Al final del historial, la última venta queda 45 px por encima de la barra inferior.
+
+Las seis capturas de iPhone usan el área visible de 393×660 del perfil de Chromium. Al repetir la revisión a 393×852 con el mismo perfil, caben completos «Guardar despedida», «Muestras y regalos» y el selector de persona. Excel también queda debajo de la franja en el mismo recorrido de captura.
+
+La corrida actualizó únicamente esta bitácora. Pasaron las 61 pruebas de Chromium a 390×844 y las 61 con el perfil iPhone 14 Pro, incluidas las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. La primera ejecución de `correr.py` se interrumpió tras 26 pruebas aprobadas. Las restantes se completaron por tandas.
+
+Sigue la revisión en los celulares físicos. En Safari quedan por comprobar la zona segura y el teclado de Plantillas. En ambos equipos quedan los recorridos de instalación, envío y respaldo.
