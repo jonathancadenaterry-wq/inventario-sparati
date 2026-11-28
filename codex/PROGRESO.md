@@ -472,3 +472,18 @@ Revisé las ocho capturas adjuntas en oscuro. Bienvenida mide 390×844, Inicio m
 Pasaron las 61 pruebas de Chromium a 390×844 y las 61 con el perfil iPhone 14 Pro. También pasaron las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. El primer intento se interrumpió y el registro final contiene los 122 resultados aprobados.
 
 T0–T16 figuran como completas en `TAREAS.md`. El único archivo editado fue esta bitácora. Sigue la validación en los celulares físicos, en especial la zona segura y el teclado de Safari, la invitación de instalación de Chrome y los recorridos de envío y respaldo de T14 y T15.
+
+### 28-nov-2026 · 03:50–03:55 (Ecuador) · Revisión de las capturas adjuntas
+
+Revisé las ocho imágenes oscuras de T16 y las comparé con `Bienvenida.png`, `Main.png`, `Reportes.png` y el selector de `Inventario.png`. Bienvenida mide 390×844, Inicio 360×800 y las otras seis capturas 393×660, el área visible del perfil iPhone 14 Pro en Chromium.
+
+- **Bienvenida.** El mensaje ocupa tres líneas y deja «lugar» solo en la última. El diseño lo compone en dos. El logo, el indicador y los dos botones se ven completos.
+- **Inicio a 360 px.** «Elba» baja a la segunda línea y la píldora de comparación mensual queda debajo del título. En el diseño, el saludo y la cabecera del resumen caben en una línea cada uno. El buscador se lee completo. Con la invitación abierta, la barra de navegación cubre la línea que sigue a «$ 0,00» en la primera vista.
+- **Plantillas.** El título ocupa dos líneas. Al abrir la pantalla, «Guardar despedida» queda parcialmente fuera del área visible. En Chromium confirmé que el botón entero se puede alcanzar al desplazar. Queda por comprobarlo con el teclado de Safari abierto.
+- **Categorías y preferencias.** La selección activa se distingue en oscuro. «Muestras y regalos» aparece junto al borde inferior en Categorías. En Preferencias, «Plantillas de WhatsApp» queda en ese borde y confirmé que la fila completa se puede ver al desplazar.
+- **Ajustes y Avanzado.** La primera vista corta la parte baja del selector «Elba / Jonathan». Ambos botones se ven completos al bajar. Avanzado se ve entero al final del desplazamiento. «Borrar todo» se lee con poco contraste mientras está desactivado y la instrucción encima explica cómo habilitarlo.
+- **Historial de ventas.** Cada producto tiene su línea. En el punto elegido para la captura, la franja de prueba cubre 8 px de la fila de exportación y el botón flotante se superpone a la tercera venta. Con otro desplazamiento, confirmé que Excel se ve entero y que la última venta queda 45 px por encima de la barra al llegar al final.
+
+Pasaron 61 pruebas en Chromium a 390×844 y 61 con el perfil iPhone 14 Pro, incluidas las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. Después de que se interrumpió `python3 codex/pruebas/correr.py`, completé por tandas la misma lista de pruebas.
+
+T0–T16 siguen completas. El único cambio fue esta bitácora. La prueba en los celulares físicos sigue pendiente para la zona segura y el teclado de Safari, la invitación en Chrome y el intercambio y respaldo desde WhatsApp, Archivos o Drive.
