@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 08:06–08:14 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 08:18–08:27 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -756,3 +756,22 @@ Queda por comprobar el teclado y las zonas seguras en el Safari de Elba, y los r
 Las seis capturas etiquetadas como iPhone 14 Pro miden 393×660. Al repetir los recorridos en Chromium a 393×852, se ven completos Excel, la tercera venta y los controles y filas recortados de Plantillas, Categorías, Preferencias y Ajustes. Queda por comprobar en el Safari de Elba el teclado al editar Plantillas y el espacio alrededor de la muesca y la barra inferior. En ambos celulares queda pendiente probar la instalación, el envío, la recepción y el respaldo.
 
 `python3 -u codex/pruebas/correr.py` completó las 61 pruebas en Chromium a 390×844. Chromium se cerró durante la pasada con el perfil iPhone 14 Pro. Completé las pruebas restantes por tandas y verifiqué que pasaron las mismas 61 con ese perfil. La suite incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y el funcionamiento sin conexión. El único archivo editado fue esta bitácora.
+
+### 28-nov-2026 · 08:18–08:27 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+T0–T16 figuran completas en `TAREAS.md`. Revisé las ocho capturas oscuras contra `DISENO.md` y las maquetas disponibles. Repetí las vistas con datos de prueba en Chromium.
+
+- **Bienvenida (390×844).** El mensaje principal ocupa tres líneas y deja «lugar» solo. El tamaño actual es 29 px y la maqueta lo presenta en dos líneas a 22 px. El logo y los dos botones caben completos.
+- **Inicio (360×800).** El saludo de 29 px deja «Elba» en la segunda línea. La maqueta muestra un saludo en una línea a 25 px. «Sin ventas en octubre» baja debajo del encabezado de la tarjeta. Con la invitación abierta, la barra inferior cubre 11 px del renglón de ganancia en la primera vista. El buscador y el texto de la invitación se leen completos. A 390×844, el saludo sigue en dos líneas, la comparación cabe junto al encabezado y la ganancia queda visible.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y los últimos 14 px de «Guardar despedida» quedan bajo el borde visible. Pude desplazar, guardar una despedida y recuperarla al volver a abrir Plantillas.
+- **Categorías.** El borde inferior corta los últimos 2 px de la fila «Muestras y regalos». «Otros» queda debajo y aparece al desplazar.
+- **Preferencias.** La posición de la captura deja los últimos 7 px de la fila «Plantillas de WhatsApp» debajo del borde visible.
+- **Ajustes › Avanzado.** «Borrar todo» se ve tenue mientras está desactivado. Su texto tiene un contraste aproximado de 2,8:1 sobre la tarjeta oscura. El botón y la instrucción para activarlo se ven completos.
+- **Ajustes.** La primera vista corta el borde inferior del selector «Elba / Jonathan». Envío y respaldo caben completos.
+- **Historial de ventas.** En la posición capturada, la franja de prueba cubre los 8 px superiores de WhatsApp y Excel. El botón flotante «Vender» se superpone a la tercera venta. Al desplazar hasta el final, la última venta queda 45 px por encima de la barra inferior.
+
+Las seis capturas etiquetadas como iPhone 14 Pro usan un área visible de 393×660. Al repetir el mismo recorrido a 393×852, quedan completos los controles y las filas recortados, incluidos Excel y la tercera venta. La prueba de títulos de T16 aplica 28–30 px también al mensaje de Bienvenida y al saludo de Inicio, que tienen otros tamaños en sus maquetas. La corrida se limita a esta bitácora.
+
+El registro de `python3 -u codex/pruebas/correr.py` confirmó 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro. También verifiqué el perfil de iPhone por tandas después de que se interrumpiera el seguimiento de la ejecución continua. Pasaron las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión.
+
+Sigue la revisión física de zonas seguras y edición de Plantillas con el teclado abierto en el iPhone de Elba. En ambos celulares quedan por comprobar la instalación, el envío, la recepción y el respaldo.
