@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 20:20–20:23 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 20:30–20:39 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -361,3 +361,16 @@ Se revisaron las ocho capturas oscuras de 390×844 antes de intervenir. Inicio c
 - **Envío y respaldo.** La hoja de descarga del envío omite el paso de adjuntar el archivo al chat. «Último envío» se actualiza al descargarlo, así que la fecha puede avanzar antes de que Jonathan reciba el archivo. El respaldo sí indica dónde guardar la copia y cómo abrirla de nuevo.
 
 `python3 codex/pruebas/correr.py` terminó en una sola ejecución. Pasaron 49 pruebas en Chromium a 390×844 y 43 con el perfil iPhone 14 Pro, incluidos el intercambio de archivos entre versiones, la migración simulada y la recarga sin conexión. La revisión solo cambió esta bitácora. Siguen pendientes los recorridos de T14 en los celulares de Elba y Jonathan, en particular la instalación, el envío por WhatsApp y la restauración desde Archivos o Drive.
+
+### 27-nov-2026 · 20:30–20:39 (Ecuador) · Revisión de las capturas adjuntas
+
+Revisé las ocho capturas T14 en oscuro a 390×844. Comparé los avisos de Inicio con `Main.png`, los selectores con `Inventario.png` y las hojas inferiores con `Vender.png`.
+
+- **Invitación e instalación.** La tarjeta se encuentra al desplazar Inicio después de los avisos. Menciona la copia de seguridad junto al botón «Ver los pasos», que abre la guía de instalación. En la hoja de Safari falta un ícono que ayude a identificar «Compartir». En la primera fila de avisos, «30 cc» se parte y «cc» queda en su propia línea.
+- **Ajustes y preferencias.** La primera vista termina en medio del selector de tamaño de letra. En la vista desplazada, el botón desactivado «Cargar datos de ejemplo» queda cortado y su texto magenta se distingue poco del fondo. La tarjeta ya confirma que los datos están cargados.
+- **Categorías y plantillas.** En oscuro, el fondo de la píldora activa tiene un contraste de 1,10 a 1 con el fondo del selector en Categorías y Preferencias. El cambio de color del texto es la señal más visible. En Categorías el nombre de la opción activa se repite como título de la lista. En Plantillas, el tirador para cambiar la altura de cada campo queda pegado a la esquina redondeada.
+- **Envío y respaldo.** En la vista de descarga falta el paso de adjuntar el archivo en el chat de WhatsApp. La fecha de «Último envío» avanza al descargar, antes de adjuntar el archivo. El respaldo indica dónde guardar la copia y cómo restaurarla. El tirador decorativo de las dos hojas parece un control de arrastre.
+
+Pasaron las 49 pruebas a 390×844 y las 43 con el perfil iPhone 14 Pro, ambas en Chromium. La suite se completó en el segundo intento tras la interrupción del primer proceso. Se verificó el intercambio con la versión 1, la migración simulada y la recarga sin conexión.
+
+Las 15 tareas de `TAREAS.md` están completas. Solo se editó esta bitácora. Sigue la validación de T14 en los celulares de Elba y Jonathan, especialmente la instalación, el envío por WhatsApp y la restauración desde Archivos o Drive.
