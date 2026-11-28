@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 20:30–20:39 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 20:42–20:46 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -374,3 +374,16 @@ Revisé las ocho capturas T14 en oscuro a 390×844. Comparé los avisos de Inici
 Pasaron las 49 pruebas a 390×844 y las 43 con el perfil iPhone 14 Pro, ambas en Chromium. La suite se completó en el segundo intento tras la interrupción del primer proceso. Se verificó el intercambio con la versión 1, la migración simulada y la recarga sin conexión.
 
 Las 15 tareas de `TAREAS.md` están completas. Solo se editó esta bitácora. Sigue la validación de T14 en los celulares de Elba y Jonathan, especialmente la instalación, el envío por WhatsApp y la restauración desde Archivos o Drive.
+
+### 27-nov-2026 · 20:42–20:46 (Ecuador) · Revisión de las ocho capturas de T14
+
+Las 15 tareas de `TAREAS.md` figuran como completas. Revisé las ocho capturas oscuras de 390×844 y comparé los avisos con `Main.png`, los selectores con `Inventario.png` y las hojas inferiores con `Vender.png`. El diseño aprobado no incluye una pantalla de referencia para Ajustes.
+
+- **Invitación e instalación.** La invitación queda debajo de los cuatro avisos. Su texto menciona el respaldo, aunque «Ver los pasos» lleva solo a la instalación. En la guía falta el ícono que ayuda a reconocer «Compartir» en Safari. En ambas capturas, los contadores se ven cortados por la posición de desplazamiento y «30 cc» se parte entre dos líneas.
+- **Ajustes y preferencias.** En la primera vista, el borde de la pantalla corta el selector de tamaño de letra y obliga a desplazar para leer las opciones. En la captura desplazada, el botón desactivado «Cargar datos de ejemplo» queda cortado y tiene poco contraste. La tarjeta ya indica que los datos están cargados.
+- **Categorías y plantillas.** Los selectores de Categorías y Preferencias pierden en oscuro el efecto de relieve de la opción activa del diseño. «Para vender» se repite como título de la lista. En las plantillas, el tirador diagonal para cambiar el alto de cada campo coincide con la esquina redondeada.
+- **Envío y respaldo.** La hoja «Enviar a Jonathan» pide mandar el archivo por WhatsApp, pero omite el paso de adjuntar el `.txt` al chat después de descargarlo. Confirmé en el código que «Último envío» se actualiza al iniciar la descarga, antes de ese paso. La hoja de respaldo sí indica cómo guardar y volver a abrir la copia. El tirador de las dos hojas sigue la referencia y parece un control de arrastre.
+
+Pasaron 49 pruebas en Chromium a 390×844 y 43 en Chromium con el perfil de iPhone 14 Pro. La ejecución inicial se interrumpió tras 19 pruebas aprobadas y las restantes se completaron por tandas. Pasaron el intercambio con la versión 1, la migración simulada y la recarga sin conexión. Solo se actualizó esta bitácora.
+
+Sigue la validación de T14 en los celulares de Elba y Jonathan. Queda por comprobar la instalación en Safari, el envío y la recepción por WhatsApp y la restauración desde Archivos o Drive.
