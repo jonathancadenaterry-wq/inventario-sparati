@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 07:57–08:03 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 08:06–08:14 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -739,3 +739,20 @@ La prueba de títulos de T16 exige 28–30 px también para el saludo y el mensa
 `python3 -u codex/pruebas/correr.py` completó 61 pruebas en Chromium a 390×844 y las mismas 61 con el perfil iPhone 14 Pro. Pasaron las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y la recarga sin conexión.
 
 Queda por comprobar el teclado y las zonas seguras en el Safari de Elba, y los recorridos de instalación, envío, recepción y respaldo en ambos celulares.
+
+### 28-nov-2026 · 08:06–08:14 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+`TAREAS.md` termina en T16 y todas las tareas figuran completas. Dediqué la corrida a la revisión visual y a las pruebas.
+
+- **Bienvenida, 390×844.** La frase principal ocupa tres líneas y deja «lugar» solo. La maqueta usa dos líneas y 22 px, frente a los 29 px de la app. El logo y ambas acciones caben completos. La prueba de títulos de T16 exige 28–30 px también para esa frase y para el saludo de Inicio.
+- **Inicio, 360×800.** «Elba» pasa a una segunda línea y «Sin ventas en octubre» baja debajo del encabezado de la tarjeta. La maqueta pone el saludo en una línea y la comparación al lado del encabezado. Con la invitación abierta, la barra inferior cubre los últimos 11 px de la línea de ganancia hasta desplazar. El buscador y la invitación se leen completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y los últimos 14 px de «Guardar despedida» quedan fuera de la primera vista. Pude desplazar, editar y guardar la despedida a ambas alturas.
+- **Categorías.** El borde inferior corta la fila «Muestras y regalos» y «Otros» queda más abajo. «Uso en spa» se distingue con claridad en oscuro.
+- **Preferencias.** Los últimos 7 px de la fila «Plantillas de WhatsApp» quedan fuera de la vista en la posición capturada.
+- **Ajustes › Avanzado.** «Borrar todo» tiene un contraste aproximado de 2,8:1 sobre la tarjeta oscura mientras está desactivado. La instrucción para habilitarlo se lee completa.
+- **Ajustes.** Los últimos 12 px del selector «Elba / Jonathan» quedan fuera de la primera vista. Los controles de envío y respaldo caben completos.
+- **Historial de ventas.** La franja superior cubre 8 px del borde de WhatsApp y Excel en la posición capturada. El botón flotante se superpone a la tercera venta. Al final del historial, quedan 45 px entre la última venta y la barra inferior. Los productos de una misma venta se leen en líneas separadas.
+
+Las seis capturas etiquetadas como iPhone 14 Pro miden 393×660. Al repetir los recorridos en Chromium a 393×852, se ven completos Excel, la tercera venta y los controles y filas recortados de Plantillas, Categorías, Preferencias y Ajustes. Queda por comprobar en el Safari de Elba el teclado al editar Plantillas y el espacio alrededor de la muesca y la barra inferior. En ambos celulares queda pendiente probar la instalación, el envío, la recepción y el respaldo.
+
+`python3 -u codex/pruebas/correr.py` completó las 61 pruebas en Chromium a 390×844. Chromium se cerró durante la pasada con el perfil iPhone 14 Pro. Completé las pruebas restantes por tandas y verifiqué que pasaron las mismas 61 con ese perfil. La suite incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 en ambos sentidos y el funcionamiento sin conexión. El único archivo editado fue esta bitácora.
