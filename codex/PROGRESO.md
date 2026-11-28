@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 28-nov-2026, 07:06–07:17 (Ecuador) · Revisión de las ocho capturas adjuntas
+- Última corrida: 28-nov-2026, 07:21–07:30 (Ecuador) · Revisión de las ocho capturas adjuntas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -663,3 +663,22 @@ La primera ejecución de `python3 -u codex/pruebas/correr.py` se interrumpió tr
 Las seis capturas del perfil iPhone 14 Pro usan un área visible de 393×660. Al repetir el recorrido en Chromium a 393×852 se ven enteros «Guardar despedida», la lista de categorías, la fila de Plantillas, el selector de persona y Excel en las mismas posiciones. Queda por comprobar el teclado y las zonas seguras en Safari del iPhone de Elba, y la instalación, el envío, la recepción y el respaldo en ambos celulares.
 
 El registro de `python3 -u codex/pruebas/correr.py` confirma 61 pruebas aprobadas en Chromium a 390×844 y las mismas 61 con el perfil de iPhone 14 Pro. Volví a ejecutar por tandas las pruebas que todavía estaban pendientes cuando se cerró la sesión del comando. La suite incluye las comprobaciones a 360×800, el intercambio de archivos con la versión 1 y la recarga sin conexión. El único archivo editado fue esta bitácora.
+
+### 28-nov-2026 · 07:21–07:30 (Ecuador) · Revisión de las ocho capturas adjuntas
+
+`TAREAS.md` tiene T0–T16 marcadas como completas. La revisión se registró en esta bitácora.
+
+- **Bienvenida, 390×844.** El mensaje principal ocupa tres líneas a 29 px y deja «lugar» solo. La referencia `Bienvenida.png` usa dos líneas y su HTML especifica 22 px para esa frase. El logo y las acciones caben completos.
+- **Inicio, 360×800.** «Elba» pasa a una segunda línea y «Sin ventas en octubre» baja debajo de «Ventas de noviembre». En `Main.png`, el saludo ocupa una línea y la comparación comparte fila con el título del resumen. Con la invitación abierta, la barra inferior tapa parte de la línea de ganancia hasta desplazar. El buscador y la invitación caben completos.
+- **Plantillas de WhatsApp.** El título ocupa dos líneas y quedan 14 px de «Guardar despedida» debajo del borde a 393×660. El botón queda entero a 393×852. Pude editar y guardar la despedida en ambas alturas.
+- **Categorías.** A 393×660, el borde corta la parte baja de «Muestras y regalos» y queda contenido debajo. La fila cabe a 393×852 y «Uso en spa» se distingue como opción activa.
+- **Preferencias.** Los últimos 7 px de la fila «Plantillas de WhatsApp» quedan debajo del borde en la posición capturada. La fila abre Plantillas al tocarla y aparece completa a 393×852.
+- **Ajustes › Avanzado.** «Borrar todo» tiene poco contraste mientras está desactivado. La instrucción para habilitarlo y el bloque caben completos en la captura.
+- **Ajustes.** Envío y respaldo caben completos. El selector «Elba / Jonathan» termina a 672 px y queda cortado en la primera vista de 660 px. A 852 px se ve entero.
+- **Historial de ventas.** La franja de prueba recorta la parte superior de WhatsApp y Excel en la posición capturada y el botón flotante se superpone a la tercera venta. Al repetir el mismo recorrido a 393×852, las acciones y las tres primeras ventas quedan completas. Los productos de la primera venta se leen en líneas separadas.
+
+La prueba de títulos de T16 aplica el rango de 28 a 30 px también a Bienvenida e Inicio. Sus maquetas especifican 22 px para el mensaje de Bienvenida y 25 px para el saludo de Inicio.
+
+El perfil de iPhone 14 Pro instalado en Playwright usa un área de 393×660. La verificación adicional a 393×852 se hizo en Chromium con ese mismo perfil. Sigue pendiente revisar las zonas seguras y el teclado de Plantillas en el Safari del iPhone de Elba, y los recorridos de instalación, envío, recepción y respaldo en ambos celulares.
+
+El registro de `python3 -u codex/pruebas/correr.py` confirma 61 pruebas aprobadas en Chromium a 390×844 y 61 con el perfil de iPhone 14 Pro. Incluyen las comprobaciones a 360×800, el intercambio con la versión 1 en ambos sentidos y la recarga sin conexión. El único archivo editado fue esta bitácora.
