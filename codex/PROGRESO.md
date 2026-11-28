@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 19:37 (Ecuador) · T14 completada
+- Última corrida: 27-nov-2026, 19:46 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -297,3 +297,19 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 - **Jonathan, Android.** En Chrome y desde la pantalla de inicio, pruebe Atrás al recorrer la bienvenida, cerrar el escáner y volver de una ficha. Compruebe la lectura de un código con cámara y la linterna si el teléfono la ofrece. Imprima una hoja de QR, lea una etiqueta y compruebe que abra su producto.
 - **Entre los dos.** Hagan un envío con fotos por WhatsApp, ábranlo con «Recibir» y repitan la recepción para comprobar que no se duplique. Abran el comprobante y un recordatorio de ejemplo para revisar el texto antes de enviar. Guarden un respaldo completo en Archivos o Drive, confirmen que se puede volver a elegir y restauren solo en un inventario de prueba.
 - Estos recorridos quedan pendientes en equipos físicos. El perfil iPhone de Playwright permite comprobar el tamaño y los toques en Chromium.
+
+### 27-nov-2026 · 19:40–19:46 (Ecuador) · Revisión posterior a T14
+
+**Hallazgos en las ocho capturas adjuntas, en oscuro y a 390×844**
+
+- **Invitación e instalación.** En Inicio, la tarjeta queda debajo de todos los avisos y hay que bajar para encontrarla. Su texto mezcla la instalación con el respaldo, mientras que «Ver los pasos» abre la guía de instalación. En la hoja, la instrucción menciona «Compartir» sin mostrar cómo reconocer el botón en Safari. Las cifras recortadas arriba corresponden a la posición desplazada de ambas capturas.
+- **Ajustes y preferencias.** La primera vista deja «Tamaño de letra» al borde inferior. En la vista desplazada, «Cargar datos de ejemplo» queda cortado y su texto pierde contraste en el estado desactivado. El mensaje de encima confirma que ya se cargaron los datos.
+- **Categorías.** El grupo activo «Para vender» se repite como título de la lista. Los fondos de la opción activa y del segmentado son parecidos en oscuro, de modo que el estado se distingue principalmente por el texto.
+- **Plantillas de WhatsApp.** Se ven los tiradores diagonales de ambos campos de texto. La ayuda explica cómo usar `{nombre}` y `{producto}`. El mensaje visible conserva esos marcadores, así que el resultado personalizado se revisa al preparar un recordatorio.
+- **Envío y respaldo.** Las dos hojas conservan la jerarquía de título, estado y acción al pie del diseño de `Vender.png`. En el envío, «Manda el envío por WhatsApp» junto con «Descargar envío» deja implícito que luego hay que adjuntar el archivo en el chat. El respaldo indica dónde se guarda el archivo y qué opción permite restaurarlo.
+
+**Estado de la corrida**
+
+- `TAREAS.md` tiene T0–T14 marcadas como completas. La corrida se limitó a revisar las capturas, documentar los hallazgos y verificar la versión de prueba.
+- Pasaron las 49 pruebas de Chromium a 390×844 y las 43 con su perfil de iPhone 14 Pro. La ejecución continua se interrumpió después de las primeras 20 pruebas aprobadas y se completó la misma suite por tandas. Pasaron los archivos v1 en ambos sentidos, la migración simulada y la recarga sin conexión.
+- Sigue la revisión en los celulares de Elba y Jonathan con los recorridos de T14.
