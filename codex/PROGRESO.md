@@ -4,7 +4,7 @@ _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, ta
 
 ## Estado
 - Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 20:10–20:15 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Última corrida: 27-nov-2026, 20:20–20:23 (Ecuador) · revisión de las capturas de T14 y pruebas
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -350,3 +350,14 @@ Las 15 tareas de `TAREAS.md`, de T0 a T14, figuran como completas. Revisé las o
 Pasaron las 49 pruebas en Chromium a 390×844 y las 43 con el perfil iPhone 14 Pro, incluidas la compatibilidad con los archivos de la versión 1, la migración simulada y la recarga sin conexión. El proceso inicial terminó tras 23 pruebas aprobadas. Las demás pasaron en tandas sucesivas con un solo navegador abierto. Solo se editó este registro.
 
 Sigue la revisión en los celulares de Elba y Jonathan, especialmente la instalación en Safari, el envío por WhatsApp y la restauración desde Archivos o Drive.
+
+### 27-nov-2026 · 20:20–20:23 (Ecuador) · Revisión de las ocho capturas de T14
+
+Se revisaron las ocho capturas oscuras de 390×844 antes de intervenir. Inicio conserva la jerarquía de `Main.png` y las hojas de archivo conservan el botón principal al pie de `Vender.png`. T0–T14 figuran como completas en `TAREAS.md`.
+
+- **Invitación e instalación.** La tarjeta se descubre después de los avisos. Su texto menciona el respaldo, y «Ver los pasos» lleva a una guía que explica la instalación. En esa guía falta una referencia visual al botón Compartir de Safari. En «Necesita atención», el nombre largo del primer producto deja «cc» solo en la segunda línea.
+- **Ajustes y preferencias.** El encabezado usa 24 px frente a los 28–30 px de `DISENO.md` para títulos de pantalla. Al abrir Ajustes, el selector de letra queda parcialmente visible en el borde inferior. Con los datos de ejemplo cargados, el botón desactivado queda tenue y cortado en la captura desplazada.
+- **Categorías y plantillas.** El selector activo en oscuro pierde el efecto elevado que se ve en `Inventario.png`, también en Preferencias. El nombre del grupo se repite encima de la lista. Los tiradores diagonales de los dos campos de Plantillas coinciden con el borde redondeado inferior.
+- **Envío y respaldo.** La hoja de descarga del envío omite el paso de adjuntar el archivo al chat. «Último envío» se actualiza al descargarlo, así que la fecha puede avanzar antes de que Jonathan reciba el archivo. El respaldo sí indica dónde guardar la copia y cómo abrirla de nuevo.
+
+`python3 codex/pruebas/correr.py` terminó en una sola ejecución. Pasaron 49 pruebas en Chromium a 390×844 y 43 con el perfil iPhone 14 Pro, incluidos el intercambio de archivos entre versiones, la migración simulada y la recarga sin conexión. La revisión solo cambió esta bitácora. Siguen pendientes los recorridos de T14 en los celulares de Elba y Jonathan, en particular la instalación, el envío por WhatsApp y la restauración desde Archivos o Drive.
