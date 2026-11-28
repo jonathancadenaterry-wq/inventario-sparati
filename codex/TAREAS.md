@@ -244,7 +244,7 @@ Según `Reportes.png`:
   - `codex/capturas/` tiene capturas nuevas, en claro y en oscuro y con el perfil de iPhone 14 Pro, de Nuevo producto › Vencimiento, Proveedor, Reportes › Inventario y Cabina, Nueva venta, Pacientes y la hoja de Envío;
   - en `PROGRESO.md`, la lista de lo que Elba tiene que volver a mirar en su iPhone.
 
-## T16 · Pulido de la revisión  [ ]
+## T16 · Pulido de la revisión  [x]
 
 - **Buscador de Inicio (Android).** El texto se corta: «…pacie». Que quepa entero a 360 px, o acórtalo.
   - Prueba: a 360 px, el ancho del texto del buscador, medido en un canvas con su fuente, cabe en el ancho útil del campo.

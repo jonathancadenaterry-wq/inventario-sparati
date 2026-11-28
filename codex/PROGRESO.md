@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T15 completada en `prueba/`. Sigue T16.
-- Última corrida: 28-nov-2026, 00:20–00:39 (Ecuador) · T15 y revisión de las capturas de T14
+- Tarea actual: T0–T16 completadas en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
+- Última corrida: 28-nov-2026, 00:42–00:57 (Ecuador) · T16 y revisión de las capturas de T15
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -432,3 +432,26 @@ Quedaron incorporadas T15 y T16 en `TAREAS.md`. Esta corrida empieza por T15.
 - Pasaron 54 pruebas en Chromium a 390×844 y 48 con el perfil iPhone 14 Pro. Vencimiento, Proveedor, cantidades y tamaño también se probaron a 360×800. El recorrido completo se verificó por tandas después de que se interrumpió la primera ejecución. Pasaron el intercambio en ambos sentidos con la versión 1, la migración simulada y la recarga sin conexión.
 - Quedaron 44 capturas T15 en claro y oscuro. Hay 22 de 390×844 y 22 de 393×660, el área visible del perfil iPhone 14 Pro en Playwright. Se compararon con `Main.png`, `Inventario.png`, `Reportes.png`, `Vender.png` y `Paciente.png`. Cabina se desplazó en el perfil iPhone para mostrar el total y «Otros» juntos. Las fechas siguen el formato del calendario nativo de cada navegador.
 - T15 queda marcada como completa. Sigue T16 con el pulido de la revisión. Queda pendiente la comprobación de Safari en el iPhone físico con los pasos de arriba.
+
+### 28-nov-2026 · 00:42 (Ecuador) · Revisión de las capturas de T15 e inicio de T16
+
+Revisé las ocho capturas oscuras del perfil iPhone 14 Pro antes de editar la interfaz.
+
+- **Envío descargado.** La instrucción muestra el nombre del archivo y la confirmación completa. El nombre se reparte en tres líneas, cortado entre sus guiones, y cuesta reconocerlo de un vistazo al buscarlo en Descargas.
+- **Nueva venta.** En el punto de desplazamiento de la captura, el encabezado cubre el rótulo «Paciente» y parte de «Buscar» en la tarjeta. Los dos tamaños se leen completos, aunque ambas tarjetas muestran el mismo comienzo truncado del nombre.
+- **Pacientes y ficha.** Los importes se ven juntos con el símbolo. La última fila de la lista y el segundo producto de recompra quedan parcialmente visibles junto a la barra inferior. Las capturas no muestran el final del desplazamiento.
+- **Reportes.** En Ventas por semana, los importes caben en una línea. La captura empieza a mitad de los indicadores y el botón flotante tapa parte de la siguiente fila del ranking. En Cabina, el encabezado del mes se ve cortado arriba por el desplazamiento y «Otros» queda visible. En Inventario, el botón flotante cubre parte de la nota bajo «Uso en spa» en ese punto de desplazamiento.
+- **Inventario.** «3 %» queda junto. La miniatura de Gel de Ácido Tranexámico muestra «GD», que toma la inicial de «de». El fondo de la opción activa del selector se distingue poco en oscuro.
+
+**Cambios de T16**
+
+- Inicio muestra «Buscar en SPARATI» completo a 360 px. La invitación de instalación queda debajo del buscador y por encima de los avisos. Habla de agregar la app a la pantalla de inicio y la guía de Safari muestra el ícono junto a «Compartir».
+- Inventario muestra iniciales como «DT», «AD» y «MA». Los tres geles muestran «GÁ», «GC» y «GM». «Sin marca» queda al final. Los dos inventarios muestran «Facial» y «Corporal», y las fichas anteriores conservan su categoría guardada incluso al editar otros datos.
+- Reportes usa un ícono de hoja de cálculo para Excel. En el historial, cada producto empieza en su propia línea y el punto medio sigue entre el nombre y la presentación.
+- Ajustes comparte los títulos de 29 px. «Avanzado» usa la misma fila y flecha que Categorías y Plantillas, y se puede alcanzar completo al desplazar. Si los datos de ejemplo ya se cargaron, queda el mensaje de confirmación. En Categorías y Preferencias, la opción activa tiene un contraste de 4,52:1 en claro y 5,80:1 en oscuro frente al fondo del selector. Categorías deja una sola mención visible del inventario elegido. Los campos de Plantillas se ajustan al texto.
+- Se generaron 44 capturas T16 en claro y oscuro. Hay 22 a 390×844, 20 a 393×660 en el perfil iPhone 14 Pro y 2 a 360×800. Se compararon Inicio, Inventario, Reportes y Bienvenida con sus referencias. El saludo de Inicio y el encabezado de Bienvenida ocupan una línea adicional con los títulos de 29 px. La guía conserva la disposición de hoja inferior.
+
+**Verificación**
+
+- Pasaron las 61 pruebas en Chromium a 390×844 y las 61 con el perfil iPhone 14 Pro. También pasaron las comprobaciones a 360×800 del buscador de Inicio y las de T15. La ejecución continua se interrumpió y se completó por tandas con un navegador a la vez. Se verificaron ambos archivos de la versión 1, el intercambio en los dos sentidos, la recarga sin conexión y la migración simulada.
+- T16 queda marcada como completa. Queda por comprobar en los celulares físicos la guía de Safari y la invitación en Chrome, el final de Ajustes con la zona segura del iPhone y el crecimiento de Plantillas con el teclado abierto. Siguen pendientes los recorridos de envío, respaldo y vencimientos anotados en T14 y T15.

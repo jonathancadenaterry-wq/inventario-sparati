@@ -1,12 +1,12 @@
 /* Guarda una copia de SPARATI Prueba con su catálogo y sus fotos de ejemplo.
    Comparte el dominio con otras apps. Solo borra cachés que empiezan con «spp-». */
-const VERSION = 'spp-v2-17';
+const VERSION = 'spp-v2-18';
 const BASE = new URL(self.registration.scope);
 const PORTADA = new URL('index.html', BASE).href;
 const CATALOGO = new URL('../codex/catalogo.json', BASE).href;
 const CARPETA_FOTOS = new URL('../codex/diseno/fotos/', BASE).href;
 const ARCHIVOS = [
-  './', './index.html', './app.js?v=2.15.0', './estilos.css?v=2.15.0', './manifest.webmanifest',
+  './', './index.html', './app.js?v=2.16.0', './estilos.css?v=2.16.0', './manifest.webmanifest',
   './icono-192.png', './icono-512.png', './icono-180.png',
   './emblema.png', './logo-texto.png', './logo-completo.png',
   './fuentes/inter-latin-400-normal.woff2', './fuentes/inter-latin-600-normal.woff2',

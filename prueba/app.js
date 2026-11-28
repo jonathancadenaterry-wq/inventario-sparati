@@ -14,7 +14,7 @@ const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto'
 const MESES_C = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const CATS = {
   venta:['Facial','Corporal','Protector solar','Capilar','Suplementos','Otros'],
-  uso:['Activos e inyectables','Faciales','Corporales','Descartables','Aparatología','Limpieza','Otros'],
+  uso:['Activos e inyectables','Facial','Corporal','Descartables','Aparatología','Limpieza','Otros'],
 };
 const UNIDADES = ['unidades','frascos','cajas','ampollas','jeringas','sobres','ml','g','pares','paquetes'];
 const PAGOS = ['Efectivo','Transferencia','Tarjeta'];
@@ -145,7 +145,10 @@ function completarPacientes(estado = E, autor = quien()){
 let STOCK = new Map(), CONSUMO = new Map();
 const vivos = l => l.filter(x => !x.borrado);
 const productos = tipo => vivos(E.productos).filter(p => !tipo || p.tipo === tipo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-const categoriasDe = tipo => [...new Set([...CATS[tipo], ...(E.cats[tipo] || []), ...productos(tipo).map(p => p.cat)].filter(Boolean))];
+const CATEGORIAS_ANTERIORES = new Map([['faciales', 'Facial'], ['corporales', 'Corporal']]);
+const categoriaVisible = nombre => CATEGORIAS_ANTERIORES.get(norm(nombre)) ?? nombre;
+const categoriasVisibles = nombres => [...new Set(nombres.filter(Boolean).map(categoriaVisible))];
+const categoriasDe = tipo => categoriasVisibles([...CATS[tipo], ...(E.cats[tipo] || []), ...productos(tipo).map(p => p.cat)]);
 const prodPorId = id => E.productos.find(p => p.id === id);
 const stockDe = id => red(STOCK.get(id) || 0);
 function calcular(){
@@ -327,8 +330,20 @@ async function comprimir(file){
     return await new Promise(r => cv.toBlob(b => r(b || file), 'image/jpeg', 0.72));
   }catch(e){ return file; }
 }
+const PALABRAS_SIN_INICIAL = new Set(['de', 'del', 'la', 'el', 'y', 'con']);
+function inicialesProducto(nombre){
+  const [nombreBase] = (nombre || '').split(' · ', 1);
+  const palabras = nombreBase.normalize().split(/\s+/)
+    .map(palabra => palabra.replace(/[^\p{L}\p{M}]/gu, ''))
+    .filter(palabra => palabra && !PALABRAS_SIN_INICIAL.has(norm(palabra)));
+  const [primera = '?', segunda] = palabras;
+  const letras = [...primera];
+  return (letras[0] + (segunda ? [...segunda][0] : letras[1] || '')).toUpperCase();
+}
 function avatar(p, cls = ''){
-  const ini = (p.nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const ini = cls === 'persona'
+    ? (p.nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    : inicialesProducto(p.nombre);
   return `<span class="av ${cls}" aria-hidden="true"><span>${esc(ini)}</span>${p.foto ? `<img data-foto="${esc(p.foto)}" alt="">` : ''}</span>`;
 }
 
@@ -512,6 +527,8 @@ const trazosIconos = {
   linterna:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
   lapiz:'<path d="M4 20h4L20 8l-4-4L4 16z"/>',
   pdf:'<path d="M12 3v12m-5-5 5 5 5-5"/><path d="M5 21h14"/>',
+  excel:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M10 9v11"/>',
+  compartir:'<path d="M12 14V3m-4 4 4-4 4 4M8 9H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2"/>',
   sync:'<path d="M20 11a8 8 0 0 0-14-5l-2 2"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14 5l2-2"/><path d="M20 21v-5h-5"/>',
   check:'<path d="m5 12 5 5 9-10"/>',
   etiqueta:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>',
@@ -571,8 +588,8 @@ function marcarPestanaPrincipal(){
     else b.removeAttribute('aria-current');
   }
 }
-function buscador(texto, {id = '', valor = '', campo = '', escaneo = ''} = {}){
-  return `<div class="buscador"><label class="buscar">${IC.lupa}<input type="search" ${id ? `id="${id}"` : ''} ${campo ? `data-f="${campo}"` : ''} aria-label="${texto}" placeholder="${texto}" value="${esc(valor)}" autocomplete="off"></label>
+function buscador(texto, {id = '', valor = '', campo = '', escaneo = '', etiqueta = texto} = {}){
+  return `<div class="buscador"><label class="buscar">${IC.lupa}<input type="search" ${id ? `id="${id}"` : ''} ${campo ? `data-f="${campo}"` : ''} aria-label="${esc(etiqueta)}" placeholder="${esc(texto)}" value="${esc(valor)}" autocomplete="off"></label>
     ${escaneo ? `<button class="btn boton-escanear" data-act="escanear" data-modo="${escaneo}" aria-label="Escanear">${IC.escaneo}</button>` : ''}</div>`;
 }
 function opcion(act, valor, texto, activa, clase = '', attrs = ''){
@@ -798,9 +815,10 @@ function vInicio(){
     <button class="icon-btn avisos-inicio" data-act="avisosInicio" aria-label="Avisos${tieneAvisos ? ', ' + cantidad + ' pendientes' : ''}">${IC.campana}
       ${tieneAvisos ? `<span aria-hidden="true">${cantidad > 99 ? '99+' : cantidad}</span>` : ''}</button>
   </header>
-  ${buscador('Buscar producto o paciente', {id:'qInicio', valor:U.qInicio, escaneo:'global'})}
+  ${buscador('Buscar en SPARATI', {id:'qInicio', valor:U.qInicio, escaneo:'global', etiqueta:'Buscar producto o paciente'})}
   <div id="resultadosInicio" class="lista-productos" hidden></div>
   <div class="contenido-inicio" id="contenidoInicio">
+    ${invitacionInstalar()}
     <div class="acciones-inicio" role="group" aria-label="Acciones rápidas">
       ${Object.entries(ACCIONES_INICIO).map(([clave, {titulo, icono, accion}]) => `<button data-act="${accion || 'selectorInicio'}" data-accion="${clave}">
         <span>${IC[icono]}</span>${clave === 'conteo' && E.conteo ? 'Retomar conteo' : titulo}</button>`).join('')}
@@ -825,7 +843,6 @@ function vInicio(){
       <div class="acc-grid"><button class="btn" data-act="nuevoProd" data-tipo="venta">${IC.mas} Para vender</button>
         <button class="btn gold" data-act="nuevoProd" data-tipo="uso">${IC.mas} Uso en spa</button></div>
       ${nombre === 'Jonathan' ? '<button class="btn ghost" data-act="recibir">Recibir el inventario de Elba</button>' : ''}</section>` : ''}
-    ${invitacionInstalar()}
     <button class="link ajustes-inicio" data-act="ajustes">${IC.ajustes} Ajustes</button>
   </div>`;
 }
@@ -880,7 +897,7 @@ function resumenInventario(ps, tipo){
 
 function vLista(tipo){
   const ps = productos(tipo);
-  const cats = [...new Set(ps.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const cats = categoriasVisibles(ps.map(p => p.cat)).sort((a, b) => a.localeCompare(b, 'es'));
   const filtros = [['todos', 'Todos'], ['stock', '<span class="indicador" aria-hidden="true"></span>Por terminarse'],
     ['fecha', '<span class="indicador vence" aria-hidden="true"></span>Vencen pronto'], ...cats.map(c => ['cat:' + c, esc(c)])];
   return `<header class="top inventario-cab"><h1>Inventario</h1>
@@ -925,12 +942,13 @@ function ultimasVentasPorProducto(){
 }
 function listaHTML(tipo, todos = productos(tipo)){
   const q = norm(U.q[tipo]), f = U.filtro[tipo], grupos = new Map();
+  const sinMarca = 'Sin marca';
   for(const p of todos){
     if(!coincideProducto(p, q)) continue;
     if(f === 'stock' && !avisosDe(p).some(a => a.clase === 'stock')) continue;
     if(f === 'fecha' && !avisosDe(p).some(a => a.clase === 'fecha' && a.nivel === 'warn')) continue;
-    if(f.startsWith('cat:') && p.cat !== f.slice(4)) continue;
-    const marca = p.marca?.trim() || 'Sin marca';
+    if(f.startsWith('cat:') && categoriaVisible(p.cat) !== f.slice(4)) continue;
+    const marca = p.marca?.trim() || sinMarca;
     if(!grupos.has(marca)) grupos.set(marca, []);
     grupos.get(marca).push(p);
   }
@@ -938,7 +956,8 @@ function listaHTML(tipo, todos = productos(tipo)){
   if(!grupos.size) return '<div class="vacio">No hay productos con ese filtro.</div>';
   const orden = U.orden[tipo];
   const ultimasVentas = orden === 'venta' ? ultimasVentasPorProducto() : null;
-  return [...grupos].sort(([a, ps], [b, otros]) => otros.length - ps.length || a.localeCompare(b, 'es')).map(([marca, ps]) => {
+  return [...grupos].sort(([a, ps], [b, otros]) =>
+    Number(a === sinMarca) - Number(b === sinMarca) || otros.length - ps.length || a.localeCompare(b, 'es')).map(([marca, ps]) => {
     // La lista de partida ya está ordenada por nombre. Ese orden resuelve los empates.
     if(orden === 'stock') ps.sort((a, b) => stockDe(a.id) - stockDe(b.id));
     if(ultimasVentas) ps.sort((a, b) => (ultimasVentas.get(b.id) || '').localeCompare(ultimasVentas.get(a.id) || ''));
@@ -1169,7 +1188,7 @@ function vReportes(){
     <div class="acciones-reporte no-imprimir-reporte" role="group" aria-label="Compartir reporte de ${titulo.toLowerCase()}">
       <button class="btn" data-act="imprimirReporte">${IC.pdf} Descargar PDF</button>
       <a class="btn soft" href="${esc(enlace)}" target="_blank" rel="noopener">${IC.chat} Enviar por WhatsApp</a>
-      <button class="btn ghost" data-act="excelReporte">${IC.etiqueta} Excel</button>
+      <button class="btn ghost" data-act="excelReporte">${IC.excel} Excel</button>
     </div>
   </section>
   ${reporte === 'ventas' ? `<section class="historial-reporte no-imprimir-reporte" aria-labelledby="historialReporte">
@@ -1259,7 +1278,7 @@ function listaVentasHTML(){
   for(const v of vs){
     if(v.fecha !== dia){ dia = v.fecha; h += `<div class="dia-tit">${esc(fDia(v.fecha))}${q && v.fecha.slice(0,4) !== String(new Date().getFullYear()) ? ' ' + v.fecha.slice(0,4) : ''}</div>`; }
     h += `<button class="venta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="c"><span class="pac">${esc(v.pac || 'Sin nombre')}</span><span class="tot num">${dinero(totalVenta(v))}</span></div>
-      <div class="it">${esc(nombreVisible(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(' · ')))}</div>
+      <div class="it">${v.items.map(i => `<span>${esc(fCant(i.cant) + ' × ' + nombreVisible(i.nombre))}</span>`).join('')}</div>
       <div class="c"><span class="pill ${v.cobrado ? 'acc' : 'warn'}">${esc(v.cobrado ? cap(v.pago) : 'Por cobrar')}</span>${v.por ? `<span class="peq muted">Registró ${esc(v.por)}</span>` : ''}</div></button>`;
   }
   return h;
@@ -1301,7 +1320,7 @@ function estructuraFicha(p, contenido){
     <div class="ficha-controles"><button class="icon-btn" data-act="cerrar" aria-label="Volver">${IC.volver}</button>
       <button class="icon-btn" data-act="editarProd" data-id="${id}" aria-label="Editar producto">${IC.lapiz}</button></div>
     </div><div class="hoja-in ficha-contenido">
-    <header class="ficha-cab"><div class="chips"><span class="pill ${venta ? 'acc' : 'ok'}">${venta ? 'Para vender' : 'Uso en spa'}</span>${p.cat ? `<span class="pill gold">${esc(p.cat)}</span>` : ''}</div>
+    <header class="ficha-cab"><div class="chips"><span class="pill ${venta ? 'acc' : 'ok'}">${venta ? 'Para vender' : 'Uso en spa'}</span>${p.cat ? `<span class="pill gold">${esc(categoriaVisible(p.cat))}</span>` : ''}</div>
       <h1>${titulo}</h1>${p.marca || presentacion.length ? `<p>${esc([p.marca, ...presentacion].filter(Boolean).join(' · '))}</p>` : ''}</header>
     ${contenido}</div></div>`;
 }
@@ -1591,7 +1610,7 @@ document.addEventListener('input', e => {
 // Producto nuevo o editar
 function formProd(id, tipo, codigo = ''){
   const p = id ? prodPorId(id) : null;
-  F = p ? {id:p.id, tipo:p.tipo, nombre:p.nombre, marca:p.marca || '', cat:p.cat || '', unidad:p.unidad || 'unidades', inicial:'',
+  F = p ? {id:p.id, tipo:p.tipo, nombre:p.nombre, marca:p.marca || '', cat:categoriaVisible(p.cat) || '', unidad:p.unidad || 'unidades', inicial:'',
       codigo:String(p.codigo ?? ''), min:p.min ? fCant(p.min) : '', max:p.max > 0 ? fCant(p.max) : '',
       costo:dineroIn(p.costo), precio:dineroIn(p.precio), gasto:p.gasto ? fCant(p.gasto) : '', duraPac:p.duraPac || '',
       vence:p.vence || '', lote:p.lote || '', abierto:p.abierto || '', pao:p.pao || '', prov:p.prov || '', telProv:p.telProv || '', notas:p.notas || '', foto:p.foto || '', fotoNueva:null}
@@ -1670,7 +1689,8 @@ async function guardarProd(){
     toast(`Ese código ya está asignado a ${duplicado.nombre}.`);
     return;
   }
-  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat:F.cat, unidad:F.unidad || 'unidades', codigo, max:max > 0 ? red(max) : 0,
+  const cat = previo && categoriaVisible(previo.cat) === F.cat ? previo.cat : F.cat;
+  const datos = {tipo:F.tipo, nombre, marca:F.marca.trim(), cat, unidad:F.unidad || 'unidades', codigo, max:max > 0 ? red(max) : 0,
     min:min > 0 ? red(min) : 0, costo:costo > 0 ? red(costo) : 0, precio:F.tipo === 'venta' && precio > 0 ? red(precio) : 0,
     gasto:F.tipo === 'uso' && gasto > 0 ? red(gasto) : 0, duraPac:F.tipo === 'venta' && dura > 0 ? dura : 0,
     vence:F.vence || '', lote:F.lote.trim(), abierto:F.abierto || '', pao:pao > 0 ? pao : 0,
@@ -2133,7 +2153,7 @@ function formVenta(id, prodId, paciente){
 }
 function actualizarCatalogoVenta(d){
   const todos = productos('venta');
-  const categorias = [...new Set(todos.map(p => p.cat).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const categorias = categoriasVisibles(todos.map(p => p.cat)).sort((a, b) => a.localeCompare(b, 'es'));
   const filtros = $('.filtros-venta', d), scroll = filtros.scrollLeft;
   F.todos = todos;
   F.populares = masVendidosVenta(todos);
@@ -2252,7 +2272,7 @@ const descuentoVenta = valor => valor.trim() ? red(numeroVenta(valor)) : 0;
 function pintarSelectorVenta(){
   const q = norm(F.buscar), selector = $('#selProd'), categoria = F.categoria;
   const lista = !q && categoria === 'populares' ? F.populares : F.todos;
-  const ps = lista.filter(p => coincideProducto(p, q) && (!categoria.startsWith('cat:') || p.cat === categoria.slice(4)));
+  const ps = lista.filter(p => coincideProducto(p, q) && (!categoria.startsWith('cat:') || categoriaVisible(p.cat) === categoria.slice(4)));
   selector.innerHTML = ps.length ? ps.map(p => {
     const stock = stockDe(p.id);
     const aviso = avisosDe(p).find(a => a.clase === 'fecha');
@@ -3895,6 +3915,7 @@ function pintarAjustes(d = capaArriba('ajustes')){
   const badge = 'setAppBadge' in navigator && window.Notification;
   const permiso = badge ? Notification.permission : '';
   const {envio, recibo, de} = E.sync;
+  const ejemploCargado = hayEjemplo();
   d.innerHTML = cabecera('Ajustes', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in ajustes-in">
     <section class="card" aria-labelledby="ajustesCelulares">
       <h3 id="ajustesCelulares">Entre celulares</h3>
@@ -3935,11 +3956,12 @@ function pintarAjustes(d = capaArriba('ajustes')){
     </section>
     <section class="card" aria-labelledby="ajustesEjemplo">
       <h3 id="ajustesEjemplo">Datos de ejemplo</h3>
-      <p class="muted">${hayEjemplo() ? 'Ya están cargados en este inventario de prueba.'
+      <p class="muted">${ejemploCargado ? 'Ya están cargados en este inventario de prueba.'
         : 'Agrega 104 productos con las fotos disponibles, más ventas y usos de ejemplo.'}</p>
-      <button class="btn soft" data-act="cargarEjemplo" ${cargandoEjemplo || hayEjemplo() ? 'disabled' : ''}>${cargandoEjemplo ? 'Cargando los datos…' : 'Cargar datos de ejemplo'}</button>
+      ${ejemploCargado ? '' : `<button class="btn soft" data-act="cargarEjemplo" ${cargandoEjemplo ? 'disabled' : ''}>${cargandoEjemplo ? 'Cargando los datos…' : 'Cargar datos de ejemplo'}</button>`}
     </section>
-    <details class="card ajustes-avanzado"${avanzadoAbierto ? ' open' : ''}><summary>Avanzado</summary>
+    <details class="card ajustes-avanzado"${avanzadoAbierto ? ' open' : ''}>
+      <summary class="fila-ajustes"><span>${IC.ajustes} Avanzado</span>${IC.siguiente}</summary>
       <div>
         <button class="btn ghost" data-act="actualizar">Actualizar la app ahora</button>
         <div class="campo"><label for="aBorrarTxt">Para borrar el inventario y las fotos de este celular, escribe BORRAR.</label>
@@ -3955,6 +3977,7 @@ function pintarAjustes(d = capaArriba('ajustes')){
   texto.addEventListener('input', () => { $('#aBorrar', d).disabled = texto.value.trim().toUpperCase() !== 'BORRAR'; });
 }
 function agregarCategoria(tipo, nombre){
+  nombre = categoriaVisible(nombre);
   const existente = categoriasDe(tipo).find(c => norm(c) === norm(nombre));
   if(existente) return existente;
   const cats = {...E.cats, [tipo]:[...(E.cats[tipo] || []), nombre]};
@@ -3971,9 +3994,7 @@ function abrirCategorias(){
         <input type="text" id="nuevaCategoriaAjustes" required></div>
       <button class="btn" type="submit">${IC.mas} Agregar categoría</button>
     </form>
-    <section class="card" aria-labelledby="tituloCategorias"><h3 id="tituloCategorias"></h3>
-      <ul class="lista-categorias-ajustes" role="list"></ul>
-    </section>
+    <div class="card"><ul class="lista-categorias-ajustes" role="list" aria-label="Categorías disponibles"></ul></div>
   </div></div>`, {tipo:'categorias'});
   const campo = $('#nuevaCategoriaAjustes', d);
   campo.addEventListener('input', () => campo.setCustomValidity(''));
@@ -3981,7 +4002,7 @@ function abrirCategorias(){
     e.preventDefault();
     const tipo = d.dataset.inventario, nombre = cap(campo.value.trim().replace(/\s+/g, ' '));
     recargarEstadoSiCambio();
-    const equivalente = categoriasDe(tipo).some(c => norm(c) === norm(nombre));
+    const equivalente = categoriasDe(tipo).some(c => norm(c) === norm(categoriaVisible(nombre)));
     if(!nombre || equivalente){
       campo.setCustomValidity(equivalente ? 'Esa categoría ya existe.' : 'Escribe el nombre de la categoría.');
       campo.reportValidity();
@@ -3997,7 +4018,6 @@ function abrirCategorias(){
 }
 function pintarCategorias(d, tipo){
   d.dataset.inventario = tipo;
-  $('#tituloCategorias', d).textContent = tipo === 'venta' ? 'Para vender' : 'Uso en spa';
   const nombres = categoriasDe(tipo).sort((a, b) => a.localeCompare(b, 'es'));
   $('.lista-categorias-ajustes', d).innerHTML = nombres.map(c => `<li>${esc(c)}</li>`).join('');
 }
@@ -4010,23 +4030,36 @@ const PLANTILLAS_AJUSTES = {
     boton:'Guardar despedida', guardado:'Despedida guardada'},
 };
 function abrirPlantillas(){
+  const tallaNativa = CSS.supports('field-sizing', 'content');
+  const eventos = tallaNativa ? null : new AbortController();
   const d = abrirCapa(cabecera('Plantillas de WhatsApp', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in ajustes-in">
     ${Object.entries(PLANTILLAS_AJUSTES).map(([id, p]) => `<form class="card" data-plantilla="${id}" aria-labelledby="titulo-${id}">
       <h3 id="titulo-${id}">${p.titulo}</h3>
       <div class="campo"><label for="${id}">${p.etiqueta}</label>
-        <textarea id="${id}" rows="3" required aria-describedby="ayuda-${id}">${esc(E.ajustes[id] || p.defecto)}</textarea>
+        <textarea id="${id}" rows="1" required aria-describedby="ayuda-${id}">${esc(E.ajustes[id] || p.defecto)}</textarea>
         <span class="ayuda" id="ayuda-${id}">${p.ayuda}</span></div>
       <button type="submit" class="btn soft">${p.boton}</button></form>`).join('')}
-  </div></div>`, {tipo:'plantillas'});
+  </div></div>`, {tipo:'plantillas', alCerrar:() => eventos?.abort()});
   for(const form of $$('form', d)){
     const id = form.dataset.plantilla, campo = $('textarea', form);
-    campo.addEventListener('input', () => campo.setCustomValidity(''));
+    const ajustarCampo = () => {
+      if(tallaNativa || !campo.isConnected) return;
+      campo.style.height = 'auto';
+      campo.style.height = `${campo.scrollHeight + campo.offsetHeight - campo.clientHeight}px`;
+    };
+    if(eventos){
+      ajustarCampo();
+      document.fonts.ready.then(ajustarCampo);
+      window.addEventListener('resize', ajustarCampo, {signal:eventos.signal});
+    }
+    campo.addEventListener('input', () => { campo.setCustomValidity(''); ajustarCampo(); });
     form.addEventListener('submit', e => {
       e.preventDefault();
       const mensaje = campo.value.trim();
       if(!mensaje){ campo.setCustomValidity('Escribe un mensaje.'); campo.reportValidity(); return; }
       if(!guardarPreferencias({[id]:mensaje})) return;
       campo.value = mensaje;
+      ajustarCampo();
       toast(PLANTILLAS_AJUSTES[id].guardado);
     });
   }
@@ -4049,7 +4082,7 @@ function invitacionInstalar(){
   return `<section class="card invitacion-instalar" aria-labelledby="invitacionInstalar">
     <header class="card-cab"><h3 id="invitacionInstalar">SPARATI en tu pantalla de inicio</h3>
       <button class="icon-btn" data-act="cerrarInstalacion" aria-label="Cerrar invitación">${IC.x}</button></header>
-    <p class="muted">Ten el inventario a mano y guarda una copia con fotos desde Ajustes.</p>
+    <p class="muted">Agrega SPARATI a la pantalla de inicio de tu celular para abrir el inventario con un toque.</p>
     <button class="btn soft" data-act="verInstalacion">Ver los pasos</button>
   </section>`;
 }
@@ -4057,11 +4090,11 @@ function cerrarInvitacion(){
   instalacionVista = true;
   try{ localStorage.setItem(CLAVE_INSTALACION, '1'); }catch(e){}
   $('.invitacion-instalar')?.remove();
-  $('.ajustes-inicio')?.focus({preventScroll:true});
+  $('.acciones-inicio button')?.focus({preventScroll:true});
 }
 function verInstalacion(){
   const ayuda = plataformaParaInstalar() === 'ios'
-    ? 'En Safari, toca Compartir y elige «Agregar a pantalla de inicio». Luego toca «Agregar».'
+    ? `En Safari, toca <span class="paso-compartir">Compartir ${IC.compartir}</span> y elige «Agregar a pantalla de inicio». Luego toca «Agregar».`
     : 'En Chrome, abre el menú de tres puntos y elige «Agregar a pantalla de inicio». Sigue los pasos que te muestra el celular.';
   const d = abrirCapa(`<section class="dlg hoja-inferior" role="dialog">
     <span class="tirador" aria-hidden="true"></span><h3>Agregar a pantalla de inicio</h3>

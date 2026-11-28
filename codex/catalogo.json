@@ -370,7 +370,7 @@
    "tipo": "uso",
    "nombre": "AHA's Peel Almendra · 30 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -378,7 +378,7 @@
    "tipo": "uso",
    "nombre": "Gluco Peel · 30 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -386,7 +386,7 @@
    "tipo": "uso",
    "nombre": "Yellow Peel · 30 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -394,7 +394,7 @@
    "tipo": "uso",
    "nombre": "Tranexpeel Whitening · 30 ml",
    "marca": "Lumière",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -402,7 +402,7 @@
    "tipo": "uso",
    "nombre": "Salicylic Complex · 30 ml",
    "marca": "Lumière",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -410,7 +410,7 @@
    "tipo": "uso",
    "nombre": "Oil Control Acid · 30 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -418,7 +418,7 @@
    "tipo": "uso",
    "nombre": "Suero Ionizable algas + Z · 30 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 2
   },
@@ -426,7 +426,7 @@
    "tipo": "uso",
    "nombre": "Ácido Salicílico BHA 3 %",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -434,7 +434,7 @@
    "tipo": "uso",
    "nombre": "Serum Aclarador White · 30 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -442,7 +442,7 @@
    "tipo": "uso",
    "nombre": "Ácido Mandélico pH 3,5",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -530,7 +530,7 @@
    "tipo": "uso",
    "nombre": "Manicmagne · 70 g",
    "marca": "Imagcev",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -626,7 +626,7 @@
    "tipo": "uso",
    "nombre": "Aceite de masaje corporal Harmony · 500 ml",
    "marca": "Professional Spa",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -634,7 +634,7 @@
    "tipo": "uso",
    "nombre": "Aceite esencial de Vainilla",
    "marca": "Roots",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -642,7 +642,7 @@
    "tipo": "uso",
    "nombre": "Contorno de ojos (cabina)",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -650,7 +650,7 @@
    "tipo": "uso",
    "nombre": "Tónico de Malva · 100 ml",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -658,7 +658,7 @@
    "tipo": "uso",
    "nombre": "Lactobio gel exfoliante · 250 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -666,7 +666,7 @@
    "tipo": "uso",
    "nombre": "Hydrating Foaming Cleanser (cabina) · 200 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -674,7 +674,7 @@
    "tipo": "uso",
    "nombre": "Máscara Secante",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -682,7 +682,7 @@
    "tipo": "uso",
    "nombre": "Loción Antibacterial Natural · 250 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -690,7 +690,7 @@
    "tipo": "uso",
    "nombre": "Crema para masaje facial · 200 g",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -698,7 +698,7 @@
    "tipo": "uso",
    "nombre": "Control Balance loción secante · 80 cc",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -706,7 +706,7 @@
    "tipo": "uso",
    "nombre": "Espuma Limpiadora · 200 ml",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -714,7 +714,7 @@
    "tipo": "uso",
    "nombre": "Resveratrol · 120 g",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -722,7 +722,7 @@
    "tipo": "uso",
    "nombre": "Diamond Facial Scrub · 250 g",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -730,7 +730,7 @@
    "tipo": "uso",
    "nombre": "PTI Gel · 250 g",
    "marca": "Natural Center",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -738,7 +738,7 @@
    "tipo": "uso",
    "nombre": "Vitamin K Clarifying Gel · 250 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -746,7 +746,7 @@
    "tipo": "uso",
    "nombre": "Hyaluronic Acid Jelly Mask · 650 g",
    "marca": "",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -754,7 +754,7 @@
    "tipo": "uso",
    "nombre": "Mascarilla hidroplástica Pure Radiance · 280 g",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1,
    "foto": "codex/diseno/fotos/pureradiance.jpg"
@@ -763,7 +763,7 @@
    "tipo": "uso",
    "nombre": "Mascarilla hidroplástica Seaweed Secret · 280 g",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -771,7 +771,7 @@
    "tipo": "uso",
    "nombre": "Arcilla Blanca · 125 g",
    "marca": "Green Harmony",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -779,7 +779,7 @@
    "tipo": "uso",
    "nombre": "Carbón activado de coco · 70 g",
    "marca": "Chakra Seeds",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -787,7 +787,7 @@
    "tipo": "uso",
    "nombre": "Loción Pre-depilatoria · 120 ml",
    "marca": "Professional Spa",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -795,7 +795,7 @@
    "tipo": "uso",
    "nombre": "Loción Post-depilatoria · 120 ml",
    "marca": "Professional Spa",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "frascos",
    "cantidad": 1
   },
@@ -859,7 +859,7 @@
    "tipo": "uso",
    "nombre": "Syndet Espuma Calmante (cabina) · 150 ml",
    "marca": "Professional Spa",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -867,7 +867,7 @@
    "tipo": "uso",
    "nombre": "Protector Sebo-Oil Control FPS 60+ (cabina) · 120 g",
    "marca": "Imagcev",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -875,7 +875,7 @@
    "tipo": "uso",
    "nombre": "Reduce Hot Cream (cabina)",
    "marca": "Professional Spa",
-   "cat": "Corporales",
+   "cat": "Corporal",
    "unidad": "unidades",
    "cantidad": 1
   },
@@ -883,7 +883,7 @@
    "tipo": "uso",
    "nombre": "Mascarilla aclarante (tapa plateada)",
    "marca": "",
-   "cat": "Faciales",
+   "cat": "Facial",
    "unidad": "unidades",
    "cantidad": 1
   }

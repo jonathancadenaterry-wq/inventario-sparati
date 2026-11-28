@@ -306,8 +306,8 @@ def prueba_edicion(navegador, perfil=None):
         sitio.cerrar()
 
 
-def prueba_envio_v1(navegador):
-    sitio = Sitio(navegador)
+def prueba_envio_v1(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
     try:
         pagina = sitio.abrir(estado={
             **ESTADO_V1,
@@ -341,9 +341,9 @@ def prueba_envio_v1(navegador):
         sitio.cerrar()
 
 
-def prueba_envio_entre_versiones(navegador):
-    v2 = Sitio(navegador)
-    v1 = Sitio(navegador)
+def prueba_envio_entre_versiones(navegador, perfil=None):
+    v2 = Sitio(navegador, perfil=perfil)
+    v1 = Sitio(navegador, perfil=perfil)
     try:
         foto = RAIZ / 'codex/diseno/fotos/sunscreen.jpg'
         base = ESTADO_V1['productos'][0]
@@ -651,7 +651,10 @@ def prueba_invitacion_instalar(navegador, perfil=None):
             if instalada:
                 expect(invitacion).to_have_count(0)
                 continue
-            expect(invitacion).to_contain_text('copia con fotos')
+            expect(invitacion).not_to_contain_text(re.compile('copia|respaldo', re.IGNORECASE))
+            expect(invitacion).to_contain_text('Agrega SPARATI a la pantalla de inicio')
+            assert invitacion.evaluate("""el => Boolean(el.compareDocumentPosition(document.querySelector('.contadores-inicio'))
+                & Node.DOCUMENT_POSITION_FOLLOWING)""")
             invitacion.get_by_role('button', name='Cerrar invitación').click()
             expect(invitacion).to_have_count(0)
             pagina.reload()
@@ -660,7 +663,10 @@ def prueba_invitacion_instalar(navegador, perfil=None):
             pagina.reload()
             invitacion.get_by_role('button', name='Ver los pasos').click()
             instrucciones = pagina.get_by_role('dialog', name='Agregar a pantalla de inicio')
-            expect(instrucciones).to_contain_text('En Safari, toca Compartir')
+            compartir = instrucciones.locator('.paso-compartir')
+            expect(compartir).to_have_text('Compartir')
+            expect(compartir.locator('svg path')).to_have_count(1)
+            expect(instrucciones.locator('p')).to_contain_text('«Agregar a pantalla de inicio»')
             instrucciones.get_by_role('button', name='Entendido').click()
             expect(invitacion).to_have_count(0)
         finally:
@@ -757,8 +763,8 @@ def prueba_recepcion_bienvenida(navegador, perfil=None):
         sitio.cerrar()
 
 
-def prueba_bienvenida_sin_conexion(navegador):
-    sitio = Sitio(navegador, trabajador=True)
+def prueba_bienvenida_sin_conexion(navegador, perfil=None):
+    sitio = Sitio(navegador, trabajador=True, perfil=perfil)
     try:
         pagina = sitio.abrir(quien=None)
         pagina.wait_for_function('navigator.serviceWorker.controller !== null')
@@ -771,8 +777,8 @@ def prueba_bienvenida_sin_conexion(navegador):
         sitio.cerrar()
 
 
-def prueba_migracion(navegador):
-    sitio = Sitio(navegador)
+def prueba_migracion(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
     try:
         pagina = sitio.abrir()
         documento = (RAIZ / 'codex/MIGRACION.md').read_text(encoding='utf-8')
@@ -856,8 +862,8 @@ def verificar_ejemplo(pagina):
     return estado
 
 
-def prueba_ejemplo(navegador):
-    sitio = Sitio(navegador)
+def prueba_ejemplo(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
     try:
         real_yo = {'quien': 'Elba'}
         pagina = sitio.abrir(quien=None, datos_extra={
@@ -888,7 +894,8 @@ def prueba_ejemplo(navegador):
 
         boton.click()
         expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
-        expect(boton).to_be_disabled()
+        expect(boton).to_have_count(0)
+        expect(ajustes.get_by_text('Ya están cargados en este inventario de prueba.')).to_be_visible()
         estado = verificar_ejemplo(pagina)
         assert len(estado['pacientes']) == 8
         assert pagina.evaluate('''() => new Promise((ok, mal) => {
@@ -911,13 +918,15 @@ def prueba_ejemplo(navegador):
         expect(pagina.locator('#listaProd .m')).to_contain_text('$ 18,00')
         pagina.reload()
         assert datos_guardados(pagina) == estado
-        expect(abrir_ajustes(pagina).get_by_role('button', name='Cargar datos de ejemplo')).to_be_disabled()
+        ajustes = abrir_ajustes(pagina)
+        expect(ajustes.get_by_role('button', name='Cargar datos de ejemplo')).to_have_count(0)
+        expect(ajustes.get_by_text('Ya están cargados en este inventario de prueba.')).to_be_visible()
     finally:
         sitio.cerrar()
 
 
-def prueba_sin_conexion(navegador):
-    sitio = Sitio(navegador, trabajador=True)
+def prueba_sin_conexion(navegador, perfil=None):
+    sitio = Sitio(navegador, trabajador=True, perfil=perfil)
     try:
         # Una pantalla simple del mismo origen instala cachés que pertenecen a otras apps.
         pagina = sitio.pagina
@@ -3332,6 +3341,219 @@ def prueba_t15_medidas_y_presentacion(navegador, perfil=None):
             sitio.cerrar()
 
 
+PERFIL_ANDROID_360 = {'viewport': {'width': 360, 'height': 800}, 'is_mobile': True, 'has_touch': True,
+                     'user_agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36'}
+
+
+def prueba_t16_buscador_inicio(navegador, perfil=None):
+    for dispositivo in ([None, PERFIL_ANDROID_360] if perfil is None else [perfil]):
+        sitio = Sitio(navegador, perfil=dispositivo)
+        try:
+            pagina = sitio.abrir(estado=ESTADO_V1)
+            buscador = pagina.get_by_role('searchbox', name='Buscar producto o paciente')
+            for letra in ('normal', 'grande'):
+                pagina.locator('html').evaluate('(el, letra) => el.dataset.letra = letra', letra)
+                medidas = buscador.evaluate("""async el => {
+                  await document.fonts.ready;
+                  const estilo = getComputedStyle(el, '::placeholder');
+                  const canvas = document.createElement('canvas').getContext('2d');
+                  canvas.font = [estilo.fontWeight, estilo.fontSize, estilo.fontFamily].join(' ');
+                  const campo = getComputedStyle(el);
+                  return [canvas.measureText(el.placeholder).width,
+                    el.clientWidth - parseFloat(campo.paddingLeft) - parseFloat(campo.paddingRight)];
+                }""")
+                assert 0 < medidas[0] <= medidas[1], (pagina.viewport_size, letra, medidas)
+        finally:
+            sitio.cerrar()
+
+
+def prueba_t16_iniciales_y_marcas(navegador, perfil=None):
+    casos = [
+        ('DTX · 5 ml', 'DT', 'Amapola'), ('ADN', 'AD', 'Zafiro'), ('Manicmag', 'MA', ''),
+        ('Gel de Colágeno', 'GC', ''), ('Gel de Ácido Tranexámico 3 %', 'GÁ', 'Amapola'),
+        ('Gel de Malva', 'GM', ''), ('(Sérum) + con el aceite', 'SA', 'Zafiro'),
+        ('Emulsión de la cara', 'EC', 'Sin marca'),
+    ]
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        productos = [{**ESTADO_V1['productos'][0], 'id': f't{i}', 'nombre': nombre, 'marca': marca}
+                     for i, (nombre, _, marca) in enumerate(casos)]
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'productos': productos, 'movs': [], 'ventas': []})
+        inventario(pagina, 'venta')
+        for i, (_, inicial, _) in enumerate(casos):
+            expect(pagina.locator(f'#listaProd [data-id=t{i}] .av')).to_have_text(inicial)
+        for orden in ('nombre', 'stock', 'venta'):
+            pagina.locator('#ordenProd').select_option(orden)
+            expect(pagina.locator('.grupo-productos h2')).to_have_text(['Amapola', 'Zafiro', 'Sin marca'])
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t16_categorias(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        assert all(p['cat'] not in ('Faciales', 'Corporales') for p in CATALOGO)
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        ajustes = abrir_ajustes(pagina)
+        ajustes.get_by_role('button', name='Categorías').click()
+        categorias = pagina.get_by_role('dialog', name='Categorías')
+        lista = categorias.get_by_role('list', name='Categorías disponibles')
+        for grupo in ('Para vender', 'Uso en spa'):
+            categorias.get_by_role('button', name=grupo).click()
+            expect(lista.get_by_text('Facial', exact=True)).to_have_count(1)
+            expect(lista.get_by_text('Corporal', exact=True)).to_have_count(1)
+            expect(lista).not_to_contain_text(re.compile('Faciales|Corporales'))
+            expect(categorias.get_by_role('heading', name=grupo, exact=True)).to_have_count(0)
+        cerrar_hoja(pagina)
+        cerrar_hoja(pagina)
+        inventario(pagina, 'uso')
+        filtros = pagina.get_by_role('group', name='Filtrar productos')
+        filtros.get_by_role('button', name='Facial', exact=True).click()
+        expect(pagina.locator('#listaProd .fila-lista')).to_have_count(1)
+        assert datos_guardados(pagina) == ESTADO_V1
+        pagina.locator('#listaProd [data-id=p3]').click()
+        expect(pagina.locator('.ficha-cab .gold')).to_have_text('Facial')
+        pagina.get_by_role('button', name='Editar producto').click()
+        editar = pagina.get_by_role('dialog', name='Editar producto')
+        expect(editar.get_by_role('button', name='Facial', exact=True)).to_have_attribute('aria-pressed', 'true')
+        expect(editar.get_by_role('button', name='Faciales', exact=True)).to_have_count(0)
+        editar.get_by_label('Marca', exact=True).fill('Marca editada')
+        editar.get_by_role('button', name='Guardar', exact=True).click()
+        expect(editar).to_have_count(0)
+        guardado = datos_guardados(pagina)
+        assert next(p for p in guardado['productos'] if p['id'] == 'p3')['cat'] == 'Faciales'
+        assert guardado['cats'] == ESTADO_V1['cats']
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t16_historial_y_excel(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        inventario(pagina, 'venta')
+        etiqueta = pagina.get_by_role('button', name='Etiquetas QR').locator('svg').inner_html()
+        inventario(pagina, 'ventas')
+        excel = pagina.get_by_role('button', name='Excel').locator('svg')
+        expect(excel.locator('rect')).to_have_count(1)
+        assert etiqueta != excel.inner_html()
+        registro = ESTADO_V1['ventas'][0]
+        items = pagina.locator(f'#listaVentas [data-id="{registro["id"]}"] .it > span')
+        expect(items).to_have_text([f'{i["cant"]} × {i["nombre"]}' for i in registro['items']])
+        assert items.count() == 2
+        primero, segundo = (items.nth(i).bounding_box() for i in range(2))
+        assert primero['y'] + primero['height'] <= segundo['y'] + .5
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t16_ajustes(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        ejemplo = {**ESTADO_V1['productos'][0], 'id': 'ejemplo-p1'}
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'productos': [*ESTADO_V1['productos'], ejemplo]})
+        ajustes = abrir_ajustes(pagina)
+        cuerpo = ajustes.locator('.hoja-cuerpo')
+        avanzado = ajustes.locator('summary')
+        categorias = ajustes.get_by_role('button', name='Categorías')
+        expect(avanzado).to_have_css('display', 'flex')
+        expect(avanzado).to_have_css('list-style-type', 'none')
+        assert avanzado.evaluate("el => getComputedStyle(el, '::marker').content") == '""'
+        assert abs(avanzado.bounding_box()['height'] - categorias.bounding_box()['height']) < .5
+        for lado in ('top', 'right', 'bottom', 'left'):
+            assert avanzado.evaluate(f'el => getComputedStyle(el).padding{lado.title()}') == categorias.evaluate(
+                f'el => getComputedStyle(el).padding{lado.title()}')
+        expect(avanzado.locator('svg').last).to_have_css('transform', 'none')
+        expect(ajustes.get_by_role('button', name='Cargar datos de ejemplo')).to_have_count(0)
+        expect(ajustes.get_by_text('Ya están cargados en este inventario de prueba.')).to_be_visible()
+        avanzado.click()
+        expect(avanzado.locator('svg').last).not_to_have_css('transform', 'none')
+        cuerpo.evaluate('el => el.scrollTop = el.scrollHeight')
+        borde_barra = pagina.locator('.nav').bounding_box()['y']
+        ultimo = ajustes.locator('.ajustes-avanzado p').bounding_box()
+        assert ultimo['y'] + ultimo['height'] < borde_barra
+        avanzado.click()
+
+        for tema in ('Claro', 'Oscuro'):
+            ajustes.get_by_role('button', name=tema, exact=True).click()
+            for selector in ('[aria-labelledby=ajustesQuien]', '[aria-labelledby=ajustesTema]',
+                             '[aria-labelledby=ajustesLetra]', '[aria-label="Días de aviso"]'):
+                grupo = '.hoja-ajustes .seg' + selector
+                activa = grupo + ' button.on'
+                fondos, texto = contrastes(pagina, [[activa, grupo, 'backgroundColor'], [activa]])
+                assert fondos >= 3 and texto >= 4.5, (tema, selector, fondos, texto)
+            categorias.click()
+            grupo = '[data-tipo=categorias] .seg'
+            for nombre in ('Para vender', 'Uso en spa'):
+                pagina.get_by_role('dialog', name='Categorías').get_by_role('button', name=nombre).click()
+                activa = grupo + ' button.on'
+                fondos, texto = contrastes(pagina, [[activa, grupo, 'backgroundColor'], [activa]])
+                assert fondos >= 3 and texto >= 4.5, (tema, nombre, fondos, texto)
+            cerrar_hoja(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t16_plantillas(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        ajustes = abrir_ajustes(pagina)
+        for alternativa in (False, True):
+            if alternativa:
+                pagina.evaluate("""() => {
+                  const admite = CSS.supports.bind(CSS);
+                  CSS.supports = (propiedad, valor) => propiedad !== 'field-sizing' && admite(propiedad, valor);
+                }""")
+                pagina.add_style_tag(content='.ajustes-in textarea {field-sizing: fixed}')
+            ajustes.get_by_role('button', name='Plantillas de WhatsApp').click()
+            plantillas = pagina.get_by_role('dialog', name='Plantillas de WhatsApp')
+            for campo in plantillas.get_by_role('textbox').all():
+                expect(campo).to_have_css('resize', 'none')
+                campo.fill('Gracias por tu compra.')
+                corto = campo.bounding_box()['height']
+                campo.fill('\n'.join(f'Línea {n} de la plantilla.' for n in range(1, 18)))
+                assert campo.bounding_box()['height'] > corto
+                assert campo.evaluate('el => el.scrollHeight <= el.clientHeight + 1')
+                campo.fill('Gracias por tu compra.')
+                assert abs(campo.bounding_box()['height'] - corto) < 1
+            cerrar_hoja(pagina)
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t16_titulos(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        def medir(titulo):
+            expect(titulo).to_be_visible()
+            tamano = titulo.evaluate('el => parseFloat(getComputedStyle(el).fontSize)')
+            assert 28 <= tamano <= 30, (titulo.inner_text(), tamano)
+
+        pagina = sitio.abrir(estado=ESTADO_V1, quien=None)
+        medir(pagina.locator('.bienvenida h1'))
+        pagina.get_by_role('button', name='Empezar').click()
+        medir(pagina.locator('.bienvenida h1'))
+        pagina.get_by_role('button', name='Elba', exact=True).click()
+        medir(pagina.locator('.bienvenida h1'))
+        pagina.get_by_role('button', name='Ir a Inicio').click()
+        medir(pagina.locator('.top h1'))
+        ajustes = abrir_ajustes(pagina)
+        medir(ajustes.get_by_role('heading', name='Ajustes'))
+        cerrar_hoja(pagina)
+        for tab in ('venta', 'uso', 'pacientes', 'ventas'):
+            inventario(pagina, tab)
+            medir(pagina.locator('.top h1'))
+            if tab != 'ventas':
+                pagina.locator('.fila-lista').first.click()
+                medir(pagina.locator('.ficha-cab h1, .cab-paciente h1'))
+                cerrar_hoja(pagina)
+        pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender').click()
+        medir(pagina.get_by_role('dialog', name='Nueva venta').get_by_role('heading', name='Nueva venta'))
+    finally:
+        sitio.cerrar()
+
+
 def prueba_conteo_guiado(navegador, perfil=None):
     sitio = Sitio(navegador, color='dark', perfil=perfil)
     try:
@@ -3947,6 +4169,66 @@ def capturar_t15(navegador, perfil, guardar):
                 sitio.cerrar()
 
 
+def capturar_t16(navegador, perfil, guardar):
+    for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
+        for dispositivo, sufijo in [(None, ''), (perfil, '-iphone14pro'), (PERFIL_ANDROID_360, '-360')]:
+            sitio = Sitio(navegador, color=color, perfil=dispositivo)
+            try:
+                if dispositivo is None:
+                    sitio.pagina.add_init_script("Object.defineProperty(navigator, 'userAgent', {value:'iPhone'});")
+                pagina = sitio.abrir(quien='Elba')
+                if dispositivo is not PERFIL_ANDROID_360:
+                    cargar_ejemplo_t15(pagina)
+                    pagina.clock.fast_forward(5000)
+                pagina.evaluate('window.scrollTo(0, 0)')
+                tema_dispositivo = tema + sufijo
+                guardar(sitio, 'inicio-invitacion', tema_dispositivo)
+                if dispositivo is PERFIL_ANDROID_360:
+                    continue
+
+                invitacion = pagina.get_by_role('region', name='SPARATI en tu pantalla de inicio')
+                invitacion.get_by_role('button', name='Ver los pasos').click()
+                guardar(sitio, 'guia-safari', tema_dispositivo)
+                pagina.get_by_role('button', name='Entendido').click()
+                expect(invitacion).to_have_count(0)
+
+                inventario(pagina, 'venta')
+                pagina.locator('#qProd').fill('Gel de')
+                pagina.locator('#qProd').blur()
+                guardar(sitio, 'inventario', tema_dispositivo)
+                inventario(pagina, 'ventas')
+                pagina.get_by_role('group', name='Compartir reporte de ventas').evaluate(
+                    "el => el.scrollIntoView({block:'center'})")
+                guardar(sitio, 'reportes-excel', tema_dispositivo)
+                pagina.locator('#listaVentas .venta:has(.it span:nth-child(2))').first.evaluate(
+                    "el => el.scrollIntoView({block:'center'})")
+                guardar(sitio, 'historial-ventas', tema_dispositivo)
+
+                ajustes = abrir_ajustes(pagina)
+                guardar(sitio, 'ajustes', tema_dispositivo)
+                ajustes.locator('summary').click()
+                ajustes.locator('.hoja-cuerpo').evaluate('el => el.scrollTop = el.scrollHeight')
+                guardar(sitio, 'ajustes-avanzado', tema_dispositivo)
+                ajustes.get_by_role('region', name='Este celular').evaluate(
+                    "el => el.scrollIntoView({block:'start'})")
+                guardar(sitio, 'preferencias', tema_dispositivo)
+                ajustes.get_by_role('button', name='Categorías').click()
+                pagina.get_by_role('dialog', name='Categorías').get_by_role('button', name='Uso en spa').click()
+                guardar(sitio, 'categorias', tema_dispositivo)
+                cerrar_hoja(pagina)
+                ajustes.get_by_role('button', name='Plantillas de WhatsApp').click()
+                guardar(sitio, 'plantillas', tema_dispositivo)
+            finally:
+                sitio.cerrar()
+
+        sitio = Sitio(navegador, color=color)
+        try:
+            sitio.abrir(quien=None)
+            guardar(sitio, 'bienvenida', tema)
+        finally:
+            sitio.cerrar()
+
+
 def capturar(navegador, tarea, perfil=None):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
@@ -3962,6 +4244,9 @@ def capturar(navegador, tarea, perfil=None):
 
     if tarea == 'T15':
         capturar_t15(navegador, perfil, guardar)
+        return
+    if tarea == 'T16':
+        capturar_t16(navegador, perfil, guardar)
         return
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         if tarea == 'T14':
@@ -4474,7 +4759,7 @@ def medir_arranque(navegador, perfil):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capturas', nargs='?', const='T14',
-                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15'],
+                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16'],
                         help='guardar capturas en modo claro y oscuro (T14 por omisión)')
     parser.add_argument('--rendimiento', action='store_true', help='medir el arranque con CPU limitada en Chromium')
     args = parser.parse_args()
@@ -4500,7 +4785,9 @@ def main():
                         prueba_ajustes_v2, prueba_envio_compartido, prueba_respaldo_completo, prueba_invitacion_instalar,
                         prueba_bienvenida, prueba_recepcion_bienvenida, prueba_accesibilidad_final, prueba_animacion_carrito,
                         prueba_t15_fechas_y_proveedor, prueba_t15_reportes_ejemplo, prueba_t15_stock_compartido,
-                        prueba_t15_cifras_de_titulo, prueba_t15_medidas_y_presentacion]
+                        prueba_t15_cifras_de_titulo, prueba_t15_medidas_y_presentacion,
+                        prueba_t16_buscador_inicio, prueba_t16_iniciales_y_marcas, prueba_t16_categorias,
+                        prueba_t16_historial_y_excel, prueba_t16_ajustes, prueba_t16_plantillas, prueba_t16_titulos]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue
@@ -4512,7 +4799,7 @@ def main():
                     prueba(navegador)
                     print(f'{motor.name}: {prueba.__name__} pasó')
                 if motor.name == 'chromium':
-                    for prueba in principales:
+                    for prueba in pruebas:
                         prueba(navegador, perfil=p.devices[modelo])
                         print(f'{motor.name} con {modelo}: {prueba.__name__} pasó')
                 if args.capturas and motor.name == 'chromium':
