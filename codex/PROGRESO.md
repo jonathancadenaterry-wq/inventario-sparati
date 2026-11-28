@@ -3,8 +3,8 @@
 _Codex: agrega una entrada al final en cada corrida (fecha y hora de Ecuador, tarea, lo hecho, lo que sigue)._
 
 ## Estado
-- Tarea actual: T14 completada en `prueba/`. Sigue la revisión en los celulares de Elba y Jonathan.
-- Última corrida: 27-nov-2026, 20:50–20:53 (Ecuador) · revisión de las capturas de T14 y pruebas
+- Tarea actual: T15 completada en `prueba/`. Sigue T16.
+- Última corrida: 28-nov-2026, 00:20–00:39 (Ecuador) · T15 y revisión de las capturas de T14
 
 ## Preguntas para Jonathan
 - (ninguna)
@@ -400,3 +400,35 @@ Las 15 tareas de `TAREAS.md`, de T0 a T14, figuran como completas. Revisé las o
 `python3 codex/pruebas/correr.py` terminó en una sola ejecución. Pasaron las 49 pruebas en Chromium a 390×844 y las 43 en Chromium con el perfil de iPhone 14 Pro. Se verificaron el intercambio de archivos con la versión 1 en ambos sentidos, la migración simulada y la recarga sin conexión. La revisión solo actualizó esta bitácora.
 
 Sigue la validación en los celulares de Elba y Jonathan, con la instalación desde el navegador, el envío y la recepción por WhatsApp y la restauración desde Archivos o Drive.
+
+### 28-nov-2026 · 00:20 (Ecuador) · Inicio de T15
+
+Revisé las ocho capturas de T14 en oscuro antes de cambiar la interfaz. Tomé como referencia los avisos de `Main.png`, los selectores de `Inventario.png` y las hojas inferiores de `Vender.png`.
+
+- **Invitación y guía de Safari.** La tarjeta queda debajo de los avisos y menciona un respaldo que «Ver los pasos» no explica. Falta el ícono junto a «Compartir». En ambas capturas de Inicio, «30 cc» se parte y deja «cc» solo en la segunda línea.
+- **Ajustes y preferencias.** El título se ve más pequeño que los 28–30 px del diseño. El tamaño de letra queda parcialmente visible al abrir Ajustes. En la captura desplazada, «Cargar datos de ejemplo» se ve tenue y cortado, aunque el texto encima ya confirma que están cargados.
+- **Categorías y plantillas.** El fondo de la opción activa apenas se distingue en oscuro, también en Preferencias. Categorías repite el grupo activo como título de la lista. Los dos campos de Plantillas dejan el tirador de redimensionamiento pegado a la esquina.
+- **Envío y respaldo.** En Envío falta explicar cómo adjuntar el archivo descargado en el chat. Respaldo sí explica dónde guardar el archivo y cómo volver a abrirlo. Las dos hojas muestran un tirador que parece arrastrable y, en las capturas, se cierran con el botón de la esquina.
+
+Quedaron incorporadas T15 y T16 en `TAREAS.md`. Esta corrida empieza por T15.
+
+**Cambios de T15**
+
+- En Nuevo producto, los dos campos de fecha caben dentro de su columna. Nombre y WhatsApp del proveedor quedan alineados por abajo aunque el rótulo de WhatsApp ocupe dos líneas.
+- Reportes › Inventario muestra costo y precio de venta para «Para vender» y solo costo para «Uso en spa». El desglose también se usa al imprimir y compartir. En Cabina, los cuatro productos principales y «Otros» suman el gasto total. El CSV de Cabina conserva los productos individuales.
+- Nueva venta, Inventario y «Por terminarse» usan el mismo criterio para el rojo de las existencias. En Nueva venta, Hydrating Foaming Cleanser muestra 100 ml y 200 ml debajo del nombre. Las cifras de Playfair Display se ven en caja alta. Las cantidades, los importes y las medidas de los nombres quedan unidos en pantalla. Los nombres guardados conservan sus espacios.
+- La hoja de descarga indica el nombre del archivo y cómo adjuntarlo en WhatsApp. Compartir con éxito o confirmar «Sí» registra la fecha. Cerrar Compartir, un error del menú o «Todavía no» conservan la fecha y el aviso de siete días.
+
+**Para que Elba vuelva a revisar en su iPhone 14 Pro**
+
+1. En Safari y desde el ícono de inicio, abrir Nuevo producto. Tocar y llenar las dos fechas. Comprobar que «Lote» se pueda tocar por separado y que ningún campo salga de la tarjeta. Confirmar que los dos cuadros de Proveedor queden a la misma altura.
+2. Abrir Reportes para ver los importes de cada grupo en Inventario y la fila «Otros» en Cabina. Mirar también que las cifras semanales queden en una línea.
+3. Buscar Hydrating Foaming Cleanser en Nueva venta. Comprobar los tamaños y comparar «Queda 1» con y sin mínimo de aviso, además de un producto agotado. Revisar el cero de «Venta · 0 productos».
+4. En Inicio, mirar que «30 cc» quede junto. En Inventario, revisar «3 %» en Gel de Ácido Tranexámico. En Pacientes, revisar que el símbolo y los centavos se vean juntos en la lista y la ficha.
+5. Probar Enviar a Jonathan con datos de ejemplo. Cerrar el menú de iOS y comprobar la fecha. Repetir compartiendo el archivo, abrirlo con «Recibir» y revisar que la fecha avance. Si Safari ofrece descargar, seguir el paso de adjuntar el nombre que indica la hoja y comprobar «Todavía no» y «Sí». Revisar el aviso de Inicio después de cada intento.
+
+**Verificación**
+
+- Pasaron 54 pruebas en Chromium a 390×844 y 48 con el perfil iPhone 14 Pro. Vencimiento, Proveedor, cantidades y tamaño también se probaron a 360×800. El recorrido completo se verificó por tandas después de que se interrumpió la primera ejecución. Pasaron el intercambio en ambos sentidos con la versión 1, la migración simulada y la recarga sin conexión.
+- Quedaron 44 capturas T15 en claro y oscuro. Hay 22 de 390×844 y 22 de 393×660, el área visible del perfil iPhone 14 Pro en Playwright. Se compararon con `Main.png`, `Inventario.png`, `Reportes.png`, `Vender.png` y `Paciente.png`. Cabina se desplazó en el perfil iPhone para mostrar el total y «Otros» juntos. Las fechas siguen el formato del calendario nativo de cada navegador.
+- T15 queda marcada como completa. Sigue T16 con el pulido de la revisión. Queda pendiente la comprobación de Safari en el iPhone físico con los pasos de arriba.

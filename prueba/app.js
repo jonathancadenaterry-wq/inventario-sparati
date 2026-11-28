@@ -47,11 +47,14 @@ function cantidadEscrita(valor){
   const cantidad = num(texto);
   return Number.isSafeInteger(Math.round(cantidad * 100)) ? red(cantidad) : null;
 }
-const fCant = n => (Math.round(n * 100) / 100).toLocaleString('es-EC', {maximumFractionDigits:2, useGrouping:false});
+const unirMedida = (primero, segundo) => segundo ? primero + '\u00a0' + segundo : primero;
+const fCant = (n, unidad) => unirMedida(red(n).toLocaleString('es-EC', {maximumFractionDigits:2, useGrouping:false}), unidad);
+const nombreVisible = nombre => String(nombre ?? '').replace(/(\d)[ \t]+(?=%|(?:ml|g|cc|mg)\b)/gi, '$1\u00a0');
+const duracionDias = dias => fCant(dias, dias === 1 ? 'día' : 'días');
 const SING = {unidades:'unidad', frascos:'frasco', cajas:'caja', ampollas:'ampolla', jeringas:'jeringa', sobres:'sobre', pares:'par', paquetes:'paquete'};
 const singular = u => SING[u] || u || 'unidad';
 const uTxt = (n, u) => Math.abs(n) === 1 ? singular(u) : (u || 'unidades');
-const dinero = n => '$ ' + red(n || 0).toLocaleString('es-EC', {minimumFractionDigits:2, maximumFractionDigits:2});
+const dinero = n => unirMedida('$', red(n || 0).toLocaleString('es-EC', {minimumFractionDigits:2, maximumFractionDigits:2}));
 const dineroIn = n => (n || n === 0) && isFinite(n) ? (red(n) % 1 ? red(n).toFixed(2) : String(red(n))).replace('.', ',') : '';
 
 // ---------- Fechas ----------
@@ -76,8 +79,8 @@ function sumarMeses(s, m){
 function haceTxt(ms){
   if(!ms) return 'nunca';
   const d = Math.floor((ahora() - ms) / 86400000);
-  if(d <= 0){ const h = Math.floor((ahora() - ms) / 3600000); return h <= 0 ? 'hace un momento' : 'hace ' + h + (h === 1 ? ' hora' : ' horas'); }
-  return d === 1 ? 'ayer' : 'hace ' + d + ' días';
+  if(d <= 0){ const h = Math.floor((ahora() - ms) / 3600000); return h <= 0 ? 'hace un momento' : 'hace ' + fCant(h, h === 1 ? 'hora' : 'horas'); }
+  return d === 1 ? 'ayer' : 'hace ' + duracionDias(d);
 }
 
 // ---------- Estado ----------
@@ -163,17 +166,18 @@ function calcular(){
     CONSUMO.set(id, s / span);
   }
 }
+const stockBajo = (p, stock = stockDe(p.id)) => stock <= Math.max(0, p.min || 0);
 // Avisos de un producto: lo que se termina y lo que vence
 function avisosDe(p){
   const s = stockDe(p.id), out = [];
   const min = p.min || 0, c = CONSUMO.get(p.id);
-  if(s <= 0) out.push({clase:'stock', nivel:'bad', txt:'Agotado', orden:0});
-  else if(min > 0 && s <= min) out.push({clase:'stock', nivel:'bad', txt:`${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)}`, detalle:'avisas con ' + fCant(min), orden:1});
-  else if(c && s / c <= 14) out.push({clase:'stock', nivel:'warn', txt:`Alcanza para unos ${Math.max(1, Math.round(s / c))} días`, orden:2});
+  if(stockBajo(p, s)) out.push({clase:'stock', nivel:'bad', txt:textoStock(s),
+    detalle:s > 0 ? 'avisas con ' + fCant(min) : '', orden:s <= 0 ? 0 : 1});
+  else if(c && s / c <= 14) out.push({clase:'stock', nivel:'warn', txt:`Alcanza para unos ${fCant(Math.max(1, Math.round(s / c)), 'días')}`, orden:2});
   if(s > 0 && p.vence){
     const d = diasHasta(p.vence);
     if(d < 0) out.push({clase:'fecha', nivel:'bad', txt:'Venció el ' + fCorta(p.vence), orden:0});
-    else if(d <= E.ajustes.diasVence) out.push({clase:'fecha', nivel:'warn', txt:d === 0 ? 'Vence hoy' : `Vence en ${d} ${d===1?'día':'días'}`, detalle:d > 0 ? fCorta(p.vence) : '', orden:1});
+    else if(d <= E.ajustes.diasVence) out.push({clase:'fecha', nivel:'warn', txt:d === 0 ? 'Vence hoy' : `Vence en ${duracionDias(d)}`, detalle:d > 0 ? fCorta(p.vence) : '', orden:1});
   }
   if(s > 0 && p.abierto && p.pao > 0){
     const lim = sumarMeses(p.abierto, p.pao), d = diasHasta(lim);
@@ -670,7 +674,7 @@ function resumenInicio(fecha){
 function tarjetaVentasInicio(fecha){
   const r = resumenInicio(fecha);
   const comparacion = r.variacion === null ? (r.ventasPrevias ? dinero(r.previo) : 'Sin ventas') + ' en ' + r.anterior :
-    `${r.variacion > 0 ? '+' : ''}${r.variacion} % vs ${r.anterior}`;
+    `${r.variacion > 0 ? '+' : ''}${fCant(r.variacion, '%')} vs ${r.anterior}`;
   const mayor = Math.max(0, ...r.semana.map(d => d.total)) || 1;
   return `<section class="ventas-inicio" aria-labelledby="ventasInicio">
     <div class="ventas-inicio-cab"><h2 id="ventasInicio">Ventas de ${r.mes}</h2>
@@ -708,7 +712,7 @@ function ultimoCambio(){
 }
 function filaAtencion({imagen, titulo, detalle, accion, atributos = '', etiqueta, icono = '', contexto = titulo}){
   return `<li class="alerta atencion-fila">
-    ${imagen}<div class="tx"><b>${esc(titulo)}</b><div class="d">${detalle}</div></div>
+    ${imagen}<div class="tx"><b>${esc(nombreVisible(titulo))}</b><div class="d">${detalle}</div></div>
     <button class="btn sm soft" data-act="${accion}" ${atributos} aria-label="${esc(etiqueta + ' · ' + contexto)}">${icono}${etiqueta}</button>
   </li>`;
 }
@@ -731,7 +735,7 @@ function filasAtencion(avisos, filtro, muestra = false){
     const tiempo = p.duraPac - d;
     const detalle = tiempo > 0 ? 'Se acabaría esta semana' : tiempo === 0 ? 'Se acabaría hoy' : 'Ya se le habría terminado';
     return filaAtencion({
-      imagen:avatar(paciente, 'persona'), titulo:paciente.nombre, detalle:`${esc(p.nombre)} · ${detalle}`,
+      imagen:avatar(paciente, 'persona'), titulo:paciente.nombre, detalle:`${esc(nombreVisible(p.nombre))} · ${detalle}`,
       accion:'recompra', atributos:`data-v="${esc(v.id)}" data-p="${esc(p.id)}"`,
       etiqueta:'Escribir', icono:IC.chat, contexto:paciente.nombre + ' · ' + p.nombre,
     });
@@ -814,7 +818,7 @@ function vInicio(){
     ${pc.length ? `<section class="card pendiente-inicio"><div class="card-cab"><h2 class="titulo-seccion">Por cobrar</h2>
       <b class="num">${dinero(pc.reduce((s, v) => s + totalVenta(v), 0))}</b></div>
       ${pc.slice(0, 6).map(v => `<button class="alerta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="tx"><b>${esc(v.pac || 'Sin nombre')}</b>
-        <div class="d">${esc(fCorta(v.fecha))} · ${esc(v.items.map(i => i.nombre).join(', '))}</div></div>
+        <div class="d">${esc(fCorta(v.fecha))} · ${esc(nombreVisible(v.items.map(i => i.nombre).join(', ')))}</div></div>
         <span class="pill warn num">${dinero(totalVenta(v))}</span></button>`).join('')}
     </section>` : ''}
     ${!productos().length ? `<section class="card"><h2 class="titulo-seccion">Agrega tus primeros productos</h2>
@@ -865,7 +869,7 @@ function resumenInventario(ps, tipo){
     ? `<details class="cifra cantidades-inventario">
       <summary><span class="l">Cantidades</span><span class="ver-unidades">Ver por unidad ${IC.siguiente}</span></summary>
       <ul>${[...porUnidad].sort(([a], [b]) => a.localeCompare(b, 'es')).map(([u, n]) =>
-        `<li>${fCant(n)} ${esc(uTxt(n, u))}</li>`).join('')}</ul>
+        `<li>${esc(fCant(n, uTxt(n, u)))}</li>`).join('')}</ul>
     </details>`
     : `<div class="cifra"><span class="l">${esc(unidad === 'ml' || unidad === 'g' ? unidad : cap(unidad))}</span><span class="v num">${fCant(total)}</span></div>`;
   return `<div class="cifras estadisticas-inventario">
@@ -943,15 +947,14 @@ function listaHTML(tipo, todos = productos(tipo)){
 }
 function pildoraStock(p, avs = avisosDe(p)){
   const s = stockDe(p.id), cantidad = fCant(s);
-  const bajo = s <= (p.min || 0);
+  const bajo = stockBajo(p, s);
   const fechas = avs.filter(a => a.clase === 'fecha');
-  const estado = bajo || fechas.some(a => a.nivel === 'bad') ? 'bad' : fechas.length ? 'warn' : 'ok';
-  const texto = s <= 0 ? 'Agotado' : bajo ? `${s === 1 ? 'Queda' : 'Quedan'} ${cantidad}` : cantidad;
-  return `<span class="pill stock ${estado}" title="${cantidad} ${esc(uTxt(s, p.unidad))}">${texto}</span>`;
+  const estado = bajo ? 'bad' : fechas.length ? 'warn' : 'ok';
+  return `<span class="pill stock ${estado}" title="${esc(fCant(s, uTxt(s, p.unidad)))}">${bajo ? textoStock(s) : cantidad}</span>`;
 }
 const textoStock = s => s <= 0 ? 'Agotado' : `${s === 1 ? 'Queda' : 'Quedan'} ${fCant(s)}`;
 function filaProducto(p, accion = 'verProd', mostrarMarca = false){
-  const [nombre, ...presentacion] = p.nombre.split(' · ');
+  const [nombre, ...presentacion] = nombreVisible(p.nombre).split(' · ');
   const avs = avisosDe(p);
   const aviso = avs.find(a => a.clase === 'fecha') || avs.find(a => a.clase === 'stock' && a.nivel === 'warn');
   const precio = p.tipo === 'venta' && p.precio ? `<span class="sin-salto">${dinero(p.precio)}</span>` : '';
@@ -1014,6 +1017,18 @@ function datosReporteCabina(mes, catalogo){
   }
   return {gasto:red(gasto), terminados, sinCostoGuardado, productos:[...usados.values()].sort(ORDEN_REPORTE)};
 }
+function rankingCabina({productos, gasto}){
+  // Redondea el acumulado para que las filas sumen el total hasta el centavo.
+  let acumulado = 0;
+  const filas = productos.slice(0, 4).map(p => {
+    const anterior = red(acumulado);
+    acumulado += p.monto;
+    return {...p, monto:red(red(acumulado) - anterior)};
+  });
+  const resto = red(gasto - red(acumulado));
+  if(resto) filas.push({nombre:'Otros', monto:resto});
+  return filas;
+}
 function datosReporteInventario(mes, catalogo){
   const hoy = hoyISO();
   const corte = hoy.startsWith(mes) ? hoy : finMes(mes);
@@ -1024,19 +1039,22 @@ function datosReporteInventario(mes, catalogo){
     existencias.set(m.prod, (existencias.get(m.prod) || 0) + m.cant);
     if(m.cant !== 0 && m.fecha >= desde) recientes.add(m.prod);
   }
-  let costo = 0, precio = 0;
+  let costoVenta = 0, precioVenta = 0, costoSpa = 0;
   const quietos = [], vencen = [];
   for(const p of catalogo.values()){
     const cant = red(existencias.get(p.id) || 0);
     if(p.borrado || cant <= 0) continue;
     const monto = cant * (p.costo || 0);
-    costo += monto;
-    if(p.tipo === 'venta') precio += cant * (p.precio || 0);
+    if(p.tipo === 'venta'){
+      costoVenta += monto;
+      precioVenta += cant * (p.precio || 0);
+    }else costoSpa += monto;
     const fila = {id:p.id, nombre:p.nombre, cant, unidad:p.unidad || 'unidades', monto, fecha:p.vence};
     if(!recientes.has(p.id)) quietos.push(fila);
     if(p.vence >= corte && p.vence <= hasta) vencen.push(fila);
   }
-  return {corte, costo:red(costo), precio:red(precio), quietos:quietos.sort(ORDEN_REPORTE),
+  return {corte, costoVenta:red(costoVenta), precioVenta:red(precioVenta), costoSpa:red(costoSpa),
+    quietos:quietos.sort(ORDEN_REPORTE),
     vencen:vencen.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.nombre.localeCompare(b.nombre, 'es'))};
 }
 function datosReporte(){
@@ -1056,11 +1074,11 @@ function filaReporte(etiqueta, valor, icono){
     <span>${esc(etiqueta)}</span><b class="num">${valor}</b></li>`;
 }
 function barrasReporte(titulo, filas, nota = ''){
-  const maximo = filas[0]?.monto || 1;
+  const maximo = Math.max(0, ...filas.map(f => f.monto)) || 1;
   return `<section class="card tarjeta-reporte"><h2>${titulo}</h2>
     ${nota ? `<p class="nota-reporte">${nota}</p>` : ''}
-    ${filas.length ? `<ul class="lista-reporte ranking-reporte">${filas.slice(0, 4).map(f => `<li>
-      <div><strong>${esc(f.nombre)}</strong><span>${fCant(f.cant)} ${esc(uTxt(f.cant, f.unidad))} · <b class="num">${dinero(f.monto)}</b></span></div>
+    ${filas.length ? `<ul class="lista-reporte ranking-reporte">${filas.map(f => `<li>
+      <div><strong>${esc(nombreVisible(f.nombre))}</strong><span>${f.unidad ? esc(fCant(f.cant, uTxt(f.cant, f.unidad))) + ' · ' : ''}<b class="num sin-salto">${dinero(f.monto)}</b></span></div>
       <i style="--proporcion:${Math.max(0, f.monto / maximo * 100)}%" aria-hidden="true"></i></li>`).join('')}</ul>` :
       '<p class="nota-reporte">Todavía no hay registros en este mes.</p>'}</section>`;
 }
@@ -1070,7 +1088,7 @@ function reporteVentasHTML(r){
   return `${r.cantidad ? '' : `<div class="card vacio no-imprimir-reporte"><p>Todavía no hay ventas este mes. Las ventas que registres se agrupan por su fecha.</p></div>`}
   <div class="cifras cifras-reporte">
     ${cifraReporte('Vendido', dinero(r.total))}
-    ${cifraReporte('Ganancia', dinero(r.ganancia), r.total > 0 ? fCant(red(r.ganancia / r.total * 1000) / 10) + ' % del total' : '',
+    ${cifraReporte('Ganancia', dinero(r.ganancia), r.total > 0 ? fCant(red(r.ganancia / r.total * 1000) / 10, '%') + ' del total' : '',
       r.ganancia < 0 ? 'perdida-reporte' : 'ganancia-reporte')}
     ${cifraReporte('Ventas', fCant(r.cantidad))}
     ${cifraReporte('Venta promedio', dinero(r.promedio))}
@@ -1086,7 +1104,7 @@ function reporteVentasHTML(r){
       </li>`).join('')}
     </ul>
   </section>
-  ${barrasReporte('Lo más vendido', r.productos, r.descuentos ? 'Montos antes de los descuentos.' : '')}` : ''}
+  ${barrasReporte('Lo más vendido', r.productos.slice(0, 4), r.descuentos ? 'Montos antes de los descuentos.' : '')}` : ''}
   <ul class="card lista-reporte totales-reporte" aria-label="Otros datos del mes">
     ${filaReporte('Gasto en cabina', dinero(r.gastoCabina), 'gota')}
     ${filaReporte('Pacientes que compraron', fCant(r.pacientes), 'pacientes')}
@@ -1101,23 +1119,30 @@ function reporteCabinaHTML(r){
     ${cifraReporte('Gasto en cabina', dinero(r.gasto))}
     ${cifraReporte('Frascos terminados', fCant(r.terminados))}
   </div>
-  ${barrasReporte('Lo que más se gastó', r.productos,
+  ${barrasReporte('Lo que más se gastó', rankingCabina(r),
     r.sinCostoGuardado ? 'Para usos antiguos sin costo registrado se usa el costo actual.' : '')}`;
 }
 function listaReporteInventario(titulo, filas, vacio, porVencer = false){
   return `<section class="card tarjeta-reporte"><h2>${titulo}</h2>
     ${filas.length ? `<ul class="lista-reporte inventario-reporte-lista">${filas.map(f => `<li>
       <button data-act="verProd" data-id="${esc(f.id)}">
-        <strong>${esc(f.nombre)}</strong>
-        <span>${fCant(f.cant)} ${esc(uTxt(f.cant, f.unidad))}${porVencer ? ' · Vence el ' + fCorta(f.fecha) : ' · ' + dinero(f.monto)}</span>
+        <strong>${esc(nombreVisible(f.nombre))}</strong>
+        <span>${esc(fCant(f.cant, uTxt(f.cant, f.unidad)))}${porVencer ? ' · Vence el ' + fCorta(f.fecha) : ' · ' + dinero(f.monto)}</span>
         ${IC.siguiente}
       </button></li>`).join('')}</ul>` : `<p class="nota-reporte">${vacio}</p>`}</section>`;
 }
 function reporteInventarioHTML(r){
-  return `<div class="cifras cifras-reporte">
-    ${cifraReporte('Valor a costo', dinero(r.costo))}
-    ${cifraReporte('Valor a precio de venta', dinero(r.precio))}
-  </div>
+  return `<section class="card tarjeta-reporte" aria-labelledby="valorParaVender">
+    <h2 id="valorParaVender">Para vender</h2>
+    <ul class="lista-reporte totales-reporte">
+      ${filaReporte('Valor a costo', dinero(r.costoVenta))}
+      ${filaReporte('Valor a precio de venta', dinero(r.precioVenta))}
+    </ul>
+  </section>
+  <section class="card tarjeta-reporte" aria-labelledby="valorUsoSpa">
+    <h2 id="valorUsoSpa">Uso en spa</h2>
+    <ul class="lista-reporte totales-reporte">${filaReporte('Valor a costo', dinero(r.costoSpa))}</ul>
+  </section>
   <p class="nota-reporte">Existencias al ${fCorta(r.corte)}. Los costos, precios y vencimientos vienen del catálogo actual.</p>
   ${listaReporteInventario('Sin movimiento en 60 días', r.quietos, 'No hay productos con existencias paradas.')}
   ${listaReporteInventario('Vencen en los próximos 90 días', r.vencen, 'No hay productos por vencer en ese plazo.', true)}`;
@@ -1165,14 +1190,18 @@ function textoReporte(r){
     lineas.push(`Gasto en cabina: ${dinero(r.gasto)}`, `Frascos terminados: ${r.terminados}`);
     if(r.sinCostoGuardado) lineas.push('Para usos antiguos sin costo registrado se usa el costo actual.');
   }else{
-    lineas.push(`Existencias al ${fCorta(r.corte)}`, `Valor a costo: ${dinero(r.costo)}`,
-      `Valor a precio de venta: ${dinero(r.precio)}`,
+    lineas.push(`Existencias al ${fCorta(r.corte)}`, 'Para vender',
+      `Valor a costo: ${dinero(r.costoVenta)}`, `Valor a precio de venta: ${dinero(r.precioVenta)}`,
+      'Uso en spa', `Valor a costo: ${dinero(r.costoSpa)}`,
       `Productos sin movimiento en 60 días: ${r.quietos.length}`,
       `Productos que vencen en los próximos 90 días: ${r.vencen.length}`);
   }
   if(r.productos?.length){
     const titulo = tipo === 'cabina' ? 'Lo que más se gastó' : 'Lo más vendido';
-    lineas.push('', titulo, ...r.productos.slice(0, 3).map(p => `• ${p.nombre}: ${fCant(p.cant)} ${uTxt(p.cant, p.unidad)}`));
+    const filas = tipo === 'cabina'
+      ? rankingCabina(r).map(p => `• ${p.nombre}: ${dinero(p.monto)}`)
+      : r.productos.slice(0, 3).map(p => `• ${p.nombre}: ${fCant(p.cant, uTxt(p.cant, p.unidad))}`);
+    lineas.push('', titulo, ...filas);
   }
   return lineas.join('\n');
 }
@@ -1199,8 +1228,9 @@ function filasCSVReporte(r){
     if(r.sinCostoGuardado) fila('Cabina', 'Para usos antiguos sin costo registrado se usa el costo actual.');
     productos('Lo que más se gastó', r.productos);
   }else{
-    fila('Inventario', 'Valor a costo', {fecha:r.corte, monto:r.costo});
-    fila('Inventario', 'Valor a precio de venta', {fecha:r.corte, monto:r.precio});
+    fila('Para vender', 'Valor a costo', {fecha:r.corte, monto:r.costoVenta});
+    fila('Para vender', 'Valor a precio de venta', {fecha:r.corte, monto:r.precioVenta});
+    fila('Uso en spa', 'Valor a costo', {fecha:r.corte, monto:r.costoSpa});
     fila('Inventario', 'Costos, precios y vencimientos del catálogo actual.', {fecha:r.corte});
     fila('Inventario', 'Productos sin movimiento en 60 días', {fecha:r.corte, cant:r.quietos.length});
     fila('Inventario', 'Productos que vencen en los próximos 90 días', {fecha:r.corte, cant:r.vencen.length});
@@ -1229,7 +1259,7 @@ function listaVentasHTML(){
   for(const v of vs){
     if(v.fecha !== dia){ dia = v.fecha; h += `<div class="dia-tit">${esc(fDia(v.fecha))}${q && v.fecha.slice(0,4) !== String(new Date().getFullYear()) ? ' ' + v.fecha.slice(0,4) : ''}</div>`; }
     h += `<button class="venta" data-act="editarVenta" data-id="${esc(v.id)}"><div class="c"><span class="pac">${esc(v.pac || 'Sin nombre')}</span><span class="tot num">${dinero(totalVenta(v))}</span></div>
-      <div class="it">${esc(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(' · '))}</div>
+      <div class="it">${esc(nombreVisible(v.items.map(i => fCant(i.cant) + ' × ' + i.nombre).join(' · ')))}</div>
       <div class="c"><span class="pill ${v.cobrado ? 'acc' : 'warn'}">${esc(v.cobrado ? cap(v.pago) : 'Por cobrar')}</span>${v.por ? `<span class="peq muted">Registró ${esc(v.por)}</span>` : ''}</div></button>`;
   }
   return h;
@@ -1263,7 +1293,7 @@ function pintarProd(d){
   }
 }
 function estructuraFicha(p, contenido){
-  const id = esc(p.id), [nombre, ...presentacion] = p.nombre.split(' · ');
+  const id = esc(p.id), [nombre, ...presentacion] = nombreVisible(p.nombre).split(' · ');
   const titulo = esc(nombre) + (presentacion.length ? `<span class="solo-lectura"> · ${esc(presentacion.join(' · '))}</span>` : '');
   const venta = p.tipo === 'venta';
   return `<div class="hoja-cuerpo"><div class="ficha-portada">
@@ -1297,7 +1327,7 @@ function fichaVenta(p, s, avisos, consumo, movs){
   const llenos = Math.max(0, Math.min(5, Math.ceil(5 * s / escala)));
   const dias = consumo && Math.max(1, Math.round(s / consumo));
   const prediccion = s > 0 && consumo ?
-    `Vendes unos <b>${fCant(consumo * 30)} al mes</b> y se acabaría en <b>~${dias} ${dias === 1 ? 'día' : 'días'}</b>.` :
+    `Vendes unos <b>${fCant(consumo * 30)} al mes</b> y se acabaría en <b>~${duracionDias(dias)}</b>.` :
     s > 0 ? 'Con más ventas podremos estimar cuánto durará.' : '';
   const avisoMin = p.min > 0 ? `Te aviso cuando ${p.min === 1 ? 'quede' : 'queden'} ${fCant(p.min)}.` : '';
   const ventas = new Map(vivos(E.ventas).filter(v => v.items.some(i => i.prod === p.id)).map(v => [v.id, v]));
@@ -1306,8 +1336,8 @@ function fichaVenta(p, s, avisos, consumo, movs){
   const costo = p.costo || 0, precio = p.precio || 0;
   const margen = precio > 0 && costo > 0 ? red(precio - costo) : null;
   const datos = [
-    p.duraPac && ['A la paciente le dura', `Unos ${p.duraPac} días`],
-    p.pao && ['Dura abierto', `${p.pao} ${p.pao === 1 ? 'mes' : 'meses'}`],
+    p.duraPac && ['A la paciente le dura', `Unos ${duracionDias(p.duraPac)}`],
+    p.pao && ['Dura abierto', fCant(p.pao, p.pao === 1 ? 'mes' : 'meses')],
     p.abierto && ['Se abrió', fCorta(p.abierto)],
     p.prov && ['Proveedor', [p.prov, p.telProv].filter(Boolean).join(' · ')],
     p.notas && ['Notas', p.notas],
@@ -1328,7 +1358,7 @@ function fichaVenta(p, s, avisos, consumo, movs){
       <div class="cifra"><span class="l">Precio</span><b class="v num">${precio ? dinero(precio) : '—'}</b></div>
       <div class="cifra"><span class="l">Costo</span><b class="v num">${costo ? dinero(costo) : '—'}</b></div>
       <div class="cifra ganancia${margen < 0 ? ' negativa' : ''}"><span class="l">Ganancia</span><b class="v num">${margen === null ? '—' : dinero(margen)}</b>
-        ${margen === null ? '' : `<span class="porcentaje">${Math.round(margen / precio * 100)} %</span>`}</div>
+        ${margen === null ? '' : `<span class="porcentaje">${fCant(Math.round(margen / precio * 100), '%')}</span>`}</div>
     </div>
     <section class="card datos-ficha" aria-label="Datos del producto">
       <button class="dato-ficha" data-act="asignarCodigo" data-id="${id}"><span class="dato-ico">${IC.escaneo}</span><span>Código de barras</span>
@@ -1378,7 +1408,6 @@ function filaHistorial(m, venta, frasco){
 const etiquetaMotivo = motivo => Object.hasOwn(MOTIVOS, motivo) ? MOTIVOS[motivo] : motivo;
 const esPorFrasco = p => p?.tipo === 'uso' && p.unidad === 'frascos';
 const frascoTerminado = m => m.tipo === 'uso' && m.cant === -1 && m.motivo === 'terminado';
-const duracionDias = dias => `${fCant(dias)} ${dias === 1 ? 'día' : 'días'}`;
 const movimientoApertura = (prod, fecha) => marcar({id:uid(), prod, fecha, tipo:'apertura', cant:0}, true);
 
 function aperturaVigente(movs){
@@ -1435,7 +1464,7 @@ function tarjetaFrasco(p, s, avisos, rendimiento){
         <button class="btn" data-act="abrirFrasco" data-id="${id}" ${s < 1 ? 'disabled' : ''}>${IC.gota} Abrí uno nuevo</button></div>
     </section>
     <div class="cifras resumen-cabina" role="group" aria-label="Existencias y costo">
-      <div class="cifra"><span class="l">Sin abrir</span><b class="v num">${fCant(sinAbrir)} ${uTxt(sinAbrir, 'frascos')}</b></div>
+      <div class="cifra"><span class="l">Sin abrir</span><b class="v num">${fCant(sinAbrir, uTxt(sinAbrir, 'frascos'))}</b></div>
       <div class="cifra costo-dia"><span class="l">Costo por día</span><b class="v num">${promedio && p.costo > 0 ? dinero(p.costo / promedio) : '—'}</b>
         ${p.costo > 0 ? `<span>${dinero(p.costo)} el frasco</span>` : ''}</div>
     </div>`;
@@ -1447,9 +1476,9 @@ function tarjetaTratamiento(p, s, avisos, consumo){
   return `<section class="card stock-ficha ${stock?.nivel || 'ok'}" aria-label="Existencias">
     <div class="det-stock"><span class="q num">${fCant(s)}</span><span class="u">${esc(uTxt(s, p.unidad))} en stock</span>
       <span class="pill ${stock?.nivel || 'ok'}">${s <= 0 ? 'Agotado' : stock ? 'Por terminarse' : 'Disponible'}</span></div>
-    ${consumo ? `<p>Usas unos <b>${fCant(consumo * 30)} ${esc(p.unidad || 'unidades')} al mes</b>.</p>` : ''}
+    ${consumo ? `<p>Usas unos <b>${esc(fCant(consumo * 30, p.unidad || 'unidades'))} al mes</b>.</p>` : ''}
     ${avisosFechaFicha(avisos)}
-    <div class="acciones-cabina"><button class="btn" data-act="usarRapido" data-id="${id}">${IC.gota} Usar ${fCant(gasto)} ${esc(uTxt(gasto, p.unidad))}</button>
+    <div class="acciones-cabina"><button class="btn" data-act="usarRapido" data-id="${id}">${IC.gota} Usar ${esc(fCant(gasto, uTxt(gasto, p.unidad)))}</button>
       <button class="btn ghost" data-act="usar" data-id="${id}">Otra cantidad</button></div>
   </section>`;
 }
@@ -1462,13 +1491,13 @@ function fichaCabina(p, s, avisos, consumo, movs){
   const datosExtra = [
     !frascos && p.costo > 0 && ['Costo', `${dinero(p.costo)} por ${singular(p.unidad)}`],
     !frascos && p.abierto && ['Se abrió', fCorta(p.abierto)],
-    p.min > 0 && ['Avisar cuando queden', `${fCant(p.min)} ${uTxt(p.min, p.unidad)}`],
+    p.min > 0 && ['Avisar cuando queden', `${fCant(p.min, uTxt(p.min, p.unidad))}`],
     p.notas && ['Notas', p.notas],
   ].filter(Boolean);
   return estructuraFicha(p, `
     ${frascos ? tarjetaFrasco(p, s, avisos, rendimiento) : tarjetaTratamiento(p, s, avisos, consumo)}
     <section class="card datos-ficha" aria-label="Datos del producto">
-      ${p.pao > 0 ? `<div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Abierto dura</span><b>${fCant(p.pao)} ${p.pao === 1 ? 'mes' : 'meses'}</b></div>` : ''}
+      ${p.pao > 0 ? `<div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Abierto dura</span><b>${fCant(p.pao, p.pao === 1 ? 'mes' : 'meses')}</b></div>` : ''}
       <div class="dato-ficha"><span class="dato-ico">${IC.calendario}</span><span>Vence</span><b>${venceFicha(p)}</b></div>
       ${p.telProv ? `<a class="dato-ficha" href="${waLink(p.telProv, `Hola, quisiera pedir ${p.nombre}${p.marca ? ' (' + p.marca + ')' : ''}. ¿Tienen disponible?`)}" target="_blank" rel="noopener">${fichaProveedor}</a>` :
         p.prov ? `<div class="dato-ficha">${fichaProveedor}</div>` : ''}
@@ -1612,7 +1641,7 @@ function pintarFormProd(){
     ${F.tipo === 'venta' ? `<section class="card"><h3>Para volver a ofrecer</h3>${campo('A la paciente le dura (días)', 'duraPac', {modo:'numeric', ph:'Ej.: 60', ayuda:'La app te recordará ofrecérselo de nuevo cuando ya se le esté terminando.'})}</section>` : ''}
     <section class="card">
       <h3>Proveedor</h3>
-      <div class="fila2">${campo('Nombre del proveedor', 'prov', {lista:'dlProv'})}${campo('WhatsApp del proveedor', 'telProv', {tipo:'tel', ph:'09…'})}</div>
+      <div class="fila2 fila-proveedor">${campo('Nombre del proveedor', 'prov', {lista:'dlProv'})}${campo('WhatsApp del proveedor', 'telProv', {tipo:'tel', ph:'09…'})}</div>
       <datalist id="dlProv">${provs.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
     </section>
     <section class="card">${campo('Notas', 'notas', {area:true, ph:'Ej.: guardar en refrigeración'})}</section>`;
@@ -1621,7 +1650,7 @@ function pintarFormProd(){
 }
 function textoMargen(){
   const pr = num(F.precio), co = num(F.costo);
-  return pr > 0 && co > 0 ? `Ganas <b>${dinero(pr - co)}</b> por cada uno (${Math.round((pr - co) / pr * 100)} %).` : '';
+  return pr > 0 && co > 0 ? `Ganas <b>${dinero(pr - co)}</b> por cada uno (${fCant(Math.round((pr - co) / pr * 100), '%')}).` : '';
 }
 async function guardarProd(){
   const nombre = F.nombre.trim();
@@ -1681,9 +1710,9 @@ async function guardarProd(){
 function formEntrada(id){
   const p = prodPorId(id);
   F = {prod:id, cant:'1', costo:dineroIn(p.costo), fecha:hoyISO(), vence:'', lote:'', nota:'', guardar:guardarEntrada};
-  hojaForm('Llegó más · ' + esc(p.nombre), 'form', () => {
+  hojaForm('Llegó más · ' + esc(nombreVisible(p.nombre)), 'form', () => {
     const stock = stockDe(id);
-    $('#fCuerpo').innerHTML = `<div class="peq muted">Ahora hay <b>${fCant(stock)} ${esc(uTxt(stock, p.unidad))}</b>.</div>
+    $('#fCuerpo').innerHTML = `<div class="peq muted">Ahora hay <b>${esc(fCant(stock, uTxt(stock, p.unidad)))}</b>.</div>
       ${pasos('¿Cuántos llegaron?', 'cant', p.unidad)}
       <div class="fila2">${campo('Costo de cada uno ($)', 'costo', {modo:'decimal', ph:'0,00'})}${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}</div>
       <div class="fila2">${campo('Vence (opcional)', 'vence', {tipo:'date'})}${campo('Lote (opcional)', 'lote')}</div>
@@ -1706,7 +1735,7 @@ async function guardarEntrada(){
   if(!guardar({...E, productos:nuevosProductos, movs:[...E.movs, entrada]})) return;
   await cerrarCapa();
   refrescar();
-  avisarConDeshacer(`Llegó mercadería · +${fCant(c)} ${uTxt(c, p.unidad)}`, {movs:[entrada]}, true, () =>
+  avisarConDeshacer(`Llegó mercadería · +${fCant(c, uTxt(c, p.unidad))}`, {movs:[entrada]}, true, () =>
     E.productos.map(actual => {
       if(actual.id !== p.id || actual.borrado) return actual;
       const restaurados = campos.filter(campo => actual[campo] === cambios[campo]);
@@ -1745,8 +1774,8 @@ function registrarFrasco(id, terminado){
 function formUso(id){
   const p = prodPorId(id);
   F = {prod:id, cant:fCant(p.gasto > 0 ? p.gasto : 1), fecha:hoyISO(), pac:'', trat:'', nota:'', guardar:guardarUso};
-  hojaForm('Usar · ' + esc(p.nombre), 'form', () => {
-    $('#fCuerpo').innerHTML = `<div class="peq muted">Hay <b>${fCant(stockDe(id))} ${esc(p.unidad)}</b>.</div>
+  hojaForm('Usar · ' + esc(nombreVisible(p.nombre)), 'form', () => {
+    $('#fCuerpo').innerHTML = `<div class="peq muted">Hay <b>${esc(fCant(stockDe(id), p.unidad))}</b>.</div>
       ${pasos('¿Cuánto usaste?', 'cant', p.unidad)}
       ${campo('Fecha', 'fecha', {tipo:'date', max:hoyISO()})}
       ${campo('Paciente (opcional)', 'pac', {lista:'dlPac', ph:'Nombre'})}${listaPacientes()}
@@ -1766,23 +1795,23 @@ function guardarUso(){
     pac:F.pac.trim(), trat:F.trat.trim(), nota:p.lote ? 'Lote ' + p.lote : ''}, true);
   if(!guardar({...E, movs:[...E.movs, m]})) return;
   cerrarCapa(); refrescar();
-  avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}`, {movs:[m]}, true);
+  avisarConDeshacer(`−${fCant(c, uTxt(c, p.unidad))} de ${nombreVisible(p.nombre)}`, {movs:[m]}, true);
 }
 function usarRapido(id){
   const p = prodPorId(id), c = p.gasto > 0 ? p.gasto : 1;
   const m = marcar({id:uid(), prod:id, tipo:'uso', cant:-c, fecha:hoyISO(), costo:p.costo || 0, nota:p.lote ? 'Lote ' + p.lote : ''}, true);
   if(!guardar({...E, movs:[...E.movs, m]})) return;
   refrescar();
-  avisarConDeshacer(`−${fCant(c)} ${uTxt(c, p.unidad)} de ${p.nombre}. Quedan ${fCant(stockDe(id))}`, {movs:[m]}, true);
+  avisarConDeshacer(`−${fCant(c, uTxt(c, p.unidad))} de ${nombreVisible(p.nombre)}. Quedan ${fCant(stockDe(id))}`, {movs:[m]}, true);
 }
 
 // Contar / corregir
 function formAjuste(id, desdeFicha = false){
   const p = prodPorId(id);
   F = {prod:id, real:fCant(Math.max(0, stockDe(id))), motivo:'conteo', nota:'', guardar:guardarAjuste, desdeFicha};
-  hojaForm(`${desdeFicha ? 'Ajustar' : 'Contar'} · ${esc(p.nombre)}`, 'form', () => {
+  hojaForm(`${desdeFicha ? 'Ajustar' : 'Contar'} · ${esc(nombreVisible(p.nombre))}`, 'form', () => {
     const stock = stockDe(id);
-    $('#fCuerpo').innerHTML = `<div class="peq muted">Según la app hay <b>${fCant(stock)} ${esc(uTxt(stock, p.unidad))}</b>. Escribe lo que realmente hay.</div>
+    $('#fCuerpo').innerHTML = `<div class="peq muted">Según la app hay <b>${esc(fCant(stock, uTxt(stock, p.unidad)))}</b>. Escribe lo que realmente hay.</div>
       ${pasos('¿Cuántos hay de verdad?', 'real', p.unidad)}
       <div class="peq" id="aDif" role="status">${diferenciaAjuste(id)}</div>
       <div class="campo"><span class="lbl">Motivo</span><div class="chips" role="group" aria-label="Motivo">
@@ -1839,7 +1868,7 @@ function nuevoConteo(d, grupo, valor, p = null){
   render();
   pintarConteo(d, true);
 }
-function textoCantidadConteo(cant, p){ return `${fCant(cant)} ${esc(uTxt(cant, p.unidad))}`; }
+function textoCantidadConteo(cant, p){ return esc(fCant(cant, uTxt(cant, p.unidad))); }
 function inicioConteoHTML(){
   const ps = productos();
   if(!ps.length) return '<div class="vacio">Agrega un producto en Inventario para empezar a contar.</div>';
@@ -1872,7 +1901,7 @@ function pasoConteoHTML(conteo, filas, i){
       <b>Producto ${i + 1} de ${filas.length}</b><progress max="${filas.length}" aria-label="Productos contados"></progress>
       <span class="muted conteo-cuantos" role="status"></span></div>
     <section class="card conteo-producto" aria-labelledby="productoConteo">
-      ${avatar(p, 'conteo-foto')}<h3 id="productoConteo" tabindex="-1">${esc(p.nombre)}</h3>
+      ${avatar(p, 'conteo-foto')}<h3 id="productoConteo" tabindex="-1">${esc(nombreVisible(p.nombre))}</h3>
       ${p.marca && norm(p.marca) !== norm(conteo.nombre) ? `<p class="muted">${esc(p.marca)}</p>` : ''}
       <div class="conteo-esperado"><span>Stock esperado</span><b class="num">${textoCantidadConteo(esperado, p)}</b></div>
       ${campoCantidad(`Cantidad contada (${unidad})`, 'cantidadConteo', conteo.cantidades[p.id], 'aria-describedby="estadoCantidadConteo"')}
@@ -1889,7 +1918,7 @@ function resumenConteoHTML(conteo, filas){
     <section class="card conteo-resumen" aria-labelledby="diferenciasConteo"><h3 id="diferenciasConteo" tabindex="-1">Diferencias</h3>
       ${n ? `<p class="muted">${n} ${n === 1 ? 'producto tiene' : 'productos tienen'} una diferencia. Toca un producto si quieres corregir la cantidad.</p>
         <div class="conteo-filas">${diferencias.map(({p, esperado, contado, diferencia}) => `<button type="button" class="fila-lista"
-          data-act="irConteo" data-id="${esc(p.id)}">${avatar(p)}<span class="tx"><b>${esc(p.nombre)}</b>
+          data-act="irConteo" data-id="${esc(p.id)}">${avatar(p)}<span class="tx"><b>${esc(nombreVisible(p.nombre))}</b>
           <span class="m">Esperado ${fCant(esperado)} · Contado ${textoCantidadConteo(contado, p)}</span></span>
           <span class="solo-lectura">Ajuste de ${diferencia > 0 ? 'más' : 'menos'} ${textoCantidadConteo(Math.abs(diferencia), p)}</span>
           <span class="pill ${diferencia > 0 ? 'ok' : 'bad'}" aria-hidden="true">${diferencia > 0 ? '+' : '−'}${fCant(Math.abs(diferencia))}</span>
@@ -2227,11 +2256,16 @@ function pintarSelectorVenta(){
   selector.innerHTML = ps.length ? ps.map(p => {
     const stock = stockDe(p.id);
     const aviso = avisosDe(p).find(a => a.clase === 'fecha');
-    const nivel = stock <= (p.min || 0) || stock === 1 || aviso?.nivel === 'bad' ? 'bad' : aviso ? 'warn' : '';
+    const nivel = stockBajo(p, stock) ? 'bad' : aviso ? 'warn' : '';
     const restante = textoStock(stock);
+    const nombreCompleto = nombreVisible(p.nombre);
+    const partes = nombreCompleto.split(' · ');
+    const medidaFinal = partes.length === 1 && nombreCompleto.match(/^(.+?)\s+(\d+(?:[.,]\d+)?\s*(?:ml|g|cc|mg))$/i);
+    const [nombre, ...presentacion] = medidaFinal ? medidaFinal.slice(1) : partes;
     return `<button class="tarjeta-venta" data-act="vAgregar" data-id="${esc(p.id)}">
-      ${avatar(p)}<span class="nombre-tarjeta-venta">${esc(p.nombre)}</span>
-      <strong class="num">${dinero(p.precio)}</strong><span class="stock-tarjeta-venta ${nivel}">${restante}</span>
+      ${avatar(p)}<span class="nombre-tarjeta-venta">${esc(nombre)}</span>
+      ${presentacion.length ? `<span class="tamano-tarjeta-venta">${esc(presentacion.join(' · '))}</span>` : ''}
+      <strong class="num sin-salto">${dinero(p.precio)}</strong><span class="stock-tarjeta-venta ${nivel}">${restante}</span>
       <span class="cantidad-tarjeta-venta" hidden></span>
     </button>`;
   }).join('') : `<div class="vacio">${F.todos.length ? 'No encontré productos con ese filtro.' : 'Agrega productos en Inventario para empezar a vender.'}</div>`;
@@ -2255,7 +2289,7 @@ function pintarCarrito(animar){
   items.innerHTML = F.items.length ? F.items.map((it, i) => `<div class="item-venta" role="group" aria-label="${esc(it.nombre)}">
     <button class="producto-carrito" data-act="vPrecio" data-i="${i}" aria-label="Editar precio de ${esc(it.nombre)}">
       ${avatar(prodPorId(it.prod) || it, 'sm')}<span class="producto-carrito-texto">
-        <span class="n">${esc(it.nombre)}</span><span class="precio-carrito num">${dinero(num(it.precio))} c/u</span>
+        <span class="n">${esc(nombreVisible(it.nombre))}</span><span class="precio-carrito num">${dinero(num(it.precio))} c/u</span>
       </span>
     </button>
     ${pasos('Cantidad', 'cant', '', i)}
@@ -2269,8 +2303,8 @@ function actualizarTotalesVenta(animar){
   const subtotal = subtotalVenta(F.items), descuento = descuentoVenta(F.descuento);
   const total = dinero(Math.max(0, subtotal - (descuento >= 0 ? descuento : 0)));
   const detalle = $('#detalleVenta'), vista = $('#vistaCarrito');
-  $('#resumenVenta').textContent = `Venta · ${n} ${n === 1 ? 'producto' : 'productos'}`;
-  vista.textContent = ultima ? ultima.nombre : '';
+  $('#resumenVenta').textContent = 'Venta · ' + fCant(n, n === 1 ? 'producto' : 'productos');
+  vista.textContent = ultima ? nombreVisible(ultima.nombre) : '';
   vista.hidden = !ultima || !detalle.hidden;
   $('#vTotal').textContent = total;
   $('.num', $('#totalDetalle')).textContent = total;
@@ -2299,7 +2333,7 @@ async function venderProducto(id){
 function editarPrecioVenta(indice){
   const it = F.items[indice];
   const d = abrirCapa(`<form class="dlg hoja-inferior" role="dialog">
-    <span class="tirador" aria-hidden="true"></span><h3>Editar precio</h3><p>${esc(it.nombre)}</p>
+    <span class="tirador" aria-hidden="true"></span><h3>Editar precio</h3><p>${esc(nombreVisible(it.nombre))}</p>
     <div class="campo"><label for="precioVenta">Precio c/u ($)</label>
       <input id="precioVenta" type="text" inputmode="decimal" value="${esc(it.precio)}" required></div>
     <div class="fila"><button class="btn ghost" type="button" data-act="cerrar">Cancelar</button>
@@ -2465,7 +2499,7 @@ function pintarPaciente(d, p = pacientePorNombre(d.dataset.n)){
       <h2 class="titulo-seccion">Le toca volver a comprar</h2>
       <div class="productos-recompra" role="group" aria-label="Producto para recordar">${pendientes.map((r, i) => `
         <button class="producto-recompra" type="button" data-recompra="${i}" aria-pressed="${i === 0}">${avatar(r.p)}
-          <span><b>${esc(r.p.nombre)}</b><small>${diasHasta(r.fecha) < 0 ? 'Se le habría acabado el ' : 'Se le acaba ~'}${esc(fCorta(r.fecha))}</small></span>
+          <span><b>${esc(nombreVisible(r.p.nombre))}</b><small>${diasHasta(r.fecha) < 0 ? 'Se le habría acabado el ' : 'Se le acaba ~'}${esc(fCorta(r.fecha))}</small></span>
           ${pendientes.length > 1 ? IC.check : ''}</button>`).join('')}</div>
       ${editorRecordatorio()}</section>` : ''}
     <section class="card notas-paciente" aria-label="Notas"><h2>Notas</h2>
@@ -2474,7 +2508,7 @@ function pintarPaciente(d, p = pacientePorNombre(d.dataset.n)){
       <div class="filas">${compras.length ? compras.map(filaCompraPaciente).join('') : '<p class="vacio">Todavía no hay compras.</p>'}</div></section>
     ${usos.length ? `<section class="card"><h3>Usado en sus tratamientos</h3>${usos.map(m => {
       const prod = prodPorId(m.prod);
-      return `<div class="mov"><span>${esc(prod ? prod.nombre : 'Producto borrado')}</span><span class="q num">${fCant(-m.cant)} ${esc(prod?.unidad)}</span>
+      return `<div class="mov"><span>${esc(nombreVisible(prod?.nombre || 'Producto borrado'))}</span><span class="q num">${esc(fCant(-m.cant, prod?.unidad))}</span>
         <span class="s">${esc([fCorta(m.fecha), m.trat, m.nota].filter(Boolean).join(' · '))}</span></div>`;
     }).join('')}</section>` : ''}
   </div></div>`;
@@ -2491,7 +2525,7 @@ function filaCompraPaciente(v){
   const items = v.items.map(i => (i.cant === 1 ? '' : fCant(i.cant) + ' × ') + i.nombre).join(' · ');
   return `<button class="fila-lista compra-paciente" data-act="editarVenta" data-id="${esc(v.id)}">
     <time datetime="${esc(v.fecha)}" aria-label="${esc(fCorta(v.fecha))}"><b>${fecha.getDate()}</b><span>${MESES_C[fecha.getMonth()]}${fecha.getFullYear() !== new Date().getFullYear() ? ' ' + fecha.getFullYear() : ''}</span></time>
-    <span class="tx"><b>${esc(items)}</b>${pago ? `<span class="m">${esc(pago)}</span>` : ''}</span>
+    <span class="tx"><b>${esc(nombreVisible(items))}</b>${pago ? `<span class="m">${esc(pago)}</span>` : ''}</span>
     <strong class="num">${dinero(totalVenta(v))}</strong></button>`;
 }
 function editarPaciente(nombre){
@@ -2601,7 +2635,7 @@ function abrirRecordatorio(venta, producto){
   if(!pendiente) return;
   const {paciente, p} = pendiente;
   const d = abrirCapa(cabecera('Recordatorio', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in">
-    <section class="card recompra-paciente"><header><h3>${esc(paciente.nombre)}</h3><p>${esc(p.nombre)}</p></header>
+    <section class="card recompra-paciente"><header><h3>${esc(paciente.nombre)}</h3><p>${esc(nombreVisible(p.nombre))}</p></header>
       ${editorRecordatorio()}</section></div></div>`, {tipo:'recordatorio'});
   prepararRecordatorio(d, [pendiente], true);
 }
@@ -2654,7 +2688,7 @@ function gruposParaPedir(id, pedidos){
   }
   return [...grupos.values()].sort((a, b) => a.proveedor.localeCompare(b.proveedor, 'es'));
 }
-const cantidadPedido = (cant, unidad) => `${fCant(cant)} ${uTxt(cant, unidad)}`;
+const cantidadPedido = (cant, unidad) => fCant(cant, uTxt(cant, unidad));
 const nombrePedido = it => it.nombre + (it.marca ? ' (' + it.marca + ')' : '');
 function textoPedido(items){
   return 'Hola, te escribe SPARATI. Quisiera hacer este pedido:\n' +
@@ -2667,7 +2701,7 @@ function abrirCompras(id){
   pintarCompras(d);
 }
 function filaPedido(it, pendiente){
-  const {p, unidad} = it, nombre = esc(p?.nombre || it.nombre);
+  const {p, unidad} = it, nombre = esc(nombreVisible(p?.nombre || it.nombre));
   const detalle = pendiente ? 'Por recibir ' + cantidadPedido(it.falta, unidad) : 'Hay ' + cantidadPedido(it.stock, unidad);
   const contenido = `${p ? avatar(p) : `<span class="pedido-icono">${IC.inventario}</span>`}
     <span class="tx"><b>${nombre}</b><span class="m">${esc(detalle)}</span></span>
@@ -2756,7 +2790,7 @@ function abrirLlegadaPedido(id){
         <div class="pedido-cabecera"><strong>${esc(pedido.proveedor)}</strong>
           <p class="muted">Anota cuánto llegó y cuánto costó cada uno. Si algo no llegó, escribe 0.</p></div>
         ${vigentes.map((it, i) => `<section class="card pedido-recibir" aria-label="${esc(it.p.nombre)}" data-prod="${esc(it.prod)}">
-          <header>${avatar(it.p)}<div><h3>${esc(it.p.nombre)}</h3><span class="muted">Por recibir ${esc(cantidadPedido(it.falta, it.unidad))}</span></div></header>
+          <header>${avatar(it.p)}<div><h3>${esc(nombreVisible(it.p.nombre))}</h3><span class="muted">Por recibir ${esc(cantidadPedido(it.falta, it.unidad))}</span></div></header>
           <div class="fila2">
             <div class="campo"><label for="llegada-cant-${i}">Cantidad recibida</label>
               <input id="llegada-cant-${i}" data-cant inputmode="decimal" value="${fCant(it.falta)}"></div>
@@ -2920,7 +2954,7 @@ function abrirEtiquetasQR(){
     lista.classList.toggle('card', Boolean(visibles.length));
     lista.innerHTML = visibles.length ? visibles.map(p => `<label class="fila-etiqueta">
       <input type="checkbox" value="${esc(p.id)}"${seleccion.has(p.id) ? ' checked' : ''}>
-      <span><strong>${esc(p.nombre)}</strong>
+      <span><strong>${esc(nombreVisible(p.nombre))}</strong>
         <small>${esc([p.marca, p.tipo === 'uso' ? 'Uso en spa' : 'Para vender'].filter(Boolean).join(' · '))}</small></span>
       <span class="estado-etiqueta">${codigoDeEtiqueta(p) ? 'Con QR' : 'Sin código'}</span>
     </label>`).join('') : `<p class="vacio">${disponibles.length ? 'No encontramos productos con esa búsqueda.' : 'No hay productos disponibles para etiquetar.'}</p>`;
@@ -3003,7 +3037,7 @@ function abrirVistaEtiquetas(etiquetas, crearQR){
         <span class="dibujo-etiqueta" aria-hidden="true">${qr.createSvgTag({cellSize:1, margin:4, scalable:true})}</span>
         <div class="texto-etiqueta">
           <img src="emblema.png" alt="" width="28" height="28">
-          <strong title="${esc(p.nombre)}">${esc(p.nombre)}</strong>
+          <strong title="${esc(p.nombre)}">${esc(nombreVisible(p.nombre))}</strong>
           <small>${esc(codigo)}</small>
         </div>
       </li>`;
@@ -3218,7 +3252,7 @@ function prepararCamara(d, alLeer, {alAbrir, alFallar, conservarVista = false, l
 function asignarCodigo(id){
   const p = prodPorId(id);
   const d = abrirCapa(cabecera('Asignar código de barras', '', true) + `<div class="hoja-cuerpo"><div class="hoja-in asignar-codigo">
-    <p class="muted">${esc(p.nombre)}</p>
+    <p class="muted">${esc(nombreVisible(p.nombre))}</p>
     ${visorCamara()}
     <form class="card">
       <div class="campo"><label for="codigoAsignar">Escribir el código a mano</label>
@@ -3273,9 +3307,9 @@ function tarjetaEscaner(p, codigo, modo){
       <button class="btn ghost" type="button" data-escaner="asignar">Asignar a un producto</button>
       <button class="btn" type="button" data-escaner="crear">Crear producto con este código</button>
     </div>`;
-  const [nombre, ...presentacion] = p.nombre.split(' · ');
+  const [nombre, ...presentacion] = nombreVisible(p.nombre).split(' · ');
   const detalle = [p.marca, ...presentacion].filter(Boolean).join(' · ');
-  const stock = stockDe(p.id), bajo = stock <= (p.min || 0);
+  const stock = stockDe(p.id), bajo = stockBajo(p, stock);
   const permitido = !modo.tipo || p.tipo === modo.tipo;
   return `<h3 class="resultado-escaner-titulo encontrado">${IC.check} Producto encontrado<span class="solo-lectura">: ${esc(p.nombre)}</span></h3>
     <div class="producto-escaner">${avatar(p)}<div>
@@ -3456,7 +3490,7 @@ function escanearConteo(hoja){
     estado.textContent = '';
     resultado.hidden = false;
     resultado.innerHTML = lectura.ok ? `<h3 class="resultado-escaner-titulo encontrado">${IC.check} Unidad sumada</h3>
-      <div class="producto-escaner">${avatar(p)}<div><strong>${esc(p.nombre)}</strong>
+      <div class="producto-escaner">${avatar(p)}<div><strong>${esc(nombreVisible(p.nombre))}</strong>
         <p>${textoCantidadConteo(lectura.cantidad, p)} en el conteo.</p></div></div>` : `<p>${esc(lectura.texto)}</p>`;
     if(lectura.ok) cargarFotos(resultado);
     return lectura.ok;
@@ -3517,24 +3551,33 @@ function puedeCompartirArchivo(archivo){
 }
 function abrirArchivoParaGuardar(respaldo = false){
   if(!quien()) return;
-  const titulo = respaldo ? 'Respaldo completo' : 'Enviar a ' + otro();
+  const autor = quien(), destinatario = otro();
+  const titulo = respaldo ? 'Respaldo completo' : 'Enviar a ' + destinatario;
   const d = abrirCapa(`<section class="dlg hoja-inferior archivo-ajustes" role="dialog">
     <span class="tirador" aria-hidden="true"></span>
     <header class="archivo-ajustes-cab"><span class="archivo-ajustes-icono">${respaldo ? IC.pdf : IC.sync}</span>
       <h3>${esc(titulo)}</h3><button class="icon-btn" data-act="cerrar" aria-label="Cerrar">${IC.x}</button></header>
     <p class="muted" data-instruccion-archivo>${respaldo
       ? 'Incluye el inventario, las fotos guardadas y los ajustes de este celular.'
-      : `Mándaselo a ${esc(otro())} por WhatsApp. En su celular lo abre con «Recibir».`}</p>
+      : `Mándaselo a ${esc(destinatario)} por WhatsApp. En su celular lo abre con «Recibir».`}</p>
     <p role="status" data-estado-archivo></p>
     <button class="btn" data-guardar-archivo disabled>Preparando archivo…</button>
+    ${respaldo ? '' : `<div class="confirmar-envio" data-confirmar-envio role="group" aria-label="¿Ya lo enviaste?" hidden>
+      <p>¿Ya lo enviaste?</p>
+      <div class="acc-grid">
+        <button class="btn" data-envio-si>Sí</button>
+        <button class="btn ghost" data-act="cerrar">Todavía no</button>
+      </div>
+    </div>`}
   </section>`, {tipo:respaldo ? 'respaldo' : 'envio', cls:'dlg-fondo'});
   const boton = $('[data-guardar-archivo]', d), estado = $('[data-estado-archivo]', d);
+  const instruccion = $('[data-instruccion-archivo]', d), confirmacion = $('[data-confirmar-envio]', d);
   const tipoArchivo = respaldo ? 'respaldo' : 'envío';
-  let archivo, autor, corte, compartir;
+  let archivo, corte, compartir, compartido = false;
   function explicarComoGuardar(){
-    $('[data-instruccion-archivo]', d).textContent = respaldo
+    instruccion.textContent = respaldo
       ? `${compartir ? 'Desde el menú Compartir, guarda el respaldo en Archivos o Drive.' : 'Descarga el respaldo y guárdalo en Archivos o Drive.'} Podrás abrirlo con «Restaurar respaldo».`
-      : `${compartir ? 'En Compartir, elige WhatsApp.' : 'Manda el envío por WhatsApp.'} ${otro()} lo abre con «Recibir».`;
+      : `${compartir ? 'En Compartir, elige WhatsApp.' : 'Manda el envío por WhatsApp.'} ${destinatario} lo abre con «Recibir».`;
     boton.textContent = compartir ? `Compartir ${tipoArchivo}` : `Descargar ${tipoArchivo}`;
   }
   async function preparar(){
@@ -3544,7 +3587,6 @@ function abrirArchivoParaGuardar(respaldo = false){
     delete estado.dataset.nivel;
     try{
       recargarEstadoSiCambio();
-      autor = quien();
       corte = ahora();
       const {productos, movs, ventas, cats, pacientes} = E;
       const comun = {v:1, de:autor, generado:new Date(corte).toISOString()};
@@ -3569,9 +3611,30 @@ function abrirArchivoParaGuardar(respaldo = false){
       boton.textContent = 'Volver a preparar';
     }finally{ boton.disabled = false; }
   }
+  async function registrarEnvio(control){
+    recargarEstadoSiCambio();
+    if(quien() === autor){
+      const sync = {...E.sync, envio:Math.max(E.sync.envio, ahora()),
+        hastaEnvio:Math.max(E.sync.hastaEnvio ?? E.sync.envio, corte)};
+      if(!guardar({...E, sync})){
+        control.disabled = false;
+        if(d === pila.at(-1)?.el) control.focus({preventScroll:true});
+        return;
+      }
+      refrescar();
+      pintarAjustes();
+    }
+    if(d === pila.at(-1)?.el) await cerrarCapa();
+    toast(`${destinatario} puede abrir el archivo con «Recibir».`);
+  }
+  if(confirmacion){
+    const si = $('[data-envio-si]', confirmacion);
+    si.addEventListener('click', () => { si.disabled = true; registrarEnvio(si); });
+  }
   boton.addEventListener('click', async () => {
     if(!archivo){ preparar(); return; }
     boton.disabled = true;
+    if(compartido){ await registrarEnvio(boton); return; }
     try{
       // El menú nativo necesita el toque directo, con el archivo ya preparado.
       if(compartir) await navigator.share({files:[archivo], title:respaldo ? 'Respaldo SPARATI Prueba' : 'Inventario SPARATI Prueba'});
@@ -3588,16 +3651,21 @@ function abrirArchivoParaGuardar(respaldo = false){
       if(d === pila.at(-1)?.el) boton.focus({preventScroll:true});
       return;
     }
-    recargarEstadoSiCambio();
-    if(!respaldo && quien() === autor){
-      const sync = {...E.sync, envio:ahora(), hastaEnvio:Math.max(E.sync.hastaEnvio ?? E.sync.envio, corte)};
-      if(!guardar({...E, sync})){ boton.disabled = false; return; }
-      refrescar();
-      pintarAjustes();
+    if(respaldo){
+      if(d === pila.at(-1)?.el) await cerrarCapa();
+      toast(compartir ? 'Respaldo listo para guardar' : 'Respaldo guardado en Descargas');
+    }else if(compartir){
+      compartido = true;
+      boton.textContent = 'Guardar fecha del envío';
+      await registrarEnvio(boton);
+    }else{
+      instruccion.textContent = `Ahora abre el chat de ${destinatario} en WhatsApp y adjunta el archivo ${archivo.name} que se descargó.`;
+      delete estado.dataset.nivel;
+      estado.textContent = 'Archivo guardado en Descargas';
+      boton.hidden = true;
+      confirmacion.hidden = false;
+      $('[data-envio-si]', confirmacion).focus({preventScroll:true});
     }
-    if(d === pila.at(-1)?.el) await cerrarCapa();
-    toast(respaldo ? (compartir ? 'Respaldo listo para guardar' : 'Respaldo guardado en Descargas')
-      : (compartir ? `${otro()} puede abrir el archivo con «Recibir».` : 'Archivo guardado en Descargas'));
   });
   preparar();
 }

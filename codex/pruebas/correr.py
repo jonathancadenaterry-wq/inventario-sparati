@@ -7,7 +7,11 @@ import csv
 import json
 import mimetypes
 import re
+import struct
+import zlib
+from collections import defaultdict
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from statistics import median
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -383,6 +387,8 @@ def prueba_envio_entre_versiones(navegador):
         assert anterior.evaluate('E.productos') == estado['productos']
         assert anterior.evaluate('E.movs') == estado['movs'] and anterior.evaluate('E.ventas') == [venta]
         assert anterior.evaluate("FDB.get('foto-intercambio').then(b => b?.size)") == foto.stat().st_size
+        envio.get_by_role('button', name='Sí', exact=True).click()
+        expect(envio).to_have_count(0)
 
         anterior.locator('.nav [data-tab=venta]').click()
         anterior.locator('.prod').filter(has_text=base['nombre']).get_by_role('button', name='Llegó más').click()
@@ -469,7 +475,7 @@ def prueba_ajustes_v2(navegador, perfil=None):
         editar = pagina.get_by_role('dialog', name='Editar venta')
         enlace = editar.get_by_role('link', name='Abrir comprobante en WhatsApp')
         mensaje = parse_qs(urlsplit(enlace.get_attribute('href')).query)['text'][0]
-        assert mensaje.endswith(despedida) and 'Comprobante SPARATI' in mensaje and 'Total: $ 42,00' in mensaje
+        assert mensaje.endswith(despedida) and 'Comprobante SPARATI' in mensaje and 'Total: $\u00a042,00' in mensaje
     finally:
         sitio.cerrar()
 
@@ -477,33 +483,54 @@ def prueba_ajustes_v2(navegador, perfil=None):
 def prueba_envio_compartido(navegador, perfil=None):
     sitio = Sitio(navegador, perfil=perfil)
     try:
-        pagina = sitio.abrir(estado=ESTADO_V1, quien='Elba')
+        anterior = int((FECHA - timedelta(days=9)).timestamp() * 1000)
+        estado = {**ESTADO_V1, 'sync': {**ESTADO_V1['sync'], 'envio': anterior},
+                  'productos': [{**p, 'por': 'Elba', 'mod': anterior + 1} for p in ESTADO_V1['productos']]}
+        pagina = sitio.abrir(estado=estado, quien='Elba')
         pagina.evaluate("""() => {
           window.compartidos = [];
-          Object.defineProperty(navigator, 'canShare', {value: ({files}) => files[0].type === 'text/plain'});
+          Object.defineProperty(navigator, 'canShare', {configurable:true, value: ({files}) => files[0].type === 'text/plain'});
           Object.defineProperty(navigator, 'share', {value: ({files}) => {
             compartidos.push({archivo:files[0], activacion:navigator.userActivation.isActive});
             return new Promise((ok, mal) => { window.finCompartir = {ok, mal}; });
           }});
         }""")
         ajustes = abrir_ajustes(pagina)
-        ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+        abrir_envio = ajustes.get_by_role('button', name='Enviar a Jonathan')
+        aviso = pagina.locator('.atencion-inicio').get_by_text('Jonathan no tiene tus cambios')
+        fecha = ajustes.locator('.fechas-envio dd').first
+        abrir_envio.click()
         envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
         compartir = envio.get_by_role('button', name='Compartir envío')
         compartir.click()
         assert pagina.evaluate('compartidos[0].activacion') is True
+        expect(aviso).to_have_count(1)
         pagina.evaluate("finCompartir.mal(new DOMException('Cerrado', 'AbortError'))")
         expect(compartir).to_be_enabled()
-        assert pagina.evaluate('E.sync.envio') == ESTADO_V1['sync']['envio']
+        assert datos_guardados(pagina)['sync']['envio'] == anterior
+        expect(aviso).to_have_count(1)
+        expect(fecha).to_have_text('Hace 9 días')
         compartir.click()
         pagina.evaluate("finCompartir.mal(new DOMException('Menú no disponible', 'NotAllowedError'))")
         expect(envio.get_by_role('status')).to_contain_text('Puedes descargar el archivo')
-        with pagina.expect_download():
+        assert datos_guardados(pagina)['sync']['envio'] == anterior
+        expect(aviso).to_have_count(1)
+        with pagina.expect_download() as descarga:
             envio.get_by_role('button', name='Descargar envío').click()
+        expect(envio).to_contain_text(f'Ahora abre el chat de Jonathan en WhatsApp y adjunta el archivo '
+                                    f'{descarga.value.suggested_filename} que se descargó.')
+        pregunta = envio.get_by_role('group', name='¿Ya lo enviaste?')
+        expect(pregunta).to_be_visible()
+        expect(pregunta.get_by_role('button', name='Sí', exact=True)).to_be_focused()
+        assert datos_guardados(pagina)['sync']['envio'] == anterior
+        expect(aviso).to_have_count(1)
+        pregunta.get_by_role('button', name='Todavía no').click()
         expect(envio).to_have_count(0)
-        assert datos_guardados(pagina)['sync']['envio'] > 0
+        assert datos_guardados(pagina)['sync']['envio'] == anterior
+        expect(aviso).to_have_count(1)
+        expect(fecha).to_have_text('Hace 9 días')
 
-        ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+        abrir_envio.click()
         compartir.click()
         pagina.clock.fast_forward(2000)
         # Representa una entrada registrada por otra pestaña mientras el menú está abierto.
@@ -519,10 +546,23 @@ def prueba_envio_compartido(navegador, perfil=None):
           JSON.parse(await compartidos.at(-1).archivo.text()).datos.movs.some(m => m.id === 'otra-pestana')""")
         sync = datos_guardados(pagina)['sync']
         assert sync['envio'] > sync['hastaEnvio']
+        expect(fecha).to_have_text('Hace un momento')
+        expect(aviso).to_have_count(0)
         cerrar_hoja(pagina)
         pagina.clock.fast_forward(8 * 86400000)
         pagina.evaluate('render()')
-        expect(pagina.locator('.atencion-inicio')).to_contain_text('Jonathan no tiene tus cambios')
+        expect(aviso).to_have_count(1)
+
+        pagina.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
+        pagina.locator('.atencion-inicio [data-act=enviar]').click()
+        with pagina.expect_download():
+            envio.get_by_role('button', name='Descargar envío').click()
+        assert datos_guardados(pagina)['sync'] == sync
+        expect(aviso).to_have_count(1)
+        pregunta.get_by_role('button', name='Sí', exact=True).click()
+        expect(envio).to_have_count(0)
+        assert datos_guardados(pagina)['sync']['envio'] > sync['envio']
+        expect(aviso).to_have_count(0)
     finally:
         sitio.cerrar()
 
@@ -1395,8 +1435,8 @@ def prueba_opciones_venta(navegador, perfil=None):
         comprobante = urlsplit(enlaces[0])
         assert (comprobante.scheme, comprobante.netloc, comprobante.path) == ('https', 'wa.me', '/593995550123')
         mensaje = parse_qs(comprobante.query)['text'][0]
-        assert all(texto in mensaje for texto in ('Comprobante SPARATI', '6 × Sun Screen Clear', 'Descuento: $ 8,50',
-                                                  'Total: $ 99,50', 'Queda pendiente'))
+        assert all(texto in mensaje for texto in ('Comprobante SPARATI', '6 × Sun Screen Clear', 'Descuento: $\u00a08,50',
+                                                  'Total: $\u00a099,50', 'Queda pendiente'))
         expect(pagina.get_by_role('link', name='Abrir comprobante en WhatsApp')).to_have_attribute('href', enlaces[0])
 
         inventario(pagina, 'ventas')
@@ -2616,7 +2656,7 @@ def prueba_inicio_avisos(navegador, perfil=None):
         cerrar_hoja(pagina)
         expect(contadores.locator('.paciente b')).to_have_text('0')
 
-        # Descargar el envío de prueba quita el aviso sin abrir ninguna aplicación externa.
+        # La confirmación manual quita el aviso sin abrir ninguna aplicación externa.
         pagina.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
         previa.get_by_role('button', name='Enviar · Jonathan no tiene tus cambios').click()
         envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
@@ -2625,6 +2665,9 @@ def prueba_inicio_avisos(navegador, perfil=None):
         archivo = descarga.value
         assert archivo.suggested_filename == 'inventario-sparati-prueba-elba-2026-11-27.txt'
         assert json.loads(archivo.path().read_text(encoding='utf-8'))['app'] == 'sparati-inventario'
+        expect(previa.get_by_text('Jonathan no tiene tus cambios')).to_have_count(1)
+        envio.get_by_role('button', name='Sí', exact=True).click()
+        expect(envio).to_have_count(0)
         expect(previa.get_by_text('Jonathan no tiene tus cambios')).to_have_count(0)
         assert datos_guardados(pagina)['sync']['envio'] >= hoy
 
@@ -2895,7 +2938,7 @@ def prueba_reporte_ventas(navegador, perfil=None):
         url = urlsplit(enlace.get_attribute('href'))
         mensaje = parse_qs(url.query)['text'][0]
         assert (url.scheme, url.netloc, url.path) == ('https', 'wa.me', '/')
-        assert 'SPARATI · Ventas · Noviembre 2026' in mensaje and 'Por cobrar: $ 15,00' in mensaje
+        assert 'SPARATI · Ventas · Noviembre 2026' in mensaje and 'Por cobrar: $\u00a015,00' in mensaje
         assert base['pac'] not in mensaje and base['tel'] not in mensaje
 
         filas = descargar_excel_reporte(pagina, 'sparati-ventas-2026-11.csv')
@@ -2975,6 +3018,7 @@ def prueba_reporte_cabina_inventario(navegador, perfil=None):
         expect(cabina).to_have_attribute('aria-pressed', 'true')
         expect(cifras).to_have_text(['$ 27,00', '2'])
         expect(pagina.locator('.ranking-reporte li').first).to_contain_text('2 ampollas · $ 15,00')
+        expect(pagina.locator('.ranking-reporte li').get_by_text('Otros', exact=True)).to_have_count(0)
         expect(pagina.get_by_text('Para usos antiguos sin costo registrado se usa el costo actual.')).to_be_visible()
         enlace_cabina = pagina.get_by_role('link', name='Enviar por WhatsApp')
         assert 'Frascos terminados: 2' in parse_qs(urlsplit(enlace_cabina.get_attribute('href')).query)['text'][0]
@@ -2985,7 +3029,10 @@ def prueba_reporte_cabina_inventario(navegador, perfil=None):
         pagina.get_by_role('button', name='Mes siguiente').click()
 
         grupo.get_by_role('button', name='Inventario').click()
-        expect(cifras).to_have_text(['$ 167,50', '$ 235,00'])
+        para_vender = pagina.get_by_role('region', name='Para vender').locator('.num')
+        uso_spa = pagina.get_by_role('region', name='Uso en spa').locator('.num')
+        expect(para_vender).to_have_text(['$ 127,50', '$ 235,00'])
+        expect(uso_spa).to_have_text(['$ 40,00'])
         expect(pagina.get_by_text('Existencias al 27 nov', exact=False)).to_be_visible()
         quietos = pagina.locator('.tarjeta-reporte').filter(has=pagina.get_by_role('heading', name='Sin movimiento en 60 días'))
         expect(quietos.locator('li')).to_have_count(1)
@@ -2997,11 +3044,15 @@ def prueba_reporte_cabina_inventario(navegador, perfil=None):
         expect(pagina.get_by_role('dialog', name='Sin movimiento')).to_be_visible()
         cerrar_hoja(pagina)
         filas = descargar_excel_reporte(pagina, 'sparati-inventario-2026-11.csv')
+        assert ['Para vender', 'Valor a costo', '2026-11-27', '', '', '127,50'] in filas
+        assert ['Para vender', 'Valor a precio de venta', '2026-11-27', '', '', '235,00'] in filas
+        assert ['Uso en spa', 'Valor a costo', '2026-11-27', '', '', '40,00'] in filas
         assert ['Sin movimiento en 60 días', 'Sin movimiento', '2026-11-27', '3', 'unidades', '12,00'] in filas
         assert ['Vencen en los próximos 90 días', 'Sin movimiento', '2027-02-25', '3', 'unidades', '12,00'] in filas
         assert pagina.evaluate('document.documentElement.scrollWidth === innerWidth')
         pagina.get_by_role('button', name='Mes anterior').click()
-        expect(cifras).to_have_text(['$ 71,00', '$ 39,00'])
+        expect(para_vender).to_have_text(['$ 15,00', '$ 39,00'])
+        expect(uso_spa).to_have_text(['$ 56,00'])
         expect(pagina.get_by_text('Existencias al 31 oct', exact=False)).to_be_visible()
         inventario(pagina, 'inicio')
         pagina.get_by_role('region', name='Ventas de noviembre').get_by_role('button').click()
@@ -3009,6 +3060,276 @@ def prueba_reporte_cabina_inventario(navegador, perfil=None):
         expect(pagina.locator('.mes b')).to_have_text('Noviembre 2026')
     finally:
         sitio.cerrar()
+
+
+def perfiles_t15(perfil):
+    return [perfil, {**(perfil or {}), 'viewport': {'width': 360, 'height': 800}}]
+
+
+def prueba_t15_fechas_y_proveedor(navegador, perfil=None):
+    for dispositivo in perfiles_t15(perfil):
+        sitio = Sitio(navegador, perfil=dispositivo)
+        try:
+            pagina = sitio.abrir()
+            inventario(pagina, 'venta')
+            pagina.get_by_role('button', name='Producto', exact=True).click()
+            formulario = pagina.get_by_role('dialog', name='Nuevo producto')
+            pagina.add_style_tag(content=':where(input[type="date"]) { min-width: 14em }')
+            formulario.get_by_label('Fecha de vencimiento').fill('2027-11-30')
+            formulario.get_by_label('Fecha en que se abrió').fill('2026-11-26')
+            error = formulario.locator('#campo-vence').evaluate("""fecha => {
+              const tarjeta = fecha.closest('section').getBoundingClientRect();
+              for(const fila of fecha.closest('section').querySelectorAll('.fila2')){
+                const campos = [...fila.querySelectorAll('input')];
+                const [a, b] = campos.map(campo => campo.getBoundingClientRect());
+                if(a.right > b.left && a.bottom > b.top) return 'Dos campos se cruzan';
+                for(const campo of campos){
+                  const caja = campo.getBoundingClientRect();
+                  if(caja.left < tarjeta.left || caja.right > tarjeta.right ||
+                     caja.top < tarjeta.top || caja.bottom > tarjeta.bottom) return campo.id + ' sale de la tarjeta';
+                  if(campo.type !== 'date') continue;
+                  const estilo = getComputedStyle(campo);
+                  const celda = getComputedStyle(campo.closest('.campo'));
+                  if(estilo.minWidth !== '0px' || estilo.boxSizing !== 'border-box' ||
+                     estilo.appearance !== 'none' || celda.minWidth !== '0px' ||
+                     Math.abs(caja.width - campo.parentElement.getBoundingClientRect().width) > .5){
+                    return campo.id + ': ' + [estilo.minWidth, estilo.boxSizing, estilo.appearance, celda.minWidth];
+                  }
+                }
+              }
+              return '';
+            }""")
+            assert not error, (pagina.viewport_size, error)
+            nombre = formulario.get_by_label('Nombre del proveedor').bounding_box()
+            telefono = formulario.get_by_label('WhatsApp del proveedor').bounding_box()
+            assert (abs(nombre['y'] + nombre['height'] - telefono['y'] - telefono['height']) < .5
+                    or nombre['y'] + nombre['height'] <= telefono['y']), (pagina.viewport_size, nombre, telefono)
+        finally:
+            sitio.cerrar()
+
+
+def cargar_ejemplo_t15(pagina):
+    ajustes = abrir_ajustes(pagina)
+    ajustes.get_by_role('button', name='Cargar datos de ejemplo').click()
+    expect(pagina.locator('#toast')).to_have_text('Datos de ejemplo cargados')
+    cerrar_hoja(pagina)
+
+
+def monto_leido(texto):
+    return Decimal(texto.removeprefix('$').strip().replace('.', '').replace(',', '.'))
+
+
+def prueba_t15_reportes_ejemplo(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(quien='Elba')
+        cargar_ejemplo_t15(pagina)
+        estado = datos_guardados(pagina)
+        inventario(pagina, 'ventas')
+        tipos = pagina.get_by_role('group', name='Tipo de reporte')
+        tipos.get_by_role('button', name='Inventario').click()
+        existencias = defaultdict(Decimal)
+        for m in estado['movs']:
+            if not m.get('borrado') and m['fecha'] <= '2026-11-27':
+                existencias[m['prod']] += Decimal(str(m['cant']))
+        costos = defaultdict(Decimal)
+        precio_venta = Decimal(0)
+        for p in estado['productos']:
+            if not p.get('borrado'):
+                disponible = max(0, existencias[p['id']])
+                costos[p['tipo']] += disponible * Decimal(str(p['costo']))
+                if p['tipo'] == 'venta':
+                    precio_venta += disponible * Decimal(str(p['precio']))
+        for grupo, esperado in [('Para vender', [('Valor a costo', costos['venta']),
+                                                 ('Valor a precio de venta', precio_venta)]),
+                                ('Uso en spa', [('Valor a costo', costos['uso'])])]:
+            filas = pagina.get_by_role('region', name=grupo).locator('li')
+            expect(filas).to_have_count(len(esperado))
+            assert filas.locator('span').all_text_contents() == [etiqueta for etiqueta, _ in esperado]
+            assert [monto_leido(t) for t in filas.locator('b').all_text_contents()] == [valor for _, valor in esperado]
+
+        tipos.get_by_role('button', name='Cabina').click()
+        filas = pagina.locator('.ranking-reporte li')
+        expect(filas.last.locator('strong')).to_have_text('Otros')
+        valores = [monto_leido(t) for t in filas.locator('b').all_text_contents()]
+        total = monto_leido(pagina.locator('.cifras-reporte .v').first.inner_text())
+        assert valores[-1] > 0 and sum(valores) == total
+    finally:
+        sitio.cerrar()
+
+
+def prueba_t15_stock_compartido(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        base = ESTADO_V1['productos'][0]
+        productos = [{**base, 'nombre': nombre, 'id': id, 'min': minimo, 'vence': ''}
+                     for id, nombre, minimo in [('sin-aviso', 'Uno sin aviso', 0),
+                                                ('con-aviso', 'Uno con aviso', 1),
+                                                ('agotado', 'Agotado sin aviso', 0)]]
+        movimientos = [{'id': id, 'prod': id, 'tipo': 'inicial', 'fecha': '2026-11-27', 'cant': 1}
+                        for id in ('sin-aviso', 'con-aviso')]
+        pagina = sitio.abrir(estado={**ESTADO_V1, 'productos': productos, 'movs': movimientos, 'ventas': []})
+        esperado = {'sin-aviso': False, 'con-aviso': True, 'agotado': True}
+        inventario(pagina, 'venta')
+        for id, rojo in esperado.items():
+            assert bool(pagina.locator(f'#listaProd [data-id="{id}"] .stock.bad').count()) == rojo
+        pagina.get_by_role('button', name='Por terminarse').click()
+        ids = pagina.locator('#listaProd .fila-lista').evaluate_all('filas => filas.map(f => f.dataset.id)')
+        assert set(ids) == {'con-aviso', 'agotado'}
+        inventario(pagina, 'inicio')
+        pagina.get_by_role('button', name='2 Por terminarse').click()
+        avisos = pagina.get_by_role('dialog', name='Por terminarse')
+        expect(avisos.locator('.bad')).to_have_text(['Agotado', 'Queda 1'])
+        assert set(avisos.locator('li button').evaluate_all('botones => botones.map(b => b.dataset.id)')) == set(ids)
+        cerrar_hoja(pagina)
+        pagina.get_by_role('group', name='Acciones rápidas').get_by_role('button', name='Vender', exact=True).click()
+        for id, rojo in esperado.items():
+            stock = pagina.locator(f'#selProd [data-id="{id}"] .stock-tarjeta-venta')
+            expect(stock).to_have_text('Agotado' if id == 'agotado' else 'Queda 1')
+            assert ('bad' in stock.get_attribute('class').split()) == rojo
+    finally:
+        sitio.cerrar()
+
+
+def filas_con_tinta_png(png):
+    """Lee la captura PNG de Playwright y cuenta las filas oscuras sobre el fondo blanco."""
+    assert png.startswith(b'\x89PNG\r\n\x1a\n')
+    datos, cursor = [], 8
+    while cursor < len(png):
+        largo, tipo = struct.unpack_from('>I4s', png, cursor)
+        bloque = png[cursor + 8:cursor + 8 + largo]
+        if tipo == b'IHDR':
+            ancho, alto, bits, color, compresion, filtro, entrelazado = struct.unpack('>IIBBBBB', bloque)
+            assert bits == 8 and color in (2, 6) and compresion == filtro == entrelazado == 0
+        elif tipo == b'IDAT':
+            datos.append(bloque)
+        cursor += largo + 12
+    canales = 3 if color == 2 else 4
+    bytes_fila = ancho * canales
+    crudo = zlib.decompress(b''.join(datos))
+    assert len(crudo) == alto * (bytes_fila + 1)
+
+    def paeth(izquierda, arriba, diagonal):
+        prediccion = izquierda + arriba - diagonal
+        return min((izquierda, arriba, diagonal), key=lambda v: abs(prediccion - v))
+
+    anterior, tinta = bytearray(bytes_fila), 0
+    for cursor in range(0, len(crudo), bytes_fila + 1):
+        filtro = crudo[cursor]
+        assert 0 <= filtro <= 4
+        fila = bytearray(crudo[cursor + 1:cursor + 1 + bytes_fila])
+        for i, canal in enumerate(fila):
+            izquierda = fila[i - canales] if i >= canales else 0
+            arriba = anterior[i]
+            diagonal = anterior[i - canales] if i >= canales else 0
+            prediccion = (0, izquierda, arriba, (izquierda + arriba) // 2, paeth(izquierda, arriba, diagonal))[filtro]
+            fila[i] = (canal + prediccion) % 256
+        tinta += any(fila[i] < 224 for i in range(0, bytes_fila, canales))
+        anterior = fila
+    return tinta
+
+
+def prueba_t15_cifras_de_titulo(navegador, perfil=None):
+    sitio = Sitio(navegador, perfil=perfil)
+    try:
+        pagina = sitio.abrir(estado=ESTADO_V1)
+        inventario(pagina, 'ventas')
+        for selector in ('.top h1', '.mes b', '.cifras-reporte .v', '.semanas-reporte strong'):
+            estilo = pagina.locator(selector).first.evaluate('e => getComputedStyle(e).fontVariantNumeric')
+            assert {'lining-nums', 'tabular-nums'} <= set(estilo.split()), (selector, estilo)
+        pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender').click()
+        resumen = pagina.locator('#resumenVenta')
+        expect(resumen).to_have_text('Venta · 0 productos')
+        familia = resumen.evaluate("""async resumen => {
+          const estilo = getComputedStyle(resumen);
+          const muestras = document.createElement('div');
+          muestras.style.cssText = 'position:fixed;top:32px;left:16px;z-index:200';
+          muestras.setAttribute('aria-hidden', 'true');
+          for(const [nombre, glifo] of [['cero', '0'], ['letra-o', 'o']]){
+            const muestra = document.createElement('span');
+            muestra.id = nombre;
+            muestra.textContent = glifo;
+            muestra.style.cssText = 'display:block;width:80px;text-align:center;color:#000;background:#fff;font-size:60px;line-height:1.3';
+            muestra.style.fontFamily = estilo.fontFamily;
+            muestra.style.fontWeight = estilo.fontWeight;
+            muestra.style.fontVariantNumeric = estilo.fontVariantNumeric;
+            muestras.append(muestra);
+          }
+          document.body.append(muestras);
+          await document.fonts.ready;
+          return estilo.fontFamily;
+        }""")
+        assert 'Playfair Display' in familia
+        cero = filas_con_tinta_png(pagina.locator('#cero').screenshot(scale='css'))
+        letra = filas_con_tinta_png(pagina.locator('#letra-o').screenshot(scale='css'))
+        assert cero > letra > 0, (cero, letra)
+    finally:
+        sitio.cerrar()
+
+
+def medidas_en_una_linea(elementos):
+    medidas = elementos.evaluate_all(r"""elementos => elementos.flatMap(elemento => {
+      const textos = document.createTreeWalker(elemento, NodeFilter.SHOW_TEXT);
+      const halladas = [];
+      if(!elemento.getClientRects().length) return halladas;
+      while(textos.nextNode()){
+        const texto = textos.currentNode;
+        for(const m of texto.data.matchAll(/\$\u00a0-?[\d.,]+|\d+\u00a0(?:%|ml\b|g\b|cc\b|mg\b|unidades?\b)/gi)){
+          const rango = document.createRange();
+          rango.setStart(texto, m.index);
+          rango.setEnd(texto, m.index + m[0].length);
+          halladas.push([m[0], rango.getClientRects().length]);
+        }
+      }
+      return halladas;
+    })""")
+    assert medidas and all(lineas == 1 for _, lineas in medidas), medidas
+    return [texto for texto, _ in medidas]
+
+
+def prueba_t15_medidas_y_presentacion(navegador, perfil=None):
+    for dispositivo in perfiles_t15(perfil):
+        sitio = Sitio(navegador, perfil=dispositivo)
+        try:
+            sitio.pagina.clock.set_system_time(FECHA + timedelta(days=1))
+            pagina = sitio.abrir(quien='Elba')
+            cargar_ejemplo_t15(pagina)
+            assert pagina.evaluate("['ml', 'cc', 'mg', 'g', '%', 'unidades'].map(u => fCant(3.5, u)).concat(dinero(189))") == [
+                '3,5\u00a0' + u for u in ('ml', 'cc', 'mg', 'g', '%', 'unidades')] + ['$\u00a0189,00']
+            assert '30\u00a0cc' in medidas_en_una_linea(pagina.locator('.atencion-inicio .tx'))
+            inventario(pagina, 'venta')
+            pagina.locator('#qProd').fill('Gel de Ácido Tranexámico 3 %')
+            producto = pagina.locator('#listaProd .fila-lista')
+            expect(producto).to_have_count(1)
+            nombre = producto.locator('.tx b')
+            assert nombre.text_content() == 'Gel de Ácido Tranexámico 3\u00a0%'
+            assert '3\u00a0%' in medidas_en_una_linea(nombre)
+            guardado = next(p for p in datos_guardados(pagina)['productos'] if p['id'] == producto.get_attribute('data-id'))
+            assert guardado['nombre'] == 'Gel de Ácido Tranexámico 3 % · 120 g'
+
+            inventario(pagina, 'ventas')
+            semanas = pagina.locator('.semanas-reporte strong')
+            assert any(monto_leido(texto) >= 100 for texto in medidas_en_una_linea(semanas))
+            medidas_en_una_linea(pagina.locator('.cifras-reporte .v'))
+            assert pagina.locator('.semanas-reporte').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
+            inventario(pagina, 'pacientes')
+            medidas_en_una_linea(pagina.locator('.total-paciente'))
+            pagina.locator('.fila-paciente').first.click()
+            medidas_en_una_linea(pagina.locator('.cifras-paciente .v, .compra-paciente strong'))
+            cerrar_hoja(pagina)
+
+            pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender').click()
+            venta = pagina.get_by_role('dialog', name='Nueva venta')
+            venta.get_by_role('searchbox', name='Buscar producto').fill('Hydrating Foaming Cleanser')
+            tarjetas = venta.locator('#selProd .tarjeta-venta')
+            expect(tarjetas).to_have_count(2)
+            tamanos = tarjetas.locator('.tamano-tarjeta-venta')
+            assert sorted(tamanos.all_text_contents()) == ['100\u00a0ml', '200\u00a0ml']
+            assert set(medidas_en_una_linea(tamanos)) == {'100\u00a0ml', '200\u00a0ml'}
+            assert tamanos.evaluate_all('tamanos => tamanos.every(e => e.scrollWidth <= e.clientWidth + 1)')
+            medidas_en_una_linea(tarjetas.locator('strong'))
+        finally:
+            sitio.cerrar()
 
 
 def prueba_conteo_guiado(navegador, perfil=None):
@@ -3244,16 +3565,16 @@ def prueba_pedidos_sugerencias(navegador, perfil=None):
         href = urlsplit(enlace.get_attribute('href'))
         assert (href.scheme, href.netloc, href.path) == ('https', 'wa.me', '/593900000001')
         mensaje = parse_qs(href.query)['text'][0]
-        assert '4 unidades de Azelac Serum · 30 ml' in mensaje
-        assert '3,25 unidades de Sun Screen Clear SPF 50+ · 60 g' in mensaje
+        assert '4\u00a0unidades de Azelac Serum · 30 ml' in mensaje
+        assert '3,25\u00a0unidades de Sun Screen Clear SPF 50+ · 60 g' in mensaje
         assert 'Pure Radiance' not in mensaje
         enlace.evaluate("a => a.addEventListener('click', e => { e.preventDefault(); window.abierto = a.href; })")
         enlace.click()
         assert pagina.evaluate('window.abierto') == enlace.get_attribute('href')
         expect(compras.get_by_role('button', name='Pedidos', exact=True)).to_be_visible()
         compras.get_by_role('button', name='Compartir la lista completa').click()
-        assert 'pedir 1 frasco' in pagina.evaluate('textosCompartidos[0]')
-        assert 'pedir 4 unidades' in pagina.evaluate('textosCompartidos[0]')
+        assert 'pedir 1\u00a0frasco' in pagina.evaluate('textosCompartidos[0]')
+        assert 'pedir 4\u00a0unidades' in pagina.evaluate('textosCompartidos[0]')
     finally:
         sitio.cerrar()
 
@@ -3553,7 +3874,80 @@ def prueba_etiquetas_dos_pestanas(navegador, perfil=None):
         sitio.cerrar()
 
 
-def capturar(navegador, tarea):
+def capturar_t15(navegador, perfil, guardar):
+    fecha = FECHA + timedelta(days=1)
+    for dispositivo, sufijo in [(None, ''), (perfil, '-iphone14pro')]:
+        for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
+            sitio = Sitio(navegador, color=color, perfil=dispositivo)
+            try:
+                sitio.pagina.clock.set_system_time(fecha)
+                pagina = sitio.abrir(quien='Elba', estado={
+                    'v': 1, 'productos': [], 'movs': [], 'ventas': [],
+                    'sync': {'envio': int((fecha - timedelta(days=9)).timestamp() * 1000),
+                             'recibo': int((fecha - timedelta(days=1)).timestamp() * 1000), 'de': 'Jonathan'},
+                })
+                pagina.evaluate("Object.defineProperty(navigator, 'canShare', {value: () => false})")
+                cargar_ejemplo_t15(pagina)
+                pagina.clock.fast_forward(5000)
+
+                def captura(pantalla):
+                    guardar(sitio, pantalla, tema + sufijo)
+
+                def centrar(locator):
+                    locator.evaluate("elemento => elemento.scrollIntoView({block:'center'})")
+
+                centrar(pagina.locator('.atencion-inicio'))
+                captura('inicio-avisos')
+                inventario(pagina, 'venta')
+                pagina.get_by_role('button', name='Producto', exact=True).click()
+                formulario = pagina.get_by_role('dialog', name='Nuevo producto')
+                formulario.get_by_label('Fecha de vencimiento').fill('2027-11-30')
+                formulario.get_by_label('Fecha en que se abrió').fill('2026-11-26')
+                formulario.get_by_label('Lote', exact=True).fill('SP-1126')
+                centrar(formulario.locator('section').filter(has=pagina.get_by_role('heading', name='Vencimiento')))
+                captura('nuevo-vencimiento')
+                formulario.get_by_label('Nombre del proveedor').fill('Proveedor SP')
+                centrar(formulario.locator('section').filter(has=pagina.get_by_role('heading', name='Proveedor', exact=True)))
+                captura('nuevo-proveedor')
+                cerrar_hoja(pagina)
+
+                pagina.locator('#qProd').fill('Tranexámico 3 %')
+                pagina.evaluate('window.scrollTo(0, 0)')
+                captura('inventario-nombre')
+                inventario(pagina, 'ventas')
+                tipos = pagina.get_by_role('group', name='Tipo de reporte')
+                tipos.get_by_role('button', name='Inventario').click()
+                captura('reportes-inventario')
+                tipos.get_by_role('button', name='Cabina').click()
+                pagina.locator('.ranking-reporte').evaluate("lista => lista.scrollIntoView({block:'nearest'})")
+                captura('reportes-cabina')
+                tipos.get_by_role('button', name='Ventas').click()
+                centrar(pagina.locator('.semanas-reporte'))
+                captura('reportes-semanas')
+
+                inventario(pagina, 'pacientes')
+                captura('pacientes')
+                pagina.locator('.fila-paciente').first.click()
+                captura('paciente-ficha')
+                cerrar_hoja(pagina)
+                pagina.get_by_role('navigation', name='Principal').get_by_role('button', name='Vender').click()
+                venta = pagina.get_by_role('dialog', name='Nueva venta')
+                venta.get_by_role('searchbox', name='Buscar producto').fill('Hydrating Foaming')
+                venta.locator('#selProd').evaluate("lista => lista.scrollIntoView({block:'nearest'})")
+                captura('nueva-venta')
+                cerrar_hoja(pagina)
+
+                ajustes = abrir_ajustes(pagina)
+                ajustes.get_by_role('button', name='Enviar a Jonathan').click()
+                envio = pagina.get_by_role('dialog', name='Enviar a Jonathan')
+                with pagina.expect_download():
+                    envio.get_by_role('button', name='Descargar envío').click()
+                captura('envio-descargado')
+            finally:
+                sitio.cerrar()
+
+
+def capturar(navegador, tarea, perfil=None):
     carpeta = RAIZ / 'codex/capturas'
     fecha = FECHA.replace(hour=20) - timedelta(days=1 if tarea == 'T5' else 0)
     envio = int((fecha - timedelta(days=9)).timestamp() * 1000)
@@ -3564,8 +3958,11 @@ def capturar(navegador, tarea):
         pagina.evaluate("""async () => {
           await Promise.all(Array.from(document.images).filter(i => i.src).map(i => i.decode().catch(() => {})));
         }""")
-        pagina.screenshot(path=carpeta / f'{tarea}-{pantalla}-{tema}.png', animations='disabled')
+        pagina.screenshot(path=carpeta / f'{tarea}-{pantalla}-{tema}.png', animations='disabled', scale='css')
 
+    if tarea == 'T15':
+        capturar_t15(navegador, perfil, guardar)
+        return
     for color, tema in [('light', 'claro'), ('dark', 'oscuro')]:
         if tarea == 'T14':
             nuevo = Sitio(navegador, color=color)
@@ -4077,7 +4474,7 @@ def medir_arranque(navegador, perfil):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capturas', nargs='?', const='T14',
-                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14'],
+                        choices=['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15'],
                         help='guardar capturas en modo claro y oscuro (T14 por omisión)')
     parser.add_argument('--rendimiento', action='store_true', help='medir el arranque con CPU limitada en Chromium')
     args = parser.parse_args()
@@ -4101,7 +4498,9 @@ def main():
                         prueba_pedidos_sugerencias, prueba_pedidos_llegada, prueba_pedidos_dos_pestanas,
                         prueba_etiquetas_qr, prueba_impresion_etiquetas, prueba_etiquetas_dos_pestanas,
                         prueba_ajustes_v2, prueba_envio_compartido, prueba_respaldo_completo, prueba_invitacion_instalar,
-                        prueba_bienvenida, prueba_recepcion_bienvenida, prueba_accesibilidad_final, prueba_animacion_carrito]
+                        prueba_bienvenida, prueba_recepcion_bienvenida, prueba_accesibilidad_final, prueba_animacion_carrito,
+                        prueba_t15_fechas_y_proveedor, prueba_t15_reportes_ejemplo, prueba_t15_stock_compartido,
+                        prueba_t15_cifras_de_titulo, prueba_t15_medidas_y_presentacion]
         for motor in (p.chromium, p.webkit):
             if motor.name == 'webkit' and not Path(motor.executable_path).is_file():
                 continue
@@ -4117,7 +4516,7 @@ def main():
                         prueba(navegador, perfil=p.devices[modelo])
                         print(f'{motor.name} con {modelo}: {prueba.__name__} pasó')
                 if args.capturas and motor.name == 'chromium':
-                    capturar(navegador, args.capturas)
+                    capturar(navegador, args.capturas, p.devices[modelo])
                     print('Capturas en codex/capturas/')
 
 
